@@ -88,8 +88,10 @@ Unreal Engine: Lizenzgebühr erst ab hohen Umsätzen (aktuelle Epic-EULA bei Sta
 ## Nächste konkrete Schritte
 
 1. Papier-Prototyp des Juweliers bauen und mit 5 Personen testen.
-2. UE5-Projekt anlegen (C++-Template), Git LFS einrichten, Module `NWCore` und `NWPlanning` anlegen.
-3. Graybox des Juweliers mit Modeling Tools in UE bauen.
+2. ~~UE5-Projekt anlegen (C++-Template), Git LFS einrichten, Module `NWCore` und `NWPlanning` anlegen.~~
+   Erledigt, inkl. Graybox-Simulation des Juweliers und Tests.
+3. Graybox-Geometrie des Juweliers mit Modeling Tools in UE bauen und mit dem Sim-Graphen abgleichen;
+   den Juwelier als `NWHeistObjectAsset` anlegen statt fest im Code.
 4. Ersten Look-Test-Raum in Blender modellieren und nach den Regeln aus
    [04 – Pipeline](04-pipeline-blender-unreal.md) importieren.
 5. Förderprogramme recherchieren und Fristen für den Prototyp-Antrag eintragen.

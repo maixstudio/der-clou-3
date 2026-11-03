@@ -1,0 +1,32 @@
+# Unreal Engine – generierte Verzeichnisse
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# IDE / Projektdateien (werden mit "Generate Project Files" erzeugt)
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+compile_commands.json
+
+# Blender-Backups
+*.blend1
+*.blend2
+
+# Standalone-Simulationstests
+Tools/SimTests/build/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

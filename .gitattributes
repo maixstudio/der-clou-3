@@ -1,0 +1,35 @@
+# Text: einheitliche Zeilenenden
+*.h      text eol=lf
+*.cpp    text eol=lf
+*.cs     text eol=lf
+*.ini    text eol=lf
+*.md     text eol=lf
+*.json   text eol=lf
+*.uproject text eol=lf
+*.txt    text eol=lf
+*.yml    text eol=lf
+
+# Unreal-Assets (binär, sperrbar)
+*.uasset filter=lfs diff=lfs merge=lfs -text lockable
+*.umap   filter=lfs diff=lfs merge=lfs -text lockable
+
+# Quell-Art (Blender, Substance, Photoshop)
+*.blend  filter=lfs diff=lfs merge=lfs -text lockable
+*.spp    filter=lfs diff=lfs merge=lfs -text lockable
+*.psd    filter=lfs diff=lfs merge=lfs -text lockable
+*.fbx    filter=lfs diff=lfs merge=lfs -text
+*.glb    filter=lfs diff=lfs merge=lfs -text
+*.usd    filter=lfs diff=lfs merge=lfs -text
+*.abc    filter=lfs diff=lfs merge=lfs -text
+
+# Texturen
+*.png    filter=lfs diff=lfs merge=lfs -text
+*.tga    filter=lfs diff=lfs merge=lfs -text
+*.exr    filter=lfs diff=lfs merge=lfs -text
+*.hdr    filter=lfs diff=lfs merge=lfs -text
+*.jpg    filter=lfs diff=lfs merge=lfs -text
+
+# Audio / Video
+*.wav    filter=lfs diff=lfs merge=lfs -text
+*.ogg    filter=lfs diff=lfs merge=lfs -text
+*.mp4    filter=lfs diff=lfs merge=lfs -text

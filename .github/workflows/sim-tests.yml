@@ -1,0 +1,29 @@
+name: Simulation tests
+
+on:
+  push:
+    paths:
+      - "Source/NWCore/**"
+      - "Tools/SimTests/**"
+      - ".github/workflows/sim-tests.yml"
+  pull_request:
+    paths:
+      - "Source/NWCore/**"
+      - "Tools/SimTests/**"
+
+jobs:
+  sim-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - name: Configure
+        run: cmake -S Tools/SimTests -B Tools/SimTests/build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build Tools/SimTests/build --config Release
+      - name: Test
+        run: ctest --test-dir Tools/SimTests/build -C Release --output-on-failure

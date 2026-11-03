@@ -18,8 +18,14 @@
 | `NWPlanning` | Plan-Datenmodell, Zeitleiste, Abhängigkeiten, Geisterlauf, Validierung |
 | `NWGame` | Präsentation: Actors, Animation, Kamera, Licht, VFX, Audio-Trigger |
 | `NWUI` | CommonUI-Screens, Planer-Zeitleiste, Hub-Menüs |
-| `NWReplay` | Aufzeichnung des Sim-Logs, Kamera-Regeln, Sequencer-Generierung |
-| `NWEditor` | Editor-Tools: Objekt-Validierung, Wachrouten-Editor, Debug-Visualisierung |
+| `NWReplay` *(folgt)* | Aufzeichnung des Sim-Logs, Kamera-Regeln, Sequencer-Generierung |
+| `NWEditor` *(folgt)* | Editor-Tools: Objekt-Validierung, Wachrouten-Editor, Debug-Visualisierung |
+
+**Stand im Repo:** `NWCore`, `NWPlanning`, `NWGame` und `NWUI` sind angelegt. Der Code unter
+`Source/NWCore/*/Sim/` ist bewusst **reines C++ ohne Unreal-Header**: Er wird in Unreal mitkompiliert
+und zusätzlich von `Tools/SimTests` (CMake, strenge Warnungen) außerhalb der Engine gebaut und getestet,
+lokal wie in CI. Unreal-Typen (`UObject`, `FString`, `TArray`) kommen erst in `NWPlanning`/`NWGame` dazu,
+`NWSimConversion` übersetzt zwischen beiden Welten.
 
 ## Die wichtigste Entscheidung: Simulation getrennt von Darstellung
 
@@ -53,8 +59,12 @@ flowchart TB
 
 - Die Simulation läuft in **reinem C++ ohne Abhängigkeit von Actors oder Physik**, mit festem Tick
   (z. B. 10 Hz) und eigenem, gesätem Zufallsgenerator.
-- Positionen in festen Einheiten (z. B. Zentimeter als `int32` auf einem Navigationsgraphen), damit
+- Positionen in festen Einheiten (Zentimeter als `int32` auf einem Navigationsgraphen), damit
   Gleitkomma-Rundung den Determinismus nicht bricht.
+- Der erste Stand (`nw::sim::Simulation`) kann: Graph-Navigation (Dijkstra), Türen mit Schlössern,
+  Kontakt-Alarme und Lichtschranken, Tresore, Signale zwischen Crewmitgliedern, Wachen mit Patrouille,
+  Hören (Lärmradius), Sehen (gleicher Raum + Reichweite), Nachsehen bei Geräuschen, Polizei-Countdown,
+  Event-Log und Zustands-Hash. Vereinfachung: Wachen haben Schlüssel und ignorieren Türen.
 - Die Darstellung (`NWGame`) liest nur den Sim-Zustand und **interpoliert** Positionen/Animationen dazwischen.
 - Vorteile:
   - **Geisterlauf:** gleiche Simulation, 100× schneller, ohne Rendering.
