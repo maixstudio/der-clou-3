@@ -49,8 +49,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Room")
 	TArray<FText> CrewNames;
 
-	UPROPERTY(EditAnywhere, Category = "Room", meta = (ClampMin = "200"))
-	float WallHeight = 300.f;
+	/** Kept low (and without shadows) so the top-down camera sees into the whole room. */
+	UPROPERTY(EditAnywhere, Category = "Room", meta = (ClampMin = "230"))
+	float WallHeight = 250.f;
 
 	UPROPERTY(EditAnywhere, Category = "Room|Colors")
 	FLinearColor FloorColor = FLinearColor(0.55f, 0.5f, 0.42f);

@@ -52,5 +52,5 @@ protected:
 	float MaxArmLength = 4000.f;
 
 	UPROPERTY(EditAnywhere, Category = "Camera")
-	float DefaultArmLength = 2500.f;
+	float DefaultArmLength = 2300.f;
 };

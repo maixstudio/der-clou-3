@@ -58,6 +58,11 @@ ANWRoomDirector::ANWRoomDirector()
 	DoorPanels = MakeInstances(this, Root, TEXT("DoorPanels"), CubeMesh.Object);
 	Locks = MakeInstances(this, Root, TEXT("Locks"), CubeMesh.Object);
 	WindowPanes = MakeInstances(this, Root, TEXT("WindowPanes"), CubeMesh.Object);
+	// Readability first: the room itself casts no shadows, only the figures do.
+	for (UInstancedStaticMeshComponent* Mesh : { FloorTiles.Get(), GroundTiles.Get(), Walls.Get(), DoorPanels.Get(), Locks.Get(), WindowPanes.Get() })
+	{
+		Mesh->SetCastShadow(false);
+	}
 
 	// A single room: two windows at the back, a locked door on the right, the entrance at the front.
 	Layout = {

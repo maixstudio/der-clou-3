@@ -8,9 +8,12 @@
 
 namespace
 {
+	/** The basic shapes default to DefaultMaterial; BasicShapeMaterial has the "Color" parameter. */
+	const TCHAR* const ShapeMaterialPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+
 	void Paint(UStaticMeshComponent* Mesh, const FLinearColor& Color)
 	{
-		if (UMaterialInterface* Base = Mesh->GetMaterial(0))
+		if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(nullptr, ShapeMaterialPath))
 		{
 			UMaterialInstanceDynamic* Instance = UMaterialInstanceDynamic::Create(Base, Mesh);
 			Instance->SetVectorParameterValue(TEXT("Color"), Color);
