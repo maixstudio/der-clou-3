@@ -11,6 +11,7 @@ Plugins/**/Intermediate/
 .vscode/
 .idea/
 *.sln
+*.slnx
 *.suo
 *.sdf
 *.opensdf
