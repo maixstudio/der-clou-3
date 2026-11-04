@@ -64,6 +64,12 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Nachtwerk|Simulation")
 	FNWOnHeistFinished OnHeistFinished;
 
+	bool UsesBuiltInJewelerScenario() const { return bUseBuiltInJewelerScenario; }
+	const UNWHeistObjectAsset* GetHeistObject() const { return HeistObject; }
+	const TArray<TObjectPtr<UNWCrewMemberAsset>>& GetCrew() const { return Crew; }
+	const TArray<FNWCrewPlan>& GetPlan() const { return Plan; }
+	int32 GetSeed() const { return Seed; }
+
 protected:
 	virtual void BeginPlay() override;
 
