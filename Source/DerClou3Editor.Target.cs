@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class NachtwerkEditorTarget : TargetRules
+public class DerClou3EditorTarget : TargetRules
 {
-	public NachtwerkEditorTarget(TargetInfo Target) : base(Target)
+	public DerClou3EditorTarget(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.Latest;

@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
-public class NachtwerkTarget : TargetRules
+public class DerClou3Target : TargetRules
 {
-	public NachtwerkTarget(TargetInfo Target) : base(Target)
+	public DerClou3Target(TargetInfo Target) : base(Target)
 	{
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.Latest;

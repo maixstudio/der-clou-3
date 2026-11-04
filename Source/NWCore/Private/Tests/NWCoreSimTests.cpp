@@ -1,5 +1,5 @@
 // In-engine counterparts of Tools/SimTests. Run via Session Frontend -> Automation,
-// filter "Nachtwerk", or: UnrealEditor-Cmd Nachtwerk.uproject -ExecCmds="Automation RunTests Nachtwerk" -unattended
+// filter "Nachtwerk", or: UnrealEditor-Cmd DerClou3.uproject -ExecCmds="Automation RunTests Nachtwerk" -unattended
 
 #include "Misc/AutomationTest.h"
 #include "Sim/SimScenarios.h"

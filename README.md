@@ -30,17 +30,17 @@ Graybox mit dem Juwelier-Szenario aus dem Game Design.
 > [`CLAUDE.md`](CLAUDE.md) enthält Stand, MCP-Einrichtung (UE 5.8, `ModelContextProtocol`) und die
 > nächsten Aufgaben.
 
-**Voraussetzungen:** Unreal Engine 5 (das Projekt ist auf 5.7 eingestellt, siehe unten),
-Visual Studio 2022 bzw. Rider mit C++-Workload, Git LFS.
+**Voraussetzungen:** Unreal Engine 5.8,
+Visual Studio 2022 (17.14) bzw. 2026 bzw. Rider mit C++-Workload, Git LFS.
 
 ```bash
 git lfs install
 git clone https://github.com/maixstudio/der-clou-3.git
 ```
 
-1. Rechtsklick auf `Nachtwerk.uproject` → *Generate Visual Studio project files*.
+1. Rechtsklick auf `DerClou3.uproject` → *Generate Visual Studio project files*.
    Ist eine andere UE-Version installiert: Rechtsklick → *Switch Unreal Engine version…*
-2. `Nachtwerk.sln` öffnen, Konfiguration **Development Editor**, Projekt `Nachtwerk` bauen und starten.
+2. `DerClou3.sln` öffnen, Konfiguration **Development Editor**, Projekt `DerClou3` bauen und starten.
 3. Im Editor eine leere Map anlegen (`/Game/NW/Maps/Graybox_Jeweler`), einen
    **NWSimulationDirector** in die Szene ziehen und **Play** drücken.
    Kamera: WASD schwenken, Q/E drehen, Mausrad zoomen. Das Event-Log erscheint im Output Log
@@ -65,7 +65,7 @@ Im Editor laufen dieselben Prüfungen als Automation Tests unter `Nachtwerk.Core
 ## Projektstruktur
 
 ```
-Nachtwerk.uproject
+DerClou3.uproject
 Config/                 Engine-, Spiel- und Input-Einstellungen
 Content/NW/             Unreal-Assets (Git LFS)
 Source/

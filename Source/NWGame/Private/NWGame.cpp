@@ -4,4 +4,4 @@
 
 DEFINE_LOG_CATEGORY(LogNachtwerk);
 
-IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, NWGame, "Nachtwerk");
+IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, NWGame, "DerClou3");
