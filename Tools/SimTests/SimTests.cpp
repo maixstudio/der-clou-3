@@ -2,6 +2,7 @@
 // Build: cmake -S Tools/SimTests -B Tools/SimTests/build && cmake --build Tools/SimTests/build
 // Run:   ctest --test-dir Tools/SimTests/build --output-on-failure
 
+#include "Sim/RoomSim.h"
 #include "Sim/SimScenarios.h"
 #include "Sim/SimTimeline.h"
 #include "Sim/Simulation.h"
@@ -258,6 +259,145 @@ namespace
 		NW_EXPECT(Timeline.Crew.empty());
 	}
 
+	// --- Room prototype -----------------------------------------------------------------------
+
+	const std::vector<std::string> TestRoom = {
+		",,,,,,,,,",
+		",###W###,",
+		",#.....#,",
+		",#1....D,",
+		",#.....#,",
+		",##L####,",
+		",,,,,,,,,",
+	};
+
+	nw::room::Command RoomCmd(nw::room::CommandType Type, int32_t Opening = -1, nw::room::Cell Target = {})
+	{
+		nw::room::Command Cmd;
+		Cmd.Type = Type;
+		Cmd.Opening = Opening;
+		Cmd.Target = Target;
+		return Cmd;
+	}
+
+	void TestRoomLayoutParses()
+	{
+		using namespace nw::room;
+		const Layout Room = ParseLayout(TestRoom);
+		NW_EXPECT(Room.IsValid());
+		NW_EXPECT(Room.Width == 9 && Room.Height == 7);
+		NW_EXPECT(Room.Openings.size() == 3);
+		NW_EXPECT(Room.Agents.size() == 1);
+		NW_EXPECT((Room.Agents[0].Start == Cell{ 2, 3 }));
+		const int32_t Window = Room.OpeningAt({ 4, 1 });
+		const int32_t Door = Room.OpeningAt({ 7, 3 });
+		const int32_t Locked = Room.OpeningAt({ 3, 5 });
+		NW_EXPECT(Window >= 0 && Room.Openings[static_cast<size_t>(Window)].Kind == OpeningKind::Window);
+		NW_EXPECT(Room.Openings[static_cast<size_t>(Window)].bAlongX);
+		NW_EXPECT(Door >= 0 && !Room.Openings[static_cast<size_t>(Door)].bAlongX);
+		NW_EXPECT(Locked >= 0 && Room.Openings[static_cast<size_t>(Locked)].bLocked);
+		NW_EXPECT(!ParseLayout({ "#?#" }).IsValid());
+	}
+
+	void TestRoomWalkAndWalls()
+	{
+		using namespace nw::room;
+		RoomSim Sim(ParseLayout(TestRoom));
+		Sim.Enqueue(RoomCmd(CommandType::MoveTo, -1, { 6, 4 }));
+		// Everything is closed: there is no way outside.
+		Sim.Enqueue(RoomCmd(CommandType::MoveTo, -1, { 0, 0 }));
+		Sim.RunUntilIdle();
+		const auto& Records = Sim.GetRecords();
+		NW_EXPECT(!Records[0].bFailed);
+		NW_EXPECT(Records[0].End > Records[0].Start);
+		NW_EXPECT((Sim.GetAgents()[0].At == Cell{ 6, 4 }));
+		NW_EXPECT(Records[1].bFailed);
+		NW_EXPECT(Records[1].Start >= Records[0].End);
+	}
+
+	void TestRoomDoorsAndLocks()
+	{
+		using namespace nw::room;
+		const Layout Room = ParseLayout(TestRoom);
+		const int32_t Door = Room.OpeningAt({ 7, 3 });
+		const int32_t Locked = Room.OpeningAt({ 3, 5 });
+
+		RoomSim Sim(Room);
+		Sim.Enqueue(RoomCmd(CommandType::GoThrough, Door));
+		Sim.RunUntilIdle();
+		NW_EXPECT(!Sim.GetRecords()[0].bFailed);
+		NW_EXPECT(Sim.GetOpenings()[static_cast<size_t>(Door)].bOpen);
+		NW_EXPECT((Sim.GetAgents()[0].At == Cell{ 8, 3 }));
+
+		RoomSim Locks(Room);
+		Locks.Enqueue(RoomCmd(CommandType::GoThrough, Locked));
+		Locks.Enqueue(RoomCmd(CommandType::PickLock, Locked));
+		Locks.Enqueue(RoomCmd(CommandType::GoThrough, Locked));
+		Locks.RunUntilIdle();
+		const auto& Records = Locks.GetRecords();
+		NW_EXPECT(Records[0].bFailed);
+		NW_EXPECT(!Records[1].bFailed);
+		NW_EXPECT(Records[1].End - Records[1].Start >= Locks.PickLockTicks(0));
+		NW_EXPECT(!Records[2].bFailed);
+		NW_EXPECT((Locks.GetAgents()[0].At == Cell{ 3, 6 }));
+		NW_EXPECT(!Locks.GetOpenings()[static_cast<size_t>(Locked)].bLocked);
+	}
+
+	void TestRoomClimbWindow()
+	{
+		using namespace nw::room;
+		const Layout Room = ParseLayout(TestRoom);
+		const int32_t Window = Room.OpeningAt({ 4, 1 });
+		RoomSim Sim(Room);
+		Sim.Enqueue(RoomCmd(CommandType::ClimbThrough, Window));
+		Sim.RunUntilIdle();
+		NW_EXPECT(!Sim.GetRecords()[0].bFailed);
+		NW_EXPECT((Sim.GetAgents()[0].At == Cell{ 4, 0 }));
+		NW_EXPECT(Sim.GetOpenings()[static_cast<size_t>(Window)].bOpen);
+		// Closing it again from outside works, and it is not walkable afterwards.
+		Sim.Enqueue(RoomCmd(CommandType::Close, Window));
+		Sim.RunUntilIdle();
+		NW_EXPECT(!Sim.GetOpenings()[static_cast<size_t>(Window)].bOpen);
+		NW_EXPECT(!Sim.IsWalkable({ 4, 1 }));
+	}
+
+	void TestRoomOptionsFollowQueue()
+	{
+		using namespace nw::room;
+		const Layout Room = ParseLayout(TestRoom);
+		const int32_t Locked = Room.OpeningAt({ 3, 5 });
+		RoomSim Sim(Room);
+		const std::vector<CommandType> Before = Sim.GetOptions(0, Locked);
+		NW_EXPECT(Before.size() == 1 && Before[0] == CommandType::PickLock);
+		// Once a lock-pick is queued, the menu already offers what comes after it.
+		Sim.Enqueue(RoomCmd(CommandType::PickLock, Locked));
+		const std::vector<CommandType> After = Sim.GetOptions(0, Locked);
+		NW_EXPECT(After.size() == 2 && After[0] == CommandType::GoThrough && After[1] == CommandType::Open);
+		NW_EXPECT(Sim.GetTick() == 0); // options do not advance the real simulation
+	}
+
+	void TestRoomDeterminism()
+	{
+		using namespace nw::room;
+		const Layout Room = ParseLayout(TestRoom);
+		RoomSim A(Room);
+		RoomSim B(Room);
+		for (RoomSim* Sim : { &A, &B })
+		{
+			Sim->Enqueue(RoomCmd(CommandType::PickLock, Room.OpeningAt({ 3, 5 })));
+			Sim->Enqueue(RoomCmd(CommandType::GoThrough, Room.OpeningAt({ 3, 5 })));
+			Sim->Enqueue(RoomCmd(CommandType::MoveTo, -1, { 8, 0 }));
+		}
+		while (!A.IsIdle())
+		{
+			A.Step();
+			B.Step();
+			NW_EXPECT(A.ComputeStateHash() == B.ComputeStateHash());
+		}
+		NW_EXPECT(B.IsIdle());
+		NW_EXPECT(!A.GetRecords()[2].bFailed);
+	}
+
 	struct TestCase
 	{
 		const char* Name;
@@ -281,6 +421,12 @@ int main()
 		{ "TimelineCoversReferencePlan", TestTimelineCoversReferencePlan },
 		{ "TimelineMarksFailedAction", TestTimelineMarksFailedAction },
 		{ "TimelineOfInvalidSetup", TestTimelineOfInvalidSetup },
+		{ "RoomLayoutParses", TestRoomLayoutParses },
+		{ "RoomWalkAndWalls", TestRoomWalkAndWalls },
+		{ "RoomDoorsAndLocks", TestRoomDoorsAndLocks },
+		{ "RoomClimbWindow", TestRoomClimbWindow },
+		{ "RoomOptionsFollowQueue", TestRoomOptionsFollowQueue },
+		{ "RoomDeterminism", TestRoomDeterminism },
 	};
 
 	for (const TestCase& Test : Tests)
