@@ -25,6 +25,11 @@ Graybox mit dem Juwelier-Szenario aus dem Game Design.
 
 ## Loslegen
 
+> **Mit Claude im Unreal Editor arbeiten:** Repo lokal klonen, in der Claude-Desktop-App eine
+> **lokale** Code-Sitzung im Repo-Ordner starten und schreiben: *„Lies CLAUDE.md und leg los.“*
+> [`CLAUDE.md`](CLAUDE.md) enthält Stand, MCP-Einrichtung (UE 5.8, `ModelContextProtocol`) und die
+> nächsten Aufgaben.
+
 **Voraussetzungen:** Unreal Engine 5 (das Projekt ist auf 5.7 eingestellt, siehe unten),
 Visual Studio 2022 bzw. Rider mit C++-Workload, Git LFS.
 
