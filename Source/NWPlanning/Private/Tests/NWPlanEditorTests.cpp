@@ -116,4 +116,48 @@ bool FNWPlanEditorPickTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNWPlanEditorSignalLinksTest, "Nachtwerk.Planning.PlanEditor.SignalLinks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FNWPlanEditorSignalLinksTest::RunTest(const FString& Parameters)
+{
+	using namespace NWPlanEditorTests;
+	UNWPlanEditor* Editor = MakeJewelerEditor();
+
+	// Reference plan: Vic and Marta wait for Otto's "safe open", Otto waits for Marta's "alarm off".
+	const TArray<FNWSignalLink>& Links = Editor->GetSignalLinks();
+	TestEqual(TEXT("Three waits"), Links.Num(), 3);
+	for (const FNWSignalLink& Link : Links)
+	{
+		TestTrue(TEXT("Released"), Link.bReleased);
+		TestTrue(TEXT("Signal in plan"), Link.bSignalInPlan);
+		TestTrue(TEXT("Sent before release"), Link.SentAt != nw::sim::NoTick && Link.SentAt <= Link.ReleasedAt);
+	}
+
+	const FNWSignalLink* Vic = Editor->FindSignalLink(jeweler::Driver, 0);
+	const FNWSignalLink* Otto = Editor->FindSignalLink(jeweler::Safecracker, 1);
+	if (!TestNotNull(TEXT("Vic's wait"), Vic) || !TestNotNull(TEXT("Otto's wait"), Otto))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Vic waits for signal 1"), Vic->Signal, static_cast<int32>(jeweler::SafeOpen));
+	TestEqual(TEXT("... sent by Otto"), Vic->SignalCrew, static_cast<int32>(jeweler::Safecracker));
+	TestEqual(TEXT("... with his 7th action"), Vic->SignalAction, 6);
+	TestEqual(TEXT("Otto waits for Marta"), Otto->SignalCrew, static_cast<int32>(jeweler::Electrician));
+	TestEqual(TEXT("... and her Signal action"), Otto->SignalAction, 4);
+	TestTrue(TEXT("Label"), Editor->DescribeLink(*Otto).ToString().StartsWith(TEXT("Wartet auf Signal 0 von Marta")));
+
+	// Without Otto's "safe open" signal nobody releases Vic and Marta.
+	Editor->RemoveAction(jeweler::Safecracker, 6);
+	const FNWSignalLink* Dangling = Editor->FindSignalLink(jeweler::Driver, 0);
+	if (!TestNotNull(TEXT("Vic's wait after removal"), Dangling))
+	{
+		return false;
+	}
+	TestFalse(TEXT("Not released"), Dangling->bReleased);
+	TestFalse(TEXT("No matching signal"), Dangling->bSignalInPlan);
+	TestTrue(TEXT("Dangling label"), Editor->DescribeLink(*Dangling).ToString().StartsWith(TEXT("Niemand sendet Signal 1")));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

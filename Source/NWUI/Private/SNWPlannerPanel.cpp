@@ -1,6 +1,7 @@
 #include "SNWPlannerPanel.h"
 
 #include "NWPlanEditor.h"
+#include "SNWDependencyArrows.h"
 #include "Sim/SimTimeline.h"
 #include "InputCoreTypes.h"
 #include "Styling/CoreStyle.h"
@@ -32,6 +33,13 @@ namespace NWPlannerStyle
 	const FLinearColor Bad(0.95f, 0.3f, 0.25f, 1.f);
 	const FLinearColor Warn(0.95f, 0.65f, 0.2f, 1.f);
 	const FLinearColor Pick(0.f, 0.9f, 0.9f, 1.f);
+	const FLinearColor Link(1.f, 0.86f, 0.35f, 0.95f);
+
+	/** Vertical centre of a crew track inside the track column (ruler on top, 1 px padding per row). */
+	float TrackCenterY(int32 CrewIndex)
+	{
+		return RulerHeight + static_cast<float>(CrewIndex) * (TrackHeight + 2.f) + 1.f + TrackHeight * 0.5f;
+	}
 
 	const FSlateBrush* White()
 	{
@@ -469,6 +477,20 @@ TSharedRef<SWidget> SNWPlannerPanel::MakeTimeline()
 		];
 	}
 
+	// Dependency arrows: from the moment a signal is sent to the end of the wait it releases.
+	TArray<FNWTimelineArrow> Arrows;
+	for (const FNWSignalLink& Link : Current->GetSignalLinks())
+	{
+		if (!Link.bReleased || Link.SignalCrew == INDEX_NONE)
+		{
+			continue;
+		}
+		FNWTimelineArrow& Arrow = Arrows.AddDefaulted_GetRef();
+		Arrow.From = FVector2D(NWPlannerStyle::TicksToSeconds(Link.SentAt) * PixelsPerSecond, NWPlannerStyle::TrackCenterY(Link.SignalCrew));
+		Arrow.To = FVector2D(NWPlannerStyle::TicksToSeconds(Link.ReleasedAt) * PixelsPerSecond, NWPlannerStyle::TrackCenterY(Link.WaitCrew));
+		Arrow.Color = NWPlannerStyle::Link;
+	}
+
 	return SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
 		[
@@ -482,7 +504,15 @@ TSharedRef<SWidget> SNWPlannerPanel::MakeTimeline()
 			[
 				SNew(SBox).WidthOverride(Width)
 				[
-					Tracks
+					SNew(SOverlay)
+					+ SOverlay::Slot()
+					[
+						Tracks
+					]
+					+ SOverlay::Slot()
+					[
+						SNew(SNWDependencyArrows).Arrows(MoveTemp(Arrows))
+					]
 				]
 			]
 		];
@@ -548,6 +578,17 @@ TSharedRef<SWidget> SNWPlannerPanel::MakeTrack(int32 CrewIndex, float TimelineWi
 		{
 			Color = Color.Desaturate(0.7f) * 0.6f;
 			Color.A = 1.f;
+		}
+		if (Action.Type == ENWPlanActionType::WaitForSignal)
+		{
+			if (const FNWSignalLink* Link = Current->FindSignalLink(CrewIndex, Index))
+			{
+				Detail = FText::Format(LOCTEXT("WaitDetail", "{0}\n{1}"), Detail, Current->DescribeLink(*Link));
+				if (!Link->bSignalInPlan)
+				{
+					Color = NWPlannerStyle::Bad;
+				}
+			}
 		}
 		NextUnreachedX = FMath::Max(NextUnreachedX, X + W + 2.f);
 

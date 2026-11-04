@@ -135,7 +135,98 @@ void UNWPlanEditor::Commit(TArray<FNWCrewPlan> NewPlan)
 void UNWPlanEditor::Refresh()
 {
 	Timeline = nw::sim::BuildTimeline(nw::sim::Simulation(Object, Crew, NWSimConversion::ToSim(Plan), Seed));
+	ResolveSignalLinks();
 	OnChanged.Broadcast();
+}
+
+void UNWPlanEditor::ResolveSignalLinks()
+{
+	SignalLinks.Reset();
+
+	auto FindSignalAction = [this](int32 CrewIndex, int32 Signal, nw::sim::Tick At) -> int32
+	{
+		const TArray<FNWPlanAction>& Actions = Plan[CrewIndex].Actions;
+		const nw::sim::CrewTimeline* Track = static_cast<size_t>(CrewIndex) < Timeline.Crew.size() ? &Timeline.Crew[static_cast<size_t>(CrewIndex)] : nullptr;
+		int32 First = INDEX_NONE;
+		for (int32 Index = 0; Index < Actions.Num(); ++Index)
+		{
+			if (Actions[Index].Type != ENWPlanActionType::Signal || Actions[Index].Target != Signal)
+			{
+				continue;
+			}
+			First = First == INDEX_NONE ? Index : First;
+			if (Track && static_cast<size_t>(Index) < Track->Actions.size())
+			{
+				const nw::sim::ActionSpan& Span = Track->Actions[static_cast<size_t>(Index)];
+				if (Span.Start != nw::sim::NoTick && Span.Start <= At && At <= Span.End)
+				{
+					return Index;
+				}
+			}
+		}
+		return First;
+	};
+
+	for (int32 CrewIndex = 0; CrewIndex < Plan.Num(); ++CrewIndex)
+	{
+		const TArray<FNWPlanAction>& Actions = Plan[CrewIndex].Actions;
+		for (int32 ActionIndex = 0; ActionIndex < Actions.Num(); ++ActionIndex)
+		{
+			const FNWPlanAction& Action = Actions[ActionIndex];
+			if (Action.Type != ENWPlanActionType::WaitForSignal)
+			{
+				continue;
+			}
+
+			FNWSignalLink& Link = SignalLinks.AddDefaulted_GetRef();
+			Link.WaitCrew = CrewIndex;
+			Link.WaitAction = ActionIndex;
+			Link.Signal = Action.Target;
+
+			for (int32 Other = 0; Other < Plan.Num() && !Link.bSignalInPlan; ++Other)
+			{
+				for (const FNWPlanAction& Candidate : Plan[Other].Actions)
+				{
+					if (Candidate.Type == ENWPlanActionType::Signal && Candidate.Target == Action.Target)
+					{
+						Link.bSignalInPlan = true;
+						Link.SignalCrew = Other;
+						Link.SignalAction = FindSignalAction(Other, Action.Target, nw::sim::NoTick);
+						break;
+					}
+				}
+			}
+
+			const nw::sim::CrewTimeline* Track = static_cast<size_t>(CrewIndex) < Timeline.Crew.size() ? &Timeline.Crew[static_cast<size_t>(CrewIndex)] : nullptr;
+			const nw::sim::ActionSpan* Span = Track && static_cast<size_t>(ActionIndex) < Track->Actions.size() ? &Track->Actions[static_cast<size_t>(ActionIndex)] : nullptr;
+			if (!Span || Span->Start == nw::sim::NoTick || Span->bUnfinished)
+			{
+				continue;
+			}
+
+			// Signals are global flags: the wait ends with the first matching "signal sent" event.
+			for (const nw::sim::SimEvent& Event : Timeline.Events)
+			{
+				if (Event.Type == nw::sim::EventType::SignalSent && Event.Target == Action.Target && Event.At <= Span->End)
+				{
+					Link.bReleased = true;
+					Link.SentAt = Event.At;
+					Link.ReleasedAt = Span->End;
+					Link.SignalCrew = Event.Agent;
+					Link.SignalAction = FindSignalAction(Event.Agent, Action.Target, Event.At);
+					break;
+				}
+			}
+		}
+	}
+}
+
+const FNWSignalLink* UNWPlanEditor::FindSignalLink(int32 CrewIndex, int32 ActionIndex) const
+{
+	return SignalLinks.FindByPredicate([CrewIndex, ActionIndex](const FNWSignalLink& Link)
+	{
+		return Link.WaitCrew == CrewIndex && Link.WaitAction == ActionIndex;
+	});
 }
 
 void UNWPlanEditor::BeginPick(ENWPlanActionType Type)
@@ -319,6 +410,22 @@ FText UNWPlanEditor::DescribeEvent(const nw::sim::SimEvent& Event) const
 	case nw::sim::EventType::PoliceArrived: return LOCTEXT("EvPolice", "Polizei eingetroffen");
 	default: return Utf8(nw::sim::Simulation::ToString(Event.Type));
 	}
+}
+
+FText UNWPlanEditor::DescribeLink(const FNWSignalLink& Link) const
+{
+	const FText Signal = FText::AsNumber(Link.Signal);
+	if (!Link.bSignalInPlan)
+	{
+		return FText::Format(LOCTEXT("LinkMissing", "Niemand sendet Signal {0} – dieses Warten endet nie."), Signal);
+	}
+	if (!Link.bReleased)
+	{
+		return FText::Format(LOCTEXT("LinkNever", "Signal {0} von {1} kommt im Geisterlauf nie an – dieses Warten endet nie."), Signal, GetCrewName(Link.SignalCrew));
+	}
+	const int32 Seconds = Link.SentAt / nw::sim::TicksPerSecond;
+	const FText Clock = FText::FromString(FString::Printf(TEXT("%d:%02d"), Seconds / 60, Seconds % 60));
+	return FText::Format(LOCTEXT("LinkOk", "Wartet auf Signal {0} von {1} (gesendet {2})"), Signal, GetCrewName(Link.SignalCrew), Clock);
 }
 
 #undef LOCTEXT_NAMESPACE

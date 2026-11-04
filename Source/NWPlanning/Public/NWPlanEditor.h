@@ -15,6 +15,26 @@ struct FNWPickCandidate
 	int32 Target = INDEX_NONE;
 };
 
+/** Which signal releases a "wait for signal" action in the ghost run. */
+struct FNWSignalLink
+{
+	int32 WaitCrew = INDEX_NONE;
+	int32 WaitAction = INDEX_NONE;
+	int32 Signal = INDEX_NONE;
+
+	/** The Signal action that released the wait (or the first planned one if it never did). */
+	int32 SignalCrew = INDEX_NONE;
+	int32 SignalAction = INDEX_NONE;
+
+	nw::sim::Tick SentAt = nw::sim::NoTick;
+	nw::sim::Tick ReleasedAt = nw::sim::NoTick;
+
+	/** The wait ended because the signal arrived. */
+	bool bReleased = false;
+	/** Some crew member's plan contains a matching "send signal" action. */
+	bool bSignalInPlan = false;
+};
+
 /** Live state of a running execution, pushed by the game so the planner UI can show it. */
 struct FNWExecutionState
 {
@@ -53,6 +73,11 @@ public:
 
 	/** Ghost run of the current plan; refreshed after every change. */
 	const nw::sim::PlanTimeline& GetTimeline() const { return Timeline; }
+
+	/** One entry per "wait for signal" action in the plan, resolved against the ghost run. */
+	const TArray<FNWSignalLink>& GetSignalLinks() const { return SignalLinks; }
+	/** The link of a "wait for signal" action, or nullptr. */
+	const FNWSignalLink* FindSignalLink(int32 CrewIndex, int32 ActionIndex) const;
 
 	// --- Editing --------------------------------------------------------------------------
 
@@ -93,6 +118,8 @@ public:
 	FText DescribeAction(const FNWPlanAction& Action, bool bShort = false) const;
 	static FText DescribeOutcome(nw::sim::Outcome Outcome);
 	FText DescribeEvent(const nw::sim::SimEvent& Event) const;
+	/** "Wartet auf Signal 1 von Otto (gesendet 4:58)" or why the wait never ends. */
+	FText DescribeLink(const FNWSignalLink& Link) const;
 
 	// --- Execution (handled by the game) --------------------------------------------------
 
@@ -111,6 +138,7 @@ public:
 private:
 	void Commit(TArray<FNWCrewPlan> NewPlan);
 	void Refresh();
+	void ResolveSignalLinks();
 	bool IsValidCrew(int32 CrewIndex) const { return CrewIndex >= 0 && CrewIndex < GetCrewCount(); }
 	int32 CountTargeted(ENWPlanActionType Type, int32 Target) const;
 
@@ -123,6 +151,7 @@ private:
 	TArray<TArray<FNWCrewPlan>> RedoStack;
 
 	nw::sim::PlanTimeline Timeline;
+	TArray<FNWSignalLink> SignalLinks;
 	FNWExecutionState Execution;
 
 	int32 SelectedCrew = 0;
