@@ -152,6 +152,7 @@ namespace nw::sim
 
 		const ObjectDefinition& GetDefinition() const { return Definition; }
 		const std::vector<CrewDef>& GetCrewDefs() const { return CrewDefs; }
+		const HeistPlan& GetPlan() const { return Plan; }
 		const std::vector<CrewState>& GetCrewStates() const { return Crew; }
 		const std::vector<GuardState>& GetGuardStates() const { return Guards; }
 		const std::vector<DoorState>& GetDoorStates() const { return Doors; }

@@ -7,6 +7,7 @@ public class NWGame : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "NWCore", "NWPlanning" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UMG", "NWCore", "NWPlanning", "NWUI" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "CommonUI" });
 	}
 }

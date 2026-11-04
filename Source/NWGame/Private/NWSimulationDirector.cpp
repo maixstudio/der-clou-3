@@ -5,6 +5,7 @@
 #include "NWCrewMemberAsset.h"
 #include "NWGame.h"
 #include "NWHeistObjectAsset.h"
+#include "NWPlanEditor.h"
 #include "NWSimConversion.h"
 #include "Sim/SimScenarios.h"
 
@@ -25,55 +26,138 @@ ANWSimulationDirector::ANWSimulationDirector()
 void ANWSimulationDirector::BeginPlay()
 {
 	Super::BeginPlay();
-	if (bAutoStart)
+	if (bStartInPlanner)
+	{
+		CreatePlanEditor();
+		PrepareSimulation();
+	}
+	else if (bAutoStart)
 	{
 		StartSimulation();
 	}
 }
 
-TUniquePtr<nw::sim::Simulation> ANWSimulationDirector::CreateSimulation() const
+ANWSimulationDirector::FSimSetup ANWSimulationDirector::GatherSetup() const
 {
-	const uint64_t SimSeed = static_cast<uint64_t>(static_cast<uint32>(Seed));
-
+	FSimSetup Setup;
 	if (bUseBuiltInJewelerScenario || !HeistObject)
 	{
 		if (!bUseBuiltInJewelerScenario)
 		{
 			UE_LOG(LogNachtwerk, Warning, TEXT("%s: no HeistObject assigned, falling back to the built-in jeweler."), *GetName());
 		}
-		nw::sim::scenarios::Scenario Setup = nw::sim::scenarios::MakeJewelerScenario();
-		return MakeUnique<nw::sim::Simulation>(std::move(Setup.Object), std::move(Setup.Crew), std::move(Setup.Plan), SimSeed);
+		nw::sim::scenarios::Scenario BuiltIn = nw::sim::scenarios::MakeJewelerScenario();
+		Setup.Object = std::move(BuiltIn.Object);
+		Setup.Crew = std::move(BuiltIn.Crew);
+		Setup.Plan = std::move(BuiltIn.Plan);
+		return Setup;
 	}
 
-	std::vector<nw::sim::CrewDef> CrewDefs;
+	Setup.Object = NWSimConversion::ToSim(*HeistObject);
 	for (const TObjectPtr<UNWCrewMemberAsset>& Member : Crew)
 	{
 		if (Member)
 		{
-			CrewDefs.push_back(NWSimConversion::ToSim(*Member));
+			Setup.Crew.push_back(NWSimConversion::ToSim(*Member));
 		}
 	}
-	return MakeUnique<nw::sim::Simulation>(NWSimConversion::ToSim(*HeistObject), std::move(CrewDefs), NWSimConversion::ToSim(Plan), SimSeed);
+	Setup.Plan = NWSimConversion::ToSim(Plan);
+	return Setup;
 }
 
-void ANWSimulationDirector::StartSimulation()
+TUniquePtr<nw::sim::Simulation> ANWSimulationDirector::CreateSimulation() const
+{
+	FSimSetup Setup = GatherSetup();
+	if (bHasRuntimePlan)
+	{
+		Setup.Plan = NWSimConversion::ToSim(RuntimePlan);
+	}
+	const uint64_t SimSeed = static_cast<uint64_t>(static_cast<uint32>(Seed));
+	return MakeUnique<nw::sim::Simulation>(std::move(Setup.Object), std::move(Setup.Crew), std::move(Setup.Plan), SimSeed);
+}
+
+bool ANWSimulationDirector::PrepareSimulation()
 {
 	Sim = CreateSimulation();
 	Accumulator = 0.f;
 	bPaused = false;
+	bPlaying = false;
 	bFinishHandled = false;
 	LoggedEventCount = 0;
 
 	if (!Sim->IsValid())
 	{
 		UE_LOG(LogNachtwerk, Error, TEXT("%s: invalid heist setup: %s"), *GetName(), UTF8_TO_TCHAR(Sim->GetError().c_str()));
-		HandleFinished();
-		return;
+		return false;
 	}
 
 	CapturePositions(CurrentPositions);
 	PreviousPositions = CurrentPositions;
+	ReportToPlanEditor();
+	return true;
+}
+
+void ANWSimulationDirector::StartSimulation()
+{
+	if (!PrepareSimulation())
+	{
+		HandleFinished();
+		return;
+	}
+	bPlaying = true;
 	UE_LOG(LogNachtwerk, Log, TEXT("%s: simulation started (seed %d)."), *GetName(), Seed);
+}
+
+void ANWSimulationDirector::ExecutePlan(const TArray<FNWCrewPlan>& InPlan)
+{
+	RuntimePlan = InPlan;
+	bHasRuntimePlan = true;
+	StartSimulation();
+}
+
+void ANWSimulationDirector::StopSimulation()
+{
+	PrepareSimulation();
+	UE_LOG(LogNachtwerk, Log, TEXT("%s: back to the planner."), *GetName());
+}
+
+void ANWSimulationDirector::SetPlaybackSpeed(float Speed)
+{
+	PlaybackSpeed = FMath::Clamp(Speed, 0.f, 32.f);
+	ReportToPlanEditor();
+}
+
+FIntPoint ANWSimulationDirector::WorldToSim(const FVector& WorldPosition) const
+{
+	const FVector Local = GetActorTransform().InverseTransformPosition(WorldPosition);
+	return FIntPoint(FMath::RoundToInt(Local.X), FMath::RoundToInt(Local.Y));
+}
+
+void ANWSimulationDirector::CreatePlanEditor()
+{
+	FSimSetup Setup = GatherSetup();
+	TArray<FNWCrewPlan> EditablePlan = NWSimConversion::FromSim(Setup.Plan);
+
+	PlanEditor = NewObject<UNWPlanEditor>(this, TEXT("PlanEditor"));
+	PlanEditor->Initialize(std::move(Setup.Object), std::move(Setup.Crew), MoveTemp(EditablePlan), static_cast<uint64>(static_cast<uint32>(Seed)));
+	PlanEditor->OnExecuteRequested.AddWeakLambda(this, [this]() { ExecutePlan(PlanEditor->GetPlan()); });
+	PlanEditor->OnStopRequested.AddUObject(this, &ANWSimulationDirector::StopSimulation);
+	PlanEditor->OnPlaybackSpeedRequested.AddUObject(this, &ANWSimulationDirector::SetPlaybackSpeed);
+}
+
+void ANWSimulationDirector::ReportToPlanEditor() const
+{
+	if (!PlanEditor || !Sim.IsValid())
+	{
+		return;
+	}
+	FNWExecutionState State;
+	State.bActive = bPlaying;
+	State.bFinished = Sim->IsFinished();
+	State.SimulatedSeconds = GetSimulatedSeconds();
+	State.PlaybackSpeed = PlaybackSpeed;
+	State.Result = Sim->GetResult();
+	PlanEditor->ReportExecution(State);
 }
 
 ENWHeistOutcome ANWSimulationDirector::RunGhostPreview(int32& OutLootValue, float& OutDurationSeconds) const
@@ -95,7 +179,7 @@ void ANWSimulationDirector::SetSimulationPaused(bool bInPaused)
 
 bool ANWSimulationDirector::IsSimulationRunning() const
 {
-	return Sim.IsValid() && !Sim->IsFinished() && !bPaused;
+	return Sim.IsValid() && bPlaying && !Sim->IsFinished() && !bPaused;
 }
 
 float ANWSimulationDirector::GetSimulatedSeconds() const
@@ -112,7 +196,7 @@ void ANWSimulationDirector::Tick(float DeltaSeconds)
 		return;
 	}
 
-	if (!bPaused && !Sim->IsFinished())
+	if (bPlaying && !bPaused && !Sim->IsFinished())
 	{
 		Accumulator += DeltaSeconds * PlaybackSpeed;
 		int32 Steps = 0;
@@ -131,6 +215,7 @@ void ANWSimulationDirector::Tick(float DeltaSeconds)
 		{
 			HandleFinished();
 		}
+		ReportToPlanEditor();
 	}
 
 	if (bDrawDebug)
@@ -247,6 +332,17 @@ void ANWSimulationDirector::DrawDebugState(float Alpha) const
 			DrawDebugSphere(World, Location, 35.f, 12, Color);
 			DrawDebugCircle(World, Location, static_cast<float>(Def.Guards[GuardIndex].SightRangeCm), 48, Color,
 				false, -1.f, 0, 1.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
+		}
+	}
+
+	// Planner: highlight what the pending action can target.
+	if (PlanEditor && PlanEditor->IsPicking())
+	{
+		const FColor PickColor(0, 230, 230);
+		for (const FNWPickCandidate& Candidate : PlanEditor->GetPickCandidates())
+		{
+			const FVector Location = ToWorld({ Candidate.PositionCm.X, Candidate.PositionCm.Y }, 5.f);
+			DrawDebugCircle(World, Location, 55.f, 32, PickColor, false, -1.f, 0, 4.f, FVector(1.0, 0.0, 0.0), FVector(0.0, 1.0, 0.0), false);
 		}
 	}
 }

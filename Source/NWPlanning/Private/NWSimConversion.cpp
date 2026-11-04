@@ -133,4 +133,21 @@ namespace NWSimConversion
 		}
 		return Out;
 	}
+
+	TArray<FNWCrewPlan> FromSim(const nw::sim::HeistPlan& Plan)
+	{
+		TArray<FNWCrewPlan> Out;
+		for (const nw::sim::CrewPlan& Track : Plan.Crew)
+		{
+			FNWCrewPlan& Crew = Out.AddDefaulted_GetRef();
+			for (const nw::sim::PlanAction& Action : Track.Actions)
+			{
+				FNWPlanAction& Entry = Crew.Actions.AddDefaulted_GetRef();
+				Entry.Type = static_cast<ENWPlanActionType>(Action.Type);
+				Entry.Target = Action.Target;
+				Entry.DurationSeconds = static_cast<float>(Action.DurationTicks) / static_cast<float>(nw::sim::TicksPerSecond);
+			}
+		}
+		return Out;
+	}
 }
