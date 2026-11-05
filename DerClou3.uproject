@@ -2,39 +2,15 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "",
-	"Description": "NACHTWERK - taktisches Einbruchs-Planungsspiel",
+	"Description": "der clou 3 - taktisches Einbruchs-Planungsspiel",
 	"Modules": [
 		{
-			"Name": "NWCore",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "NWPlanning",
+			"Name": "DerClou3",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
 			"AdditionalDependencies": [
 				"CoreUObject",
 				"Engine"
-			]
-		},
-		{
-			"Name": "NWGame",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"AdditionalDependencies": [
-				"CoreUObject",
-				"Engine"
-			]
-		},
-		{
-			"Name": "NWUI",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"AdditionalDependencies": [
-				"CoreUObject",
-				"Engine",
-				"UMG"
 			]
 		}
 	],
@@ -45,30 +21,6 @@
 			"TargetAllowList": [
 				"Editor"
 			]
-		},
-		{
-			"Name": "CommonUI",
-			"Enabled": true
-		},
-		{
-			"Name": "StateTree",
-			"Enabled": true
-		},
-		{
-			"Name": "GameplayStateTree",
-			"Enabled": true
-		},
-		{
-			"Name": "SmartObjects",
-			"Enabled": true
-		},
-		{
-			"Name": "PCG",
-			"Enabled": true
-		},
-		{
-			"Name": "MotionWarping",
-			"Enabled": true
 		},
 		{
 			"Name": "ModelContextProtocol",

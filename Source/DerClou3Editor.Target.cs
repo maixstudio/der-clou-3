@@ -7,6 +7,6 @@ public class DerClou3EditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.Latest;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
-		ExtraModuleNames.AddRange(new string[] { "NWCore", "NWPlanning", "NWGame", "NWUI" });
+		ExtraModuleNames.Add("DerClou3");
 	}
 }
