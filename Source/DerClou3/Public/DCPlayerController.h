@@ -8,6 +8,7 @@
 class ADCClickMarker;
 class ADCCrewCharacter;
 class ADCDoor;
+class UDCInfoPanel;
 class UDCRadialMenu;
 
 /**
@@ -41,4 +42,7 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCRadialMenu> RadialMenu;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCInfoPanel> InfoPanel;
 };

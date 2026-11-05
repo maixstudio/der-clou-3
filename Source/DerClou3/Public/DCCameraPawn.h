@@ -8,7 +8,10 @@
 class UCameraComponent;
 class USpringArmComponent;
 
-/** Top-down camera: WASD pan, Q/E rotate, mouse wheel zoom. Spawns at the PlayerStart. */
+/**
+ * Top-down camera. WASD pan, Q/E or right/middle mouse drag rotate (drag up/down tilts),
+ * mouse wheel zoom. Spawns at the PlayerStart.
+ */
 UCLASS()
 class DERCLOU3_API ADCCameraPawn : public APawn
 {
@@ -46,4 +49,22 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float StartDistance = 1600.f;
+
+	/** Degrees per pixel of mouse drag. */
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float DragRotateSpeed = 0.35f;
+
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float DragTiltSpeed = 0.2f;
+
+	/** Camera pitch range (negative = looking down). */
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float MinPitch = -85.f;
+
+	UPROPERTY(EditAnywhere, Category = "Camera")
+	float MaxPitch = -35.f;
+
+private:
+	bool bDragging = false;
+	FVector2D LastMouse = FVector2D::ZeroVector;
 };

@@ -56,6 +56,30 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 		AddActorWorldRotation(FRotator(0.0, Rotate * RotateSpeed * DeltaSeconds, 0.0));
 	}
 
+	// Drag with the right or middle mouse button: left/right rotates, up/down tilts.
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	const bool bHasMouse = PC->GetMousePosition(MouseX, MouseY);
+	const FVector2D Mouse(MouseX, MouseY);
+	const bool bButton = PC->IsInputKeyDown(EKeys::RightMouseButton) || PC->IsInputKeyDown(EKeys::MiddleMouseButton);
+	if (bButton && bHasMouse)
+	{
+		if (bDragging)
+		{
+			const FVector2D Delta = Mouse - LastMouse;
+			AddActorWorldRotation(FRotator(0.0, Delta.X * DragRotateSpeed, 0.0));
+			FRotator Arm = SpringArm->GetRelativeRotation();
+			Arm.Pitch = FMath::Clamp(Arm.Pitch - Delta.Y * DragTiltSpeed, MinPitch, MaxPitch);
+			SpringArm->SetRelativeRotation(Arm);
+		}
+		bDragging = true;
+		LastMouse = Mouse;
+	}
+	else
+	{
+		bDragging = false;
+	}
+
 	if (PC->WasInputKeyJustPressed(EKeys::MouseScrollUp))
 	{
 		SpringArm->TargetArmLength -= ZoomStep;

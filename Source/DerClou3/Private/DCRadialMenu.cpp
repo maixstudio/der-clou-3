@@ -86,6 +86,8 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 			.VAlign(VAlign_Center)
 			[
 				SNew(SButton)
+				// Never take keyboard focus: the camera keys must keep reaching the game.
+				.IsFocusable(false)
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
 				.OnClicked_Lambda([this, OnSelected]()

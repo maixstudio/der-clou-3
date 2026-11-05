@@ -35,6 +35,8 @@ namespace
 ADCDoor::ADCDoor()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	DisplayName = LOCTEXT("DefaultName", "Tür");
+	LockDescription = LOCTEXT("DefaultLock", "Einfaches Zylinderschloss");
 
 	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
@@ -197,6 +199,25 @@ FText ADCDoor::DescribeState() const
 		return LOCTEXT("StateLocked", "Tür (verschlossen)");
 	}
 	return bOpen ? LOCTEXT("StateOpen", "Tür (offen)") : LOCTEXT("StateClosed", "Tür (zu)");
+}
+
+FText ADCDoor::GetInteractableKind() const
+{
+	return LOCTEXT("Kind", "Tür");
+}
+
+void ADCDoor::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
+{
+	const FText State = bLocked ? LOCTEXT("InfoLocked", "verschlossen")
+		: (bOpen ? LOCTEXT("InfoOpen", "offen") : LOCTEXT("InfoClosed", "geschlossen"));
+	OutLines.Add({ LOCTEXT("LabelState", "Zustand"), State });
+	OutLines.Add({ LOCTEXT("LabelLock", "Schloss"), LockDescription });
+	OutLines.Add({ LOCTEXT("LabelLocked", "Abgeschlossen"), bLocked ? LOCTEXT("Yes", "ja") : LOCTEXT("No", "nein") });
+	if (bLocked)
+	{
+		OutLines.Add({ LOCTEXT("LabelPick", "Knacken dauert"), FText::Format(LOCTEXT("Seconds", "ca. {0} s"), FText::AsNumber(FMath::RoundToInt(PickLockSeconds))) });
+	}
+	OutLines.Add({ LOCTEXT("LabelSize", "Größe"), FText::Format(LOCTEXT("Size", "{0} × {1} cm"), FText::AsNumber(FMath::RoundToInt(Width)), FText::AsNumber(FMath::RoundToInt(Height))) });
 }
 
 FVector ADCDoor::GetCenter() const

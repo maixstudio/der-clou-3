@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DCInteractable.h"
 #include "GameFramework/Actor.h"
 
 #include "DCDoor.generated.h"
@@ -24,7 +25,7 @@ enum class EDCDoorAction : uint8
  * removes it from the nav mesh; a locked door shows a red padlock on both sides.
  */
 UCLASS()
-class DERCLOU3_API ADCDoor : public AActor
+class DERCLOU3_API ADCDoor : public AActor, public IDCInteractable
 {
 	GENERATED_BODY()
 
@@ -50,6 +51,14 @@ public:
 	/** Short state for the menu title: "Tür (zu)", "Tür (offen)", "Tür (verschlossen)". */
 	FText DescribeState() const;
 
+	/** How long picking this lock takes. */
+	float GetPickLockSeconds() const { return PickLockSeconds; }
+
+	//~ IDCInteractable
+	virtual FText GetInteractableName() const override { return DisplayName; }
+	virtual FText GetInteractableKind() const override;
+	virtual void GetInfoLines(TArray<FDCInfoLine>& OutLines) const override;
+
 	/** Middle of the opening at floor level. */
 	FVector GetCenter() const;
 	/**
@@ -65,6 +74,16 @@ protected:
 	/** Locked doors cannot be opened until the lock is picked. */
 	UPROPERTY(EditAnywhere, Category = "Door")
 	bool bLocked = false;
+
+	/** Shown in the info panel. */
+	UPROPERTY(EditAnywhere, Category = "Door|Info")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, Category = "Door|Info")
+	FText LockDescription;
+
+	UPROPERTY(EditAnywhere, Category = "Door|Info", meta = (ClampMin = "0.5"))
+	float PickLockSeconds = 4.f;
 
 	UPROPERTY(EditAnywhere, Category = "Door", meta = (ClampMin = "60"))
 	float Width = 100.f;

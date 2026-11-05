@@ -24,7 +24,6 @@ namespace
 	/** Give the nav mesh a moment to notice the opened door. */
 	constexpr float NavSettleSeconds = 0.25f;
 	constexpr float GiveUpSeconds = 3.f;
-	constexpr float PickLockSeconds = 4.f;
 	constexpr float NoticeSeconds = 2.5f;
 	/** Name above the head (relative to the capsule centre); the activity line sits below it along the camera's up axis. */
 	constexpr double LabelHeight = 120.0;
@@ -277,7 +276,7 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::Idle);
 			return;
 		}
-		if (PhaseTime < (TaskAction == EDCDoorAction::PickLock ? PickLockSeconds : HandOnDoorSeconds))
+		if (PhaseTime < (TaskAction == EDCDoorAction::PickLock ? Door->GetPickLockSeconds() : HandOnDoorSeconds))
 		{
 			return;
 		}
@@ -345,7 +344,8 @@ FText ADCCrewCharacter::GetActivityText() const
 	case ETaskPhase::AtDoor:
 		if (TaskAction == EDCDoorAction::PickLock)
 		{
-			const int32 Remaining = FMath::Max(1, FMath::CeilToInt(PickLockSeconds - PhaseTime));
+			const float Total = TaskDoor.IsValid() ? TaskDoor->GetPickLockSeconds() : 0.f;
+			const int32 Remaining = FMath::Max(1, FMath::CeilToInt(Total - PhaseTime));
 			return FText::Format(LOCTEXT("Picking", "knackt das Schloss … {0} s"), FText::AsNumber(Remaining));
 		}
 		if (TaskAction == EDCDoorAction::Close)
@@ -376,12 +376,13 @@ void ADCCrewCharacter::UpdateLabels(float DeltaSeconds)
 	const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 	if (Player && Player->PlayerCameraManager)
 	{
-		const FVector Camera = Player->PlayerCameraManager->GetCameraLocation();
-		const FVector Up = Player->PlayerCameraManager->GetCameraRotation().Quaternion().GetUpVector();
+		// Billboard: parallel to the camera plane (facing back along the view, upright on screen).
+		const FQuat CameraRotation = Player->PlayerCameraManager->GetCameraRotation().Quaternion();
+		const FVector Up = CameraRotation.GetUpVector();
+		const FRotator Facing = FRotationMatrix::MakeFromXZ(-CameraRotation.GetForwardVector(), Up).Rotator();
 		const FVector NameLocation = GetActorLocation() + FVector(0.0, 0.0, LabelHeight);
-		NameLabel->SetWorldLocationAndRotation(NameLocation, (Camera - NameLocation).Rotation());
-		const FVector ActivityLocation = NameLocation - Up * ActivityOffset;
-		ActivityLabel->SetWorldLocationAndRotation(ActivityLocation, (Camera - ActivityLocation).Rotation());
+		NameLabel->SetWorldLocationAndRotation(NameLocation, Facing);
+		ActivityLabel->SetWorldLocationAndRotation(NameLocation - Up * ActivityOffset, Facing);
 	}
 }
 

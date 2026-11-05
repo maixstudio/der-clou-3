@@ -30,8 +30,8 @@ ungefragt zurückkopieren.
   ```
   "C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" DerClou3Editor Win64 Development -Project="C:\Dev\der-clou-3\DerClou3.uproject" -WaitMutex
   ```
-- Ich darf den Editor fürs Bauen selbst schließen und neu starten – aber nur, wenn über MCP geprüft
-  ist, dass nichts ungespeichert ist und kein Play läuft. Sonst den User fragen.
+- Ich darf den Editor jederzeit selbst öffnen, schließen und neu starten. Vorher Play beenden und
+  eine ungespeicherte Map speichern, damit nichts verloren geht.
 - **MCP:** Der Server startet mit dem Editor (lokal eingestellt) auf `localhost:8000/mcp`, Client-
   Konfiguration in `.mcp.json`. Vor längeren MCP-Sitzungen committen. Keine Assets ohne Rückfrage löschen.
 - `DerClou3.uproject` enthält lokal eine rechnerspezifische Engine-GUID – diese Änderung **nie**

@@ -3,6 +3,7 @@
 #include "DCClickMarker.h"
 #include "DCCrewCharacter.h"
 #include "DCDoor.h"
+#include "DCInfoPanel.h"
 #include "DCRadialMenu.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
@@ -39,6 +40,12 @@ void ADCPlayerController::BeginPlay()
 		RadialMenu->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		RadialMenu->AddToViewport(10);
 	}
+	InfoPanel = CreateWidget<UDCInfoPanel>(this, UDCInfoPanel::StaticClass());
+	if (InfoPanel)
+	{
+		InfoPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		InfoPanel->AddToViewport(5);
+	}
 
 	// Start with the first crew member selected.
 	for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
@@ -57,6 +64,11 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (bMenuOpen && (WasInputKeyJustPressed(EKeys::RightMouseButton) || WasInputKeyJustPressed(EKeys::Escape)))
 	{
 		RadialMenu->Close();
+		return;
+	}
+	if (!bMenuOpen && InfoPanel && InfoPanel->IsShown() && WasInputKeyJustPressed(EKeys::Escape))
+	{
+		InfoPanel->Hide();
 		return;
 	}
 	// Clicks on the menu buttons are handled by the UI and never arrive here.
@@ -100,6 +112,17 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 			}
 		};
 	}
+	// Info is always the last entry, for every interactable.
+	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
+	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
+	Info.Label = NSLOCTEXT("DCPlayerController", "Info", "Info");
+	Info.OnSelected = [WeakPanel, WeakDoor]()
+	{
+		if (WeakPanel.IsValid() && WeakDoor.IsValid())
+		{
+			WeakPanel->ShowFor(WeakDoor.Get());
+		}
+	};
 	RadialMenu->Open(Door->DescribeState(), MoveTemp(Options));
 }
 
