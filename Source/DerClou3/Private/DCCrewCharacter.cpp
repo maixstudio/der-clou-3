@@ -8,6 +8,8 @@
 #include "DCVisuals.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "TimerManager.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "NavigationSystem.h"
@@ -97,6 +99,43 @@ void ADCCrewCharacter::OnConstruction(const FTransform& Transform)
 	ActivityLabel->SetText(FText::GetEmpty());
 }
 
+void ADCCrewCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+	if (bDebugWalkThroughDoorOnStart)
+	{
+		// Give the AI controller and the nav mesh a moment to come up.
+		FTimerHandle Handle;
+		GetWorldTimerManager().SetTimer(Handle, this, &ADCCrewCharacter::StartDebugWalkThrough, 1.5f, false);
+	}
+}
+
+void ADCCrewCharacter::StartDebugWalkThrough()
+{
+	ADCDoor* Nearest = nullptr;
+	for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+	{
+		if (!Nearest || FVector::DistSquared(It->GetCenter(), GetActorLocation()) < FVector::DistSquared(Nearest->GetCenter(), GetActorLocation()))
+		{
+			Nearest = *It;
+		}
+	}
+	if (!Nearest)
+	{
+		return;
+	}
+	UE_LOG(LogDerClou, Log, TEXT("%s: self-test - walk through %s (locked: %d)"), *GetName(), *Nearest->GetName(), Nearest->IsLocked() ? 1 : 0);
+	if (Nearest->IsLocked())
+	{
+		InteractWithDoor(Nearest, EDCDoorAction::PickLock);
+		QueueDoorAction(Nearest, EDCDoorAction::GoThrough);
+	}
+	else
+	{
+		InteractWithDoor(Nearest, EDCDoorAction::GoThrough);
+	}
+}
+
 void ADCCrewCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -136,19 +175,52 @@ bool ADCCrewCharacter::HasArrived() const
 
 void ADCCrewCharacter::SetPhase(ETaskPhase InPhase)
 {
+	const bool bDoorTaskEnded = InPhase == ETaskPhase::Idle && Phase != ETaskPhase::Idle && Phase != ETaskPhase::Walking;
+	if (InPhase != Phase)
+	{
+		UE_LOG(LogDerClou, Log, TEXT("%s: phase %d -> %d at %s"), *GetName(), static_cast<int32>(Phase), static_cast<int32>(InPhase), *GetActorLocation().ToCompactString());
+	}
 	Phase = InPhase;
 	PhaseTime = 0.f;
+
+	// Continue with the next queued door action.
+	if (bDoorTaskEnded && !DoorQueue.IsEmpty())
+	{
+		const FQueuedDoorAction Next = DoorQueue[0];
+		DoorQueue.RemoveAt(0);
+		if (Next.Door.IsValid())
+		{
+			StartDoorTask(Next.Door.Get(), Next.Action);
+		}
+	}
 }
 
 bool ADCCrewCharacter::MoveToLocation(const FVector& Location)
 {
 	TaskDoor.Reset();
+	DoorQueue.Reset();
 	const bool bStarted = StartMove(Location);
 	SetPhase(bStarted ? ETaskPhase::Walking : ETaskPhase::Idle);
 	return bStarted;
 }
 
 void ADCCrewCharacter::InteractWithDoor(ADCDoor* Door, EDCDoorAction Action)
+{
+	DoorQueue.Reset();
+	StartDoorTask(Door, Action);
+}
+
+void ADCCrewCharacter::QueueDoorAction(ADCDoor* Door, EDCDoorAction Action)
+{
+	if (Phase == ETaskPhase::Idle || Phase == ETaskPhase::Walking)
+	{
+		StartDoorTask(Door, Action);
+		return;
+	}
+	DoorQueue.Add({ Door, Action });
+}
+
+void ADCCrewCharacter::StartDoorTask(ADCDoor* Door, EDCDoorAction Action)
 {
 	if (!Door)
 	{
@@ -158,7 +230,13 @@ void ADCCrewCharacter::InteractWithDoor(ADCDoor* Door, EDCDoorAction Action)
 	TaskAction = Action;
 	const FVector Here = GetActorLocation();
 	PassTarget = Door->GetStandPoint(Here, true);
-	SetPhase(StartMove(Door->GetStandPoint(Here, false)) ? ETaskPhase::ToDoor : ETaskPhase::Idle);
+	if (StartMove(Door->GetStandPoint(Here, false)))
+	{
+		SetPhase(ETaskPhase::ToDoor);
+		return;
+	}
+	ShowNotice(LOCTEXT("CannotReachDoor", "kommt nicht zur Tür"));
+	SetPhase(ETaskPhase::Idle);
 }
 
 void ADCCrewCharacter::UpdateTask(float DeltaSeconds)

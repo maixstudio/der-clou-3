@@ -3,6 +3,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "DCNavBlockerComponent.h"
 #include "DCVisuals.h"
+#include "AI/NavigationSystemBase.h"
 
 #define LOCTEXT_NAMESPACE "DCDoor"
 
@@ -125,6 +126,11 @@ void ADCDoor::UpdateState()
 	}
 	// Closed (or locked): not walkable. Open: the blocker no longer affects navigation.
 	NavBlocker->SetCanEverAffectNavigation(!bOpen);
+	if (NavBlocker->IsRegistered())
+	{
+		// Make sure the nav mesh around the door is rebuilt right away.
+		FNavigationSystem::UpdateComponentData(*NavBlocker);
+	}
 }
 
 bool ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)

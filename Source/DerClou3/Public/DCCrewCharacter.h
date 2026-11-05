@@ -33,6 +33,8 @@ public:
 
 	/** Walks to the door and uses it. Replaces whatever the crew member was doing. */
 	void InteractWithDoor(ADCDoor* Door, EDCDoorAction Action);
+	/** Like InteractWithDoor, but runs after the current and already queued door actions. */
+	void QueueDoorAction(ADCDoor* Door, EDCDoorAction Action);
 
 	/** What the crew member is doing right now (shown under the name). */
 	FText GetActivityText() const;
@@ -45,6 +47,12 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Crew")
 	FLinearColor BodyColor = FLinearColor(1.f, 0.42f, 0.05f);
+
+	/** Self-test: on play start, pick the lock of the nearest door (if needed) and walk through. */
+	UPROPERTY(EditAnywhere, Category = "Debug")
+	bool bDebugWalkThroughDoorOnStart = false;
+
+	virtual void BeginPlay() override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Crew")
 	TObjectPtr<UStaticMeshComponent> Body;
@@ -81,6 +89,8 @@ private:
 	void SetPhase(ETaskPhase InPhase);
 	void UpdateTask(float DeltaSeconds);
 	void UpdateLabels(float DeltaSeconds);
+	void StartDoorTask(ADCDoor* Door, EDCDoorAction Action);
+	void StartDebugWalkThrough();
 	void ShowNotice(const FText& Text);
 
 	bool bSelected = false;
@@ -89,6 +99,13 @@ private:
 	EDCDoorAction TaskAction = EDCDoorAction::Open;
 	FVector PassTarget = FVector::ZeroVector;
 	float PhaseTime = 0.f;
+	struct FQueuedDoorAction
+	{
+		TWeakObjectPtr<ADCDoor> Door;
+		EDCDoorAction Action = EDCDoorAction::Open;
+	};
+	TArray<FQueuedDoorAction> DoorQueue;
+
 	/** Short feedback such as "Tür ist verschlossen", shown for a moment instead of the activity. */
 	FText Notice;
 	float NoticeTime = 0.f;
