@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "DCVisuals.h"
+#include "DerClou3.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -21,6 +22,11 @@ namespace
 	/** Give the nav mesh a moment to notice the opened door. */
 	constexpr float NavSettleSeconds = 0.25f;
 	constexpr float GiveUpSeconds = 3.f;
+	constexpr float PickLockSeconds = 4.f;
+	constexpr float NoticeSeconds = 2.5f;
+	/** Name above the head (relative to the capsule centre); the activity line sits below it along the camera's up axis. */
+	constexpr double LabelHeight = 120.0;
+	constexpr double ActivityOffset = 30.0;
 
 	UStaticMeshComponent* MakePart(ACharacter* Owner, const TCHAR* Name, UStaticMesh* Mesh, const FVector& Location, const FVector& Scale)
 	{
@@ -95,7 +101,7 @@ void ADCCrewCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	UpdateTask(DeltaSeconds);
-	UpdateLabels();
+	UpdateLabels(DeltaSeconds);
 }
 
 void ADCCrewCharacter::SetSelected(bool bInSelected)
@@ -193,14 +199,17 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::Idle);
 			return;
 		}
-		if (PhaseTime < HandOnDoorSeconds)
+		if (PhaseTime < (TaskAction == EDCDoorAction::PickLock ? PickLockSeconds : HandOnDoorSeconds))
 		{
 			return;
 		}
 		switch (TaskAction)
 		{
 		case EDCDoorAction::Open:
-			Door->OpenAwayFrom(GetActorLocation());
+			if (!Door->OpenAwayFrom(GetActorLocation()))
+			{
+				ShowNotice(LOCTEXT("Locked", "Tür ist verschlossen"));
+			}
 			SetPhase(ETaskPhase::Idle);
 			return;
 		case EDCDoorAction::Close:
@@ -208,8 +217,18 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::Idle);
 			return;
 		case EDCDoorAction::GoThrough:
-			Door->OpenAwayFrom(GetActorLocation());
+			if (!Door->OpenAwayFrom(GetActorLocation()))
+			{
+				ShowNotice(LOCTEXT("Locked", "Tür ist verschlossen"));
+				SetPhase(ETaskPhase::Idle);
+				return;
+			}
 			SetPhase(ETaskPhase::WaitingForDoor);
+			return;
+		case EDCDoorAction::PickLock:
+			Door->Unlock();
+			ShowNotice(LOCTEXT("Unlocked", "Schloss ist offen"));
+			SetPhase(ETaskPhase::Idle);
 			return;
 		}
 		return;
@@ -217,6 +236,8 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 	case ETaskPhase::WaitingForDoor:
 		if (!Door || PhaseTime > GiveUpSeconds)
 		{
+			UE_LOG(LogDerClou, Warning, TEXT("%s: no path through the door to %s"), *GetName(), *PassTarget.ToString());
+			ShowNotice(LOCTEXT("NoWay", "kommt nicht durch"));
 			SetPhase(ETaskPhase::Idle);
 			return;
 		}
@@ -244,6 +265,11 @@ FText ADCCrewCharacter::GetActivityText() const
 	case ETaskPhase::Walking: return LOCTEXT("Walking", "geht");
 	case ETaskPhase::ToDoor: return LOCTEXT("ToDoor", "geht zur Tür");
 	case ETaskPhase::AtDoor:
+		if (TaskAction == EDCDoorAction::PickLock)
+		{
+			const int32 Remaining = FMath::Max(1, FMath::CeilToInt(PickLockSeconds - PhaseTime));
+			return FText::Format(LOCTEXT("Picking", "knackt das Schloss … {0} s"), FText::AsNumber(Remaining));
+		}
 		if (TaskAction == EDCDoorAction::Close)
 		{
 			return LOCTEXT("Closing", "schließt die Tür");
@@ -255,17 +281,29 @@ FText ADCCrewCharacter::GetActivityText() const
 	return FText::GetEmpty();
 }
 
-void ADCCrewCharacter::UpdateLabels()
+void ADCCrewCharacter::ShowNotice(const FText& Text)
 {
-	ActivityLabel->SetText(GetActivityText());
+	Notice = Text;
+	NoticeTime = NoticeSeconds;
+}
 
-	// Keep the labels facing the player's camera.
+void ADCCrewCharacter::UpdateLabels(float DeltaSeconds)
+{
+	NoticeTime = FMath::Max(0.f, NoticeTime - DeltaSeconds);
+	const FText Activity = GetActivityText();
+	ActivityLabel->SetText(Activity.IsEmpty() && NoticeTime > 0.f ? Notice : Activity);
+
+	// Face the player's camera; stack the two lines along the camera's up axis so they never
+	// overlap, however steep the camera looks down.
 	const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 	if (Player && Player->PlayerCameraManager)
 	{
 		const FVector Camera = Player->PlayerCameraManager->GetCameraLocation();
-		NameLabel->SetWorldRotation((Camera - NameLabel->GetComponentLocation()).Rotation());
-		ActivityLabel->SetWorldRotation((Camera - ActivityLabel->GetComponentLocation()).Rotation());
+		const FVector Up = Player->PlayerCameraManager->GetCameraRotation().Quaternion().GetUpVector();
+		const FVector NameLocation = GetActorLocation() + FVector(0.0, 0.0, LabelHeight);
+		NameLabel->SetWorldLocationAndRotation(NameLocation, (Camera - NameLocation).Rotation());
+		const FVector ActivityLocation = NameLocation - Up * ActivityOffset;
+		ActivityLabel->SetWorldLocationAndRotation(ActivityLocation, (Camera - ActivityLocation).Rotation());
 	}
 }
 

@@ -1,19 +1,32 @@
 #include "DCDoor.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "DCNavBlockerComponent.h"
 #include "DCVisuals.h"
+
+#define LOCTEXT_NAMESPACE "DCDoor"
 
 namespace
 {
 	constexpr float PanelThickness = 6.f;
 	constexpr float FrameSize = 8.f;
 	constexpr float SwingSpeed = 2.5f;
+	constexpr float LockHeight = 125.f;
 
-	UStaticMeshComponent* MakeMesh(AActor* Owner, USceneComponent* Parent, const TCHAR* Name)
+	const FLinearColor LockBodyColor(0.85f, 0.08f, 0.05f);
+	const FLinearColor LockShackleColor(0.8f, 0.8f, 0.82f);
+
+	UStaticMeshComponent* MakeMesh(AActor* Owner, USceneComponent* Parent, const TCHAR* Name, bool bCollision = true)
 	{
 		UStaticMeshComponent* Mesh = Owner->CreateDefaultSubobject<UStaticMeshComponent>(Name);
 		Mesh->SetupAttachment(Parent);
 		Mesh->SetStaticMesh(DCVisuals::Cube());
+		// Walking is controlled by the nav blocker, not by the (moving) meshes.
+		Mesh->SetCanEverAffectNavigation(false);
+		if (!bCollision)
+		{
+			Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		}
 		return Mesh;
 	}
 }
@@ -29,24 +42,43 @@ ADCDoor::ADCDoor()
 	Hinge->SetupAttachment(Root);
 
 	Panel = MakeMesh(this, Hinge, TEXT("Panel"));
-	Handle = MakeMesh(this, Panel, TEXT("Handle"));
-	Handle->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Handle = MakeMesh(this, Panel, TEXT("Handle"), false);
 
 	FrameLeft = MakeMesh(this, Root, TEXT("FrameLeft"));
 	FrameRight = MakeMesh(this, Root, TEXT("FrameRight"));
 	FrameTop = MakeMesh(this, Root, TEXT("FrameTop"));
+
+	// Padlock: body and shackle on each face of the panel. Attached to the (unscaled) hinge.
+	for (const TCHAR* Name : { TEXT("LockBodyFront"), TEXT("LockShackleFront"), TEXT("LockBodyBack"), TEXT("LockShackleBack") })
+	{
+		LockParts.Add(MakeMesh(this, Hinge, Name, false));
+	}
+
+	// Cuts the opening out of the nav mesh while the door is closed.
+	NavBlocker = CreateDefaultSubobject<UDCNavBlockerComponent>(TEXT("NavBlocker"));
+	NavBlocker->SetupAttachment(Root);
 }
 
 void ADCDoor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
+	if (bLocked)
+	{
+		bOpen = false;
+	}
 	OpenAmount = bOpen ? 1.f : 0.f;
 	ApplyLayout();
+	UpdateState();
+
 	DCVisuals::Paint(Panel, PanelColor);
 	DCVisuals::Paint(Handle, FLinearColor(0.85f, 0.7f, 0.25f));
 	for (UStaticMeshComponent* Frame : { FrameLeft.Get(), FrameRight.Get(), FrameTop.Get() })
 	{
 		DCVisuals::Paint(Frame, FLinearColor(0.3f, 0.17f, 0.07f));
+	}
+	for (int32 Index = 0; Index < LockParts.Num(); ++Index)
+	{
+		DCVisuals::Paint(LockParts[Index], Index % 2 == 0 ? LockBodyColor : LockShackleColor);
 	}
 }
 
@@ -67,28 +99,76 @@ void ADCDoor::ApplyLayout()
 	FrameTop->SetRelativeLocation(FVector(0.0, Width * 0.5, Height + FrameSize * 0.5));
 	FrameTop->SetRelativeScale3D(FVector(FrameSize * 2.f, Width, FrameSize) / 100.0);
 
+	// Padlock above the handle: red body 14 x 16 cm with a light shackle on top, on both faces.
+	const double LockY = Width * 0.86;
+	for (int32 Face = 0; Face < 2; ++Face)
+	{
+		const double X = (Face == 0 ? -1.0 : 1.0) * (PanelThickness * 0.5 + 4.0);
+		LockParts[Face * 2]->SetRelativeLocation(FVector(X, LockY, LockHeight));
+		LockParts[Face * 2]->SetRelativeScale3D(FVector(8.0, 14.0, 16.0) / 100.0);
+		LockParts[Face * 2 + 1]->SetRelativeLocation(FVector(X, LockY, LockHeight + 13.0));
+		LockParts[Face * 2 + 1]->SetRelativeScale3D(FVector(4.0, 10.0, 10.0) / 100.0);
+	}
+
+	// Blocker: fills the opening (and a bit of the wall depth) up to door height.
+	NavBlocker->SetRelativeLocation(FVector(0.0, Width * 0.5, Height * 0.5));
+	NavBlocker->SetBoxExtent(FVector(20.0, Width * 0.5, Height * 0.5));
+
 	Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
 }
 
-void ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)
+void ADCDoor::UpdateState()
 {
+	for (UStaticMeshComponent* Part : LockParts)
+	{
+		Part->SetVisibility(bLocked);
+	}
+	// Closed (or locked): not walkable. Open: the blocker no longer affects navigation.
+	NavBlocker->SetCanEverAffectNavigation(!bOpen);
+}
+
+bool ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)
+{
+	if (bLocked)
+	{
+		return false;
+	}
 	if (!bOpen)
 	{
 		// Rotating the closed panel (+Y) by +90 degrees points it along -X, by -90 along +X.
 		// Swing to the side the opener is not on.
 		const bool bOpenerOnPlusX = FVector::DotProduct(OpenerLocation - GetCenter(), GetActorForwardVector()) >= 0.0;
 		SwingSign = bOpenerOnPlusX ? 1.f : -1.f;
+		bOpen = true;
+		UpdateState();
 	}
-	bOpen = true;
+	return true;
 }
 
 void ADCDoor::Close()
 {
-	bOpen = false;
+	if (bOpen)
+	{
+		bOpen = false;
+		UpdateState();
+	}
+}
+
+void ADCDoor::Unlock()
+{
+	if (bLocked)
+	{
+		bLocked = false;
+		UpdateState();
+	}
 }
 
 TArray<EDCDoorAction> ADCDoor::GetActions() const
 {
+	if (bLocked)
+	{
+		return { EDCDoorAction::PickLock };
+	}
 	return { bOpen ? EDCDoorAction::Close : EDCDoorAction::Open, EDCDoorAction::GoThrough };
 }
 
@@ -96,11 +176,21 @@ FText ADCDoor::DescribeAction(EDCDoorAction Action)
 {
 	switch (Action)
 	{
-	case EDCDoorAction::Open: return NSLOCTEXT("DCDoor", "Open", "Öffnen");
-	case EDCDoorAction::Close: return NSLOCTEXT("DCDoor", "Close", "Schließen");
-	case EDCDoorAction::GoThrough: return NSLOCTEXT("DCDoor", "GoThrough", "Durchgehen");
+	case EDCDoorAction::Open: return LOCTEXT("Open", "Öffnen");
+	case EDCDoorAction::Close: return LOCTEXT("Close", "Schließen");
+	case EDCDoorAction::GoThrough: return LOCTEXT("GoThrough", "Durchgehen");
+	case EDCDoorAction::PickLock: return LOCTEXT("PickLock", "Schloss knacken");
 	}
 	return FText::GetEmpty();
+}
+
+FText ADCDoor::DescribeState() const
+{
+	if (bLocked)
+	{
+		return LOCTEXT("StateLocked", "Tür (verschlossen)");
+	}
+	return bOpen ? LOCTEXT("StateOpen", "Tür (offen)") : LOCTEXT("StateClosed", "Tür (zu)");
 }
 
 FVector ADCDoor::GetCenter() const
@@ -127,3 +217,5 @@ void ADCDoor::Tick(float DeltaSeconds)
 		Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
 	}
 }
+
+#undef LOCTEXT_NAMESPACE

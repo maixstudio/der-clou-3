@@ -80,7 +80,8 @@ private:
 	bool HasArrived() const;
 	void SetPhase(ETaskPhase InPhase);
 	void UpdateTask(float DeltaSeconds);
-	void UpdateLabels();
+	void UpdateLabels(float DeltaSeconds);
+	void ShowNotice(const FText& Text);
 
 	bool bSelected = false;
 	ETaskPhase Phase = ETaskPhase::Idle;
@@ -88,4 +89,7 @@ private:
 	EDCDoorAction TaskAction = EDCDoorAction::Open;
 	FVector PassTarget = FVector::ZeroVector;
 	float PhaseTime = 0.f;
+	/** Short feedback such as "Tür ist verschlossen", shown for a moment instead of the activity. */
+	FText Notice;
+	float NoticeTime = 0.f;
 };

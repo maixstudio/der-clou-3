@@ -100,8 +100,7 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 			}
 		};
 	}
-	const FText Title = Door->IsOpen() ? NSLOCTEXT("DCPlayerController", "DoorOpen", "Tür (offen)") : NSLOCTEXT("DCPlayerController", "DoorClosed", "Tür (zu)");
-	RadialMenu->Open(Title, MoveTemp(Options));
+	RadialMenu->Open(Door->DescribeState(), MoveTemp(Options));
 }
 
 void ADCPlayerController::Select(ADCCrewCharacter* Crew)

@@ -5,6 +5,7 @@
 
 #include "DCDoor.generated.h"
 
+class UDCNavBlockerComponent;
 class UStaticMeshComponent;
 
 /** What a crew member can do with a door. */
@@ -13,12 +14,14 @@ enum class EDCDoorAction : uint8
 {
 	Open,
 	Close,
-	GoThrough
+	GoThrough,
+	PickLock
 };
 
 /**
  * A door that fits a 100 cm wall opening. The actor origin is the hinge at floor level; the
- * closed panel extends along +Y. A closed panel blocks walking (it carves the nav mesh).
+ * closed panel extends along +Y. While the door is closed an invisible blocker in the opening
+ * removes it from the nav mesh; a locked door shows a red padlock on both sides.
  */
 UCLASS()
 class DERCLOU3_API ADCDoor : public AActor
@@ -32,15 +35,20 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 	bool IsOpen() const { return bOpen; }
-	/** Opens the door so that the panel swings away from the given location (the opener). */
-	void OpenAwayFrom(const FVector& OpenerLocation);
+	bool IsLocked() const { return bLocked; }
+	/** Opens the door so that the panel swings away from the opener. False if it is locked. */
+	bool OpenAwayFrom(const FVector& OpenerLocation);
 	void Close();
+	void Unlock();
 	/** 0 = closed, 1 = fully open (the panel is still swinging in between). */
 	float GetOpenAmount() const { return OpenAmount; }
 
 	/** Actions that make sense right now. */
 	TArray<EDCDoorAction> GetActions() const;
 	static FText DescribeAction(EDCDoorAction Action);
+
+	/** Short state for the menu title: "Tür (zu)", "Tür (offen)", "Tür (verschlossen)". */
+	FText DescribeState() const;
 
 	/** Middle of the opening at floor level. */
 	FVector GetCenter() const;
@@ -53,6 +61,10 @@ public:
 protected:
 	UPROPERTY(EditAnywhere, Category = "Door")
 	bool bOpen = false;
+
+	/** Locked doors cannot be opened until the lock is picked. */
+	UPROPERTY(EditAnywhere, Category = "Door")
+	bool bLocked = false;
 
 	UPROPERTY(EditAnywhere, Category = "Door", meta = (ClampMin = "60"))
 	float Width = 100.f;
@@ -85,8 +97,17 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TObjectPtr<UStaticMeshComponent> FrameTop;
 
+	/** Invisible box in the opening: removes the door from the nav mesh while it is closed. */
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TObjectPtr<UDCNavBlockerComponent> NavBlocker;
+
+	/** Padlock on both faces of the panel (body + shackle), visible while locked. */
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TArray<TObjectPtr<UStaticMeshComponent>> LockParts;
+
 private:
 	void ApplyLayout();
+	void UpdateState();
 
 	/** 0 = closed, 1 = open; animated towards bOpen. */
 	float OpenAmount = 0.f;
