@@ -67,12 +67,54 @@ void ADCDoor::ApplyLayout()
 	FrameTop->SetRelativeLocation(FVector(0.0, Width * 0.5, Height + FrameSize * 0.5));
 	FrameTop->SetRelativeScale3D(FVector(FrameSize * 2.f, Width, FrameSize) / 100.0);
 
-	Hinge->SetRelativeRotation(FRotator(0.0, OpenAngle * OpenAmount, 0.0));
+	Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
 }
 
-void ADCDoor::SetOpen(bool bInOpen)
+void ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)
 {
-	bOpen = bInOpen;
+	if (!bOpen)
+	{
+		// Rotating the closed panel (+Y) by +90 degrees points it along -X, by -90 along +X.
+		// Swing to the side the opener is not on.
+		const bool bOpenerOnPlusX = FVector::DotProduct(OpenerLocation - GetCenter(), GetActorForwardVector()) >= 0.0;
+		SwingSign = bOpenerOnPlusX ? 1.f : -1.f;
+	}
+	bOpen = true;
+}
+
+void ADCDoor::Close()
+{
+	bOpen = false;
+}
+
+TArray<EDCDoorAction> ADCDoor::GetActions() const
+{
+	return { bOpen ? EDCDoorAction::Close : EDCDoorAction::Open, EDCDoorAction::GoThrough };
+}
+
+FText ADCDoor::DescribeAction(EDCDoorAction Action)
+{
+	switch (Action)
+	{
+	case EDCDoorAction::Open: return NSLOCTEXT("DCDoor", "Open", "Öffnen");
+	case EDCDoorAction::Close: return NSLOCTEXT("DCDoor", "Close", "Schließen");
+	case EDCDoorAction::GoThrough: return NSLOCTEXT("DCDoor", "GoThrough", "Durchgehen");
+	}
+	return FText::GetEmpty();
+}
+
+FVector ADCDoor::GetCenter() const
+{
+	return GetActorTransform().TransformPosition(FVector(0.0, Width * 0.5, 0.0));
+}
+
+FVector ADCDoor::GetStandPoint(const FVector& From, bool bOtherSide) const
+{
+	// The door's local X axis is the wall normal.
+	const FVector Normal = GetActorForwardVector().GetSafeNormal2D();
+	const FVector Center = GetCenter();
+	const double Side = FVector::DotProduct(From - Center, Normal) >= 0.0 ? 1.0 : -1.0;
+	return bOtherSide ? Center - Normal * Side * 90.0 : Center + Normal * Side * 70.0;
 }
 
 void ADCDoor::Tick(float DeltaSeconds)
@@ -82,6 +124,6 @@ void ADCDoor::Tick(float DeltaSeconds)
 	if (!FMath::IsNearlyEqual(OpenAmount, Target))
 	{
 		OpenAmount = FMath::FInterpConstantTo(OpenAmount, Target, DeltaSeconds, SwingSpeed);
-		Hinge->SetRelativeRotation(FRotator(0.0, OpenAngle * OpenAmount, 0.0));
+		Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
 	}
 }

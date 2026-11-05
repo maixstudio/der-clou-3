@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DCDoor.h"
 #include "GameFramework/Character.h"
 
 #include "DCCrewCharacter.generated.h"
@@ -30,6 +31,12 @@ public:
 	/** Walks to the location (projected onto the nav mesh). Returns false if it is not reachable. */
 	bool MoveToLocation(const FVector& Location);
 
+	/** Walks to the door and uses it. Replaces whatever the crew member was doing. */
+	void InteractWithDoor(ADCDoor* Door, EDCDoorAction Action);
+
+	/** What the crew member is doing right now (shown under the name). */
+	FText GetActivityText() const;
+
 	const FText& GetCrewName() const { return CrewName; }
 
 protected:
@@ -54,6 +61,31 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Crew")
 	TObjectPtr<UTextRenderComponent> NameLabel;
 
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UTextRenderComponent> ActivityLabel;
+
 private:
+	enum class ETaskPhase : uint8
+	{
+		Idle,
+		Walking,         // plain move order
+		ToDoor,          // walking to the stand point in front of the door
+		AtDoor,          // hand on the door
+		WaitingForDoor,  // door swings open, then walk through
+		ThroughDoor      // walking to the other side
+	};
+
+	/** Starts an AI move; false if the target cannot be reached. */
+	bool StartMove(const FVector& Location);
+	bool HasArrived() const;
+	void SetPhase(ETaskPhase InPhase);
+	void UpdateTask(float DeltaSeconds);
+	void UpdateLabels();
+
 	bool bSelected = false;
+	ETaskPhase Phase = ETaskPhase::Idle;
+	TWeakObjectPtr<ADCDoor> TaskDoor;
+	EDCDoorAction TaskAction = EDCDoorAction::Open;
+	FVector PassTarget = FVector::ZeroVector;
+	float PhaseTime = 0.f;
 };
