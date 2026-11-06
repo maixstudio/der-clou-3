@@ -4,13 +4,29 @@ Taktisches Einbruchs-Planungsspiel in **Unreal Engine 5.8** (C++), eigenständig
 von „Der Clou!“. **Keine** Namen, Figuren, Texte, Grafiken oder Musik des Originals verwenden – nur
 Genre und Mechaniken. Mit dem User **Deutsch** sprechen.
 
-## Stand: Neuanfang (2026-11-05)
+## Stand (2026-11-06)
 
-Das Projekt wurde bewusst auf ein leeres Gerüst zurückgesetzt. Wir bauen **Schritt für Schritt**,
-jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der nächste kommt:
+Das Projekt wurde am 2026-11-05 bewusst auf ein leeres Gerüst zurückgesetzt. Wir bauen **Schritt für
+Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der nächste kommt.
 
-1. Ein Raum, eine Tür, eine Figur. Figur anklicken = auswählen, Boden anklicken = hingehen.
-2. Danach nach Absprache: Tür-Aktionen (Radialmenü), weitere Türen/Fenster, Zeitleiste, …
+**Fertig (Map `/Game/DerClou/Maps/L_Room01`, Startmap):**
+- Raum 7 × 10 m (Wände als normale Cube-Actors im Outliner-Ordner „Raum“), Tür „Hintertür“ hinten.
+- `ADCCrewCharacter` „Vic“: Character + AIController, NavMesh; Figur anklicken = auswählen, Boden = hingehen.
+- `ADCDoor`: Radialmenü (`UDCRadialMenu`) mit Öffnen/Schließen, Durchgehen, Schloss knacken (wenn
+  `bLocked`, rotes Vorhängeschloss), Info. Unsichtbarer `UDCNavBlockerComponent` sperrt den Weg, solange
+  die Tür zu ist. Kleine Befehlskette (`QueueDoorAction`), Tätigkeit/Hinweise unter dem Namen.
+- `IDCInteractable` + `UDCInfoPanel`: „Info“ im Radialmenü zeigt live alle Infos zum Objekt (oben rechts).
+- `ADCCameraPawn`: WASD, Q/E bzw. rechte/mittlere Maustaste ziehen (drehen/neigen), Mausrad.
+
+**Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite.
+
+**Wichtige Erkenntnisse:**
+- NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
+  100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock.
+- Slate-Buttons mit `IsFocusable(false)`, sonst kommen Tastatureingaben danach nicht mehr im Spiel an.
+- Grundformen der Engine nutzen `DefaultMaterial`; Farbe nur über `BasicShapeMaterial` (`DCVisuals::Paint`).
+- Selbsttest: Haken `bDebugWalkThroughDoorOnStart` an der Figur spielt „Schloss knacken → Durchgehen“
+  beim Spielstart ab; Ablauf steht im Log (`LogDerClou`, Phasenwechsel).
 
 Der alte Stand (Juwelier-Planer, Raum-Prototyp mit eigener Simulation, Konzept-Doku) liegt im
 Git-Archiv: Tag und Branch **`archiv/prototyp-1`**. Nur bei Bedarf daraus Ideen holen, nichts
