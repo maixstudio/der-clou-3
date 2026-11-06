@@ -9,6 +9,8 @@
 #include "DerClou3.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "TimerManager.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -25,6 +27,8 @@ namespace
 	constexpr float NavSettleSeconds = 0.25f;
 	constexpr float GiveUpSeconds = 3.f;
 	constexpr float NoticeSeconds = 2.5f;
+	/** A move that ends further than this from its goal was stopped by something in the way. */
+	constexpr double ArrivedTolerance = 60.0;
 	/** Name above the head (relative to the capsule centre); the activity line sits below it along the camera's up axis. */
 	constexpr double LabelHeight = 120.0;
 	constexpr double ActivityOffset = 30.0;
@@ -107,9 +111,17 @@ void ADCCrewCharacter::BeginPlay()
 		FTimerHandle Handle;
 		GetWorldTimerManager().SetTimer(Handle, this, &ADCCrewCharacter::StartDebugWalkThrough, 1.5f, false);
 	}
+
+	// Command-line self-test: -DCSelfTest=CloseFromSide (walk through, step behind the open
+	// panel, close the door from there, then quit).
+	FString SelfTest;
+	if (FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), SelfTest) && SelfTest == TEXT("CloseFromSide"))
+	{
+		GetWorldTimerManager().SetTimer(SelfTestTimer, this, &ADCCrewCharacter::TickCloseFromSideTest, 0.25f, true, 1.5f);
+	}
 }
 
-void ADCCrewCharacter::StartDebugWalkThrough()
+ADCDoor* ADCCrewCharacter::FindNearestDoor() const
 {
 	ADCDoor* Nearest = nullptr;
 	for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
@@ -119,6 +131,62 @@ void ADCCrewCharacter::StartDebugWalkThrough()
 			Nearest = *It;
 		}
 	}
+	return Nearest;
+}
+
+void ADCCrewCharacter::TickCloseFromSideTest()
+{
+	ADCDoor* Door = FindNearestDoor();
+	SelfTestTime += 0.25f;
+	const auto Finish = [this, Door](bool bPassed)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("%s: self-test CloseFromSide %s (door open: %d, at %s)"), *GetName(),
+			bPassed ? TEXT("PASSED") : TEXT("FAILED"), Door && Door->IsOpen() ? 1 : 0, *GetActorLocation().ToCompactString());
+		GetWorldTimerManager().ClearTimer(SelfTestTimer);
+		FPlatformMisc::RequestExit(false, TEXT("DCSelfTest"));
+	};
+	if (!Door || SelfTestTime > 40.f)
+	{
+		Finish(false);
+		return;
+	}
+	if (Phase != ETaskPhase::Idle)
+	{
+		return;
+	}
+	const double Side = FVector::DotProduct(GetActorLocation() - Door->GetCenter(), Door->GetActorForwardVector()) >= 0.0 ? 1.0 : -1.0;
+	switch (SelfTestStep++)
+	{
+	case 0:
+		SelfTestStartSide = Side;
+		StartDebugWalkThrough();
+		return;
+	case 1:
+	{
+		if (Side == SelfTestStartSide)
+		{
+			UE_LOG(LogDerClou, Warning, TEXT("%s: self-test - did not get through the door"), *GetName());
+			Finish(false);
+			return;
+		}
+		// Now on the side the panel swung to: stand on the hinge side, behind the open panel.
+		const FVector Behind = Door->GetActorTransform().TransformPosition(FVector(Side * 60.0, -60.0, 0.0));
+		UE_LOG(LogDerClou, Log, TEXT("%s: self-test - step behind the open panel to %s"), *GetName(), *Behind.ToCompactString());
+		MoveToLocation(Behind);
+		return;
+	}
+	case 2:
+		InteractWithDoor(Door, EDCDoorAction::Close);
+		return;
+	default:
+		Finish(!Door->IsOpen());
+		return;
+	}
+}
+
+void ADCCrewCharacter::StartDebugWalkThrough()
+{
+	ADCDoor* Nearest = FindNearestDoor();
 	if (!Nearest)
 	{
 		return;
@@ -148,7 +216,7 @@ void ADCCrewCharacter::SetSelected(bool bInSelected)
 	SelectionRing->SetVisibility(bSelected);
 }
 
-bool ADCCrewCharacter::StartMove(const FVector& Location)
+bool ADCCrewCharacter::StartMove(const FVector& Location, FVector* OutGoal)
 {
 	AAIController* AI = Cast<AAIController>(GetController());
 	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
@@ -163,6 +231,10 @@ bool ADCCrewCharacter::StartMove(const FVector& Location)
 	}
 	// No partial paths: a target behind a closed door is "not reachable", not "as close as possible".
 	const EPathFollowingRequestResult::Type Result = AI->MoveToLocation(Projected.Location, 10.f, true, true, false, true, nullptr, false);
+	if (OutGoal)
+	{
+		*OutGoal = Projected.Location;
+	}
 	return Result != EPathFollowingRequestResult::Failed;
 }
 
@@ -229,7 +301,10 @@ void ADCCrewCharacter::StartDoorTask(ADCDoor* Door, EDCDoorAction Action)
 	TaskAction = Action;
 	const FVector Here = GetActorLocation();
 	PassTarget = Door->GetStandPoint(Here, true);
-	if (StartMove(Door->GetStandPoint(Here, false)))
+	const bool bClosing = Action == EDCDoorAction::Close && Door->IsOpen();
+	const FVector StandPoint = bClosing ? Door->GetCloseStandPoint(Here) : Door->GetStandPoint(Here, false);
+	// Closing: if there is no room beside the panel, reach through from the other side.
+	if (StartMove(StandPoint, &DoorGoal) || (bClosing && StartMove(Door->GetClearSideStandPoint(), &DoorGoal)))
 	{
 		SetPhase(ETaskPhase::ToDoor);
 		return;
@@ -263,6 +338,13 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 		}
 		if (HasArrived())
 		{
+			if (FVector::Dist2D(GetActorLocation(), DoorGoal) > ArrivedTolerance)
+			{
+				UE_LOG(LogDerClou, Warning, TEXT("%s: stopped short of the door at %s (goal %s)"), *GetName(), *GetActorLocation().ToCompactString(), *DoorGoal.ToCompactString());
+				ShowNotice(LOCTEXT("CannotReachDoor", "kommt nicht zur Tür"));
+				SetPhase(ETaskPhase::Idle);
+				return;
+			}
 			// Face the door, hand on the handle.
 			const FVector ToDoor = Door->GetCenter() - GetActorLocation();
 			SetActorRotation(FRotator(0.0, ToDoor.Rotation().Yaw, 0.0));

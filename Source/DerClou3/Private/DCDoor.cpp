@@ -13,6 +13,14 @@ namespace
 	constexpr float FrameSize = 8.f;
 	constexpr float SwingSpeed = 2.5f;
 	constexpr float LockHeight = 125.f;
+	/** Distance of the stand points from the door plane. */
+	constexpr double StandDistance = 70.0;
+	constexpr double PassDistance = 90.0;
+	/** Closing from the swing side: stand this far beside the free edge and out from the wall. */
+	constexpr double BesideEdge = 30.0;
+	constexpr double OutFromWall = 55.0;
+	/** Part of the open panel next to the hinge that is left out of the nav blocker. */
+	constexpr double PanelBlockerHingeGap = 70.0;
 
 	const FLinearColor LockBodyColor(0.85f, 0.08f, 0.05f);
 	const FLinearColor LockShackleColor(0.8f, 0.8f, 0.82f);
@@ -45,6 +53,9 @@ ADCDoor::ADCDoor()
 	Hinge->SetupAttachment(Root);
 
 	Panel = MakeMesh(this, Hinge, TEXT("Panel"));
+	// The crew never gets stuck on the swinging panel: paths avoid it (OpenPanelBlocker), and
+	// where they still brush it, it does not push back.
+	Panel->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	Handle = MakeMesh(this, Panel, TEXT("Handle"), false);
 
 	FrameLeft = MakeMesh(this, Root, TEXT("FrameLeft"));
@@ -60,6 +71,11 @@ ADCDoor::ADCDoor()
 	// Cuts the opening out of the nav mesh while the door is closed.
 	NavBlocker = CreateDefaultSubobject<UDCNavBlockerComponent>(TEXT("NavBlocker"));
 	NavBlocker->SetupAttachment(Root);
+
+	// Keeps paths clear of the open panel (the nav system adds the agent radius around it).
+	OpenPanelBlocker = CreateDefaultSubobject<UDCNavBlockerComponent>(TEXT("OpenPanelBlocker"));
+	OpenPanelBlocker->SetupAttachment(Root);
+	OpenPanelBlocker->SetCanEverAffectNavigation(false);
 }
 
 void ADCDoor::OnConstruction(const FTransform& Transform)
@@ -126,12 +142,26 @@ void ADCDoor::UpdateState()
 	{
 		Part->SetVisibility(bLocked);
 	}
-	// Closed (or locked): not walkable. Open: the blocker no longer affects navigation.
+	// The open panel's blocker sits where the panel ends up, not where it is right now, so that
+	// the nav mesh is only rebuilt once per open/close and not on every frame of the swing.
+	// It starts a bit away from the hinge: the nav system grows it by the agent radius, and in the
+	// opening itself that would leave too narrow a gap to walk through. Near the hinge the wall
+	// keeps the crew away from the panel anyway.
+	const FRotator OpenRotation(0.0, SwingSign * OpenAngle, 0.0);
+	const double BlockedLength = Width - PanelBlockerHingeGap;
+	OpenPanelBlocker->SetRelativeLocationAndRotation(OpenRotation.RotateVector(FVector(0.0, Width - BlockedLength * 0.5, Height * 0.5)), OpenRotation);
+	OpenPanelBlocker->SetBoxExtent(FVector(PanelThickness * 0.5 + 2.0, BlockedLength * 0.5, Height * 0.5));
+
+	// Closed (or locked): the opening is not walkable. Open: the opening is free, the panel is not.
 	NavBlocker->SetCanEverAffectNavigation(!bOpen);
-	if (NavBlocker->IsRegistered())
+	OpenPanelBlocker->SetCanEverAffectNavigation(bOpen);
+	for (UDCNavBlockerComponent* Blocker : { NavBlocker.Get(), OpenPanelBlocker.Get() })
 	{
-		// Make sure the nav mesh around the door is rebuilt right away.
-		FNavigationSystem::UpdateComponentData(*NavBlocker);
+		if (Blocker->IsRegistered())
+		{
+			// Make sure the nav mesh around the door is rebuilt right away.
+			FNavigationSystem::UpdateComponentData(*Blocker);
+		}
 	}
 }
 
@@ -225,13 +255,34 @@ FVector ADCDoor::GetCenter() const
 	return GetActorTransform().TransformPosition(FVector(0.0, Width * 0.5, 0.0));
 }
 
-FVector ADCDoor::GetStandPoint(const FVector& From, bool bOtherSide) const
+double ADCDoor::GetSideOf(const FVector& From) const
 {
 	// The door's local X axis is the wall normal.
+	return FVector::DotProduct(From - GetCenter(), GetActorForwardVector().GetSafeNormal2D()) >= 0.0 ? 1.0 : -1.0;
+}
+
+FVector ADCDoor::GetStandPoint(const FVector& From, bool bOtherSide) const
+{
 	const FVector Normal = GetActorForwardVector().GetSafeNormal2D();
-	const FVector Center = GetCenter();
-	const double Side = FVector::DotProduct(From - Center, Normal) >= 0.0 ? 1.0 : -1.0;
-	return bOtherSide ? Center - Normal * Side * 90.0 : Center + Normal * Side * 70.0;
+	const double Side = GetSideOf(From);
+	return bOtherSide ? GetCenter() - Normal * Side * PassDistance : GetCenter() + Normal * Side * StandDistance;
+}
+
+FVector ADCDoor::GetCloseStandPoint(const FVector& From) const
+{
+	const double Side = GetSideOf(From);
+	if (!bOpen || Side != GetSwingSide())
+	{
+		return GetStandPoint(From, false);
+	}
+	// In front of the door the closing panel would sweep right through the crew member, so
+	// stand beside the free edge, out of its arc.
+	return GetActorTransform().TransformPosition(FVector(Side * OutFromWall, Width + BesideEdge, 0.0));
+}
+
+FVector ADCDoor::GetClearSideStandPoint() const
+{
+	return GetCenter() - GetActorForwardVector().GetSafeNormal2D() * GetSwingSide() * StandDistance;
 }
 
 void ADCDoor::Tick(float DeltaSeconds)

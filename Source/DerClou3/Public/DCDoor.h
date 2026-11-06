@@ -66,6 +66,14 @@ public:
 	 * behind it on the opposite side.
 	 */
 	FVector GetStandPoint(const FVector& From, bool bOtherSide) const;
+	/**
+	 * Where to stand to close the open door from the side of From. On the side the panel swung
+	 * to, that is next to the free edge, outside the swing arc; on the other side it is the
+	 * normal stand point.
+	 */
+	FVector GetCloseStandPoint(const FVector& From) const;
+	/** Stand point on the side the panel did not swing to (always clear of the panel). */
+	FVector GetClearSideStandPoint() const;
 
 protected:
 	UPROPERTY(EditAnywhere, Category = "Door")
@@ -120,6 +128,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TObjectPtr<UDCNavBlockerComponent> NavBlocker;
 
+	/** Invisible box where the fully open panel stands: paths lead around it while the door is open. */
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TObjectPtr<UDCNavBlockerComponent> OpenPanelBlocker;
+
 	/** Padlock on both faces of the panel (body + shackle), visible while locked. */
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TArray<TObjectPtr<UStaticMeshComponent>> LockParts;
@@ -127,6 +139,10 @@ protected:
 private:
 	void ApplyLayout();
 	void UpdateState();
+	/** +1 or -1 along the door's local X axis: the side the open panel stands on. */
+	double GetSwingSide() const { return -SwingSign; }
+	/** +1 or -1 along the door's local X axis: the side From is on. */
+	double GetSideOf(const FVector& From) const;
 
 	/** 0 = closed, 1 = open; animated towards bOpen. */
 	float OpenAmount = 0.f;

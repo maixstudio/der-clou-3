@@ -83,14 +83,16 @@ private:
 		ThroughDoor      // walking to the other side
 	};
 
-	/** Starts an AI move; false if the target cannot be reached. */
-	bool StartMove(const FVector& Location);
+	/** Starts an AI move; false if the target cannot be reached. OutGoal: the target on the nav mesh. */
+	bool StartMove(const FVector& Location, FVector* OutGoal = nullptr);
 	bool HasArrived() const;
 	void SetPhase(ETaskPhase InPhase);
 	void UpdateTask(float DeltaSeconds);
 	void UpdateLabels(float DeltaSeconds);
 	void StartDoorTask(ADCDoor* Door, EDCDoorAction Action);
 	void StartDebugWalkThrough();
+	ADCDoor* FindNearestDoor() const;
+	void TickCloseFromSideTest();
 	void ShowNotice(const FText& Text);
 
 	bool bSelected = false;
@@ -98,6 +100,8 @@ private:
 	TWeakObjectPtr<ADCDoor> TaskDoor;
 	EDCDoorAction TaskAction = EDCDoorAction::Open;
 	FVector PassTarget = FVector::ZeroVector;
+	/** Where the crew member stands to use the door (on the nav mesh). */
+	FVector DoorGoal = FVector::ZeroVector;
 	float PhaseTime = 0.f;
 	struct FQueuedDoorAction
 	{
@@ -105,6 +109,11 @@ private:
 		EDCDoorAction Action = EDCDoorAction::Open;
 	};
 	TArray<FQueuedDoorAction> DoorQueue;
+
+	FTimerHandle SelfTestTimer;
+	int32 SelfTestStep = 0;
+	float SelfTestTime = 0.f;
+	double SelfTestStartSide = 0.0;
 
 	/** Short feedback such as "Tür ist verschlossen", shown for a moment instead of the activity. */
 	FText Notice;
