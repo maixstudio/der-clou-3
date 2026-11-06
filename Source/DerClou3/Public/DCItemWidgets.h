@@ -16,6 +16,8 @@ struct FDCItemTreeContext
 	/** Buttons on an item's tile. */
 	TFunction<TArray<EDCItemAction>(UDCItem* Item)> GetActions;
 	TFunction<void(UDCItem* Item, EDCItemAction Action)> DoAction;
+	/** Whether the selected crew member can do it, and how long / how likely ("ca. 3 s · Erfolg 75 %"). */
+	TFunction<FDCTaskCheck(UDCItem* Item, EDCItemAction Action)> CheckAction;
 	/** An item from this window dropped outside every window; unset = nothing happens. */
 	TFunction<void(UDCItem* Item)> DropOutside;
 };

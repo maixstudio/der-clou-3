@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "DCSkills.h"
 
 /**
  * Size class of an item. Decides where it can go:
@@ -85,8 +86,13 @@ struct FDCItemDef
 	bool bRigid = true;
 	/** Can be locked. 0 = no lock; otherwise the time it takes to pick it. */
 	float LockPickSeconds = 0.f;
-	/** The lock can be broken with a crowbar. */
+	/** Which skill picking the lock needs, how hard it is (0..10) and with which tool. */
+	EDCSkill LockSkill = EDCSkill::Locks;
+	int32 LockDifficulty = 3;
+	FName LockTool = TEXT("lockpicks");
+	/** The lock can be broken with a crowbar; strength needed (0..10). */
 	bool bForceable = false;
+	int32 ForceDifficulty = 3;
 	/** Glass that can be smashed with the crowbar (opens it for good, very loud). */
 	bool bBreakable = false;
 	/** Built-in parts every item of this kind has (the drawers of a desk). They cannot be taken out. */
@@ -125,6 +131,8 @@ namespace DCItems
 	/** Breaking a lock open takes this long. */
 	constexpr float ForceSeconds = 3.f;
 	constexpr float SmashSeconds = 1.5f;
+	/** Strength needed to smash glass. */
+	constexpr int32 SmashDifficulty = 2;
 
 	/** How far noises carry in open space (cm). */
 	namespace Noise

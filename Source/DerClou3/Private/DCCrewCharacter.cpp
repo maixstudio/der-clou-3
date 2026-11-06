@@ -84,6 +84,15 @@ ADCCrewCharacter::ADCCrewCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	CrewName = FText::FromString(TEXT("Vic"));
+	// Vic: a locksmith with a strong back; safes are not his thing.
+	Skills.Locks = 6;
+	Skills.Safes = 1;
+	Skills.Electronics = 1;
+	Skills.Explosives = 0;
+	Skills.Driving = 5;
+	Skills.Fighting = 4;
+	Skills.Lookout = 3;
+	Skills.Strength = 6;
 
 	// AI controller walks the character along nav mesh paths.
 	AIControllerClass = AAIController::StaticClass();
@@ -143,6 +152,7 @@ TArray<FName> ADCCrewCharacter::GetItemIdOptions() const
 void ADCCrewCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	Inventory->SetStrength(Skills.Strength);
 	Inventory->OnChanged.AddUObject(this, &ADCCrewCharacter::OnInventoryChanged);
 	for (const FName Id : StartItems)
 	{
@@ -351,12 +361,16 @@ void ADCCrewCharacter::StartDoorTask(ADCDoor* Door, EDCDoorAction Action)
 	{
 		return;
 	}
-	if (Action == EDCDoorAction::PickLock && !Inventory->HasTool(DCItems::LockpicksId))
+	const FDCTaskCheck Check = CheckDoorAction(Door, Action);
+	if (!Check.bPossible)
 	{
-		ShowNotice(LOCTEXT("NeedLockpicks", "Ohne Dietrich-Set geht das nicht"));
+		ShowNotice(Check.Reason);
 		SetPhase(ETaskPhase::Idle);
 		return;
 	}
+	TaskWorkSeconds = Action == EDCDoorAction::PickLock ? Check.Seconds : HandOnDoorSeconds;
+	TaskFailChance = Check.FailChance;
+	TaskNoiseFactor = Check.NoiseFactor;
 	TaskDoor = Door;
 	TaskAction = Action;
 	const FVector Here = GetActorLocation();
@@ -418,13 +432,13 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::Idle);
 			return;
 		}
-		if (PhaseTime < (TaskAction == EDCDoorAction::PickLock ? Door->GetPickLockSeconds() : HandOnDoorSeconds))
+		if (PhaseTime < TaskWorkSeconds)
 		{
 			// Picking a lock clicks quietly now and then.
 			if (TaskAction == EDCDoorAction::PickLock && (ClickTimer += DeltaSeconds) >= ClickSeconds)
 			{
 				ClickTimer = 0.f;
-				EmitNoise(DCItems::Noise::PickClick, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
+				EmitNoise(DCItems::Noise::PickClick * TaskNoiseFactor, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
 			}
 			return;
 		}
@@ -463,6 +477,13 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::WaitingForDoor);
 			return;
 		case EDCDoorAction::PickLock:
+			if (!RollSuccess())
+			{
+				ShowNotice(LOCTEXT("PickFailed", "abgerutscht – Schloss bleibt zu"));
+				DoorQueue.Reset();
+				SetPhase(ETaskPhase::Idle);
+				return;
+			}
 			Door->Unlock();
 			ShowNotice(LOCTEXT("Unlocked", "Schloss ist offen"));
 			SetPhase(ETaskPhase::Idle);
@@ -534,7 +555,7 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 		if (TaskItemAction == EDCItemAction::PickLock && (ClickTimer += DeltaSeconds) >= ClickSeconds)
 		{
 			ClickTimer = 0.f;
-			EmitNoise(DCItems::Noise::PickClick, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
+			EmitNoise(DCItems::Noise::PickClick * TaskNoiseFactor, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
 		}
 		return;
 
@@ -657,14 +678,15 @@ FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, A
 	{
 		return Item->CheckCanTakeOut();
 	}
+	const FDCTaskCheck Check = CheckItemAction(Item, Action);
+	if (!Check.bPossible)
+	{
+		return Check.Reason;
+	}
 	FText Reason;
 	switch (Action)
 	{
 	case EDCItemAction::Open:
-		if (Item->IsLocked())
-		{
-			return FText::Format(LOCTEXT("IsLocked", "{0} ist versperrt"), Item->GetDisplayName());
-		}
 		Item->SetOpen(true);
 		return FText::GetEmpty();
 
@@ -673,31 +695,9 @@ FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, A
 		return FText::GetEmpty();
 
 	case EDCItemAction::PickLock:
-		if (!Item->IsLocked())
-		{
-			return FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName());
-		}
-		if (!Inventory->HasTool(DCItems::LockpicksId))
-		{
-			return LOCTEXT("NeedLockpicks", "Ohne Dietrich-Set geht das nicht");
-		}
-		StartItemWork(Item, Action, Def.LockPickSeconds);
-		return FText::GetEmpty();
-
 	case EDCItemAction::Force:
-		if (!Item->IsLocked())
-		{
-			return FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName());
-		}
-		if (!Def.bForceable)
-		{
-			return FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Item->GetDisplayName());
-		}
-		if (!Inventory->HasTool(DCItems::CrowbarId))
-		{
-			return LOCTEXT("NeedCrowbar", "Ohne Brecheisen geht das nicht");
-		}
-		StartItemWork(Item, Action, DCItems::ForceSeconds);
+	case EDCItemAction::Smash:
+		StartItemWork(Item, Action, Check);
 		return FText::GetEmpty();
 
 	case EDCItemAction::Take:
@@ -717,22 +717,139 @@ FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, A
 		DropItem(Item);
 		return FText::GetEmpty();
 
-	case EDCItemAction::Smash:
-		if (!Def.bBreakable || Item->IsDestroyed())
-		{
-			return FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Item->GetDisplayName());
-		}
-		if (!Inventory->HasTool(DCItems::CrowbarId))
-		{
-			return LOCTEXT("NeedCrowbarSmash", "Zum Einschlagen braucht es das Brecheisen");
-		}
-		StartItemWork(Item, Action, DCItems::SmashSeconds);
-		return FText::GetEmpty();
 	}
 	return FText::GetEmpty();
 }
 
-void ADCCrewCharacter::StartItemWork(UDCItem* Item, EDCItemAction Action, float Seconds)
+FText ADCCrewCharacter::CheckToolAndHands(FName Tool, int32 Hands, const FText& What) const
+{
+	if (!Tool.IsNone() && !Inventory->FindReadyTool(Tool))
+	{
+		const FDCItemDef* ToolDef = DCItems::Find(Tool);
+		const FText ToolName = ToolDef ? ToolDef->Name : FText::FromName(Tool);
+		return Inventory->HasTool(Tool)
+			? FText::Format(LOCTEXT("ToolNotReady", "{0} steckt zu tief im Gepäck – erst in die Hand, Kleidung oder Weste"), ToolName)
+			: FText::Format(LOCTEXT("ToolMissing", "Zum {0} braucht es: {1}"), What, ToolName);
+	}
+	const int32 Free = Inventory->CountFreeHands(Tool);
+	if (Free < Hands)
+	{
+		return Hands >= 2
+			? FText::Format(LOCTEXT("NeedBothHandsFree", "Zum {0} braucht es beide Hände frei"), What)
+			: FText::Format(LOCTEXT("NeedHandFree", "Zum {0} braucht es eine freie Hand"), What);
+	}
+	return FText::GetEmpty();
+}
+
+FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemAction Action) const
+{
+	FDCTaskCheck Check;
+	const auto Refuse = [&Check](const FText& Reason)
+	{
+		Check.bPossible = false;
+		Check.Reason = Reason;
+		return Check;
+	};
+	if (!Item)
+	{
+		return Refuse(FText::GetEmpty());
+	}
+	const FDCItemDef& Def = Item->GetDef();
+	FText Reason;
+	switch (Action)
+	{
+	case EDCItemAction::Open:
+		if (Item->IsLocked())
+		{
+			return Refuse(FText::Format(LOCTEXT("IsLocked", "{0} ist versperrt"), Item->GetDisplayName()));
+		}
+		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatOpen", "Öffnen"));
+		return Reason.IsEmpty() ? Check : Refuse(Reason);
+
+	case EDCItemAction::Close:
+		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatClose", "Schließen"));
+		return Reason.IsEmpty() ? Check : Refuse(Reason);
+
+	case EDCItemAction::PickLock:
+		if (!Item->IsLocked())
+		{
+			return Refuse(FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName()));
+		}
+		Reason = CheckToolAndHands(Def.LockTool, 2, LOCTEXT("WhatPick", "Knacken"));
+		if (!Reason.IsEmpty())
+		{
+			return Refuse(Reason);
+		}
+		return DCSkills::Evaluate(Def.LockSkill, Skills.Get(Def.LockSkill), Def.LockDifficulty, Def.LockPickSeconds, CrewName);
+
+	case EDCItemAction::Force:
+		if (!Item->IsLocked())
+		{
+			return Refuse(FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName()));
+		}
+		if (!Def.bForceable)
+		{
+			return Refuse(FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Item->GetDisplayName()));
+		}
+		Reason = CheckToolAndHands(DCItems::CrowbarId, 2, LOCTEXT("WhatForce", "Aufbrechen"));
+		if (!Reason.IsEmpty())
+		{
+			return Refuse(Reason);
+		}
+		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, Def.ForceDifficulty, DCItems::ForceSeconds, CrewName);
+
+	case EDCItemAction::Smash:
+		if (!Def.bBreakable || Item->IsDestroyed())
+		{
+			return Refuse(FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Item->GetDisplayName()));
+		}
+		Reason = CheckToolAndHands(DCItems::CrowbarId, 1, LOCTEXT("WhatSmash", "Einschlagen"));
+		if (!Reason.IsEmpty())
+		{
+			return Refuse(Reason);
+		}
+		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, DCItems::SmashDifficulty, DCItems::SmashSeconds, CrewName);
+
+	case EDCItemAction::Take:
+		Reason = Inventory->CheckAdd(Item);
+		return Reason.IsEmpty() ? Check : Refuse(Reason);
+
+	case EDCItemAction::Drop:
+		return Check;
+	}
+	return Check;
+}
+
+FDCTaskCheck ADCCrewCharacter::CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const
+{
+	FDCTaskCheck Check;
+	if (!Door)
+	{
+		Check.bPossible = false;
+		return Check;
+	}
+	const FText Reason = Action == EDCDoorAction::PickLock
+		? CheckToolAndHands(DCItems::LockpicksId, 2, LOCTEXT("WhatPick", "Knacken"))
+		: CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatDoor", "Türöffnen"));
+	if (!Reason.IsEmpty())
+	{
+		Check.bPossible = false;
+		Check.Reason = Reason;
+		return Check;
+	}
+	if (Action == EDCDoorAction::PickLock)
+	{
+		return DCSkills::Evaluate(EDCSkill::Locks, Skills.Locks, Door->GetLockDifficulty(), Door->GetPickLockSeconds(), CrewName);
+	}
+	return Check;
+}
+
+bool ADCCrewCharacter::RollSuccess() const
+{
+	return TaskFailChance <= 0.f || FMath::FRand() >= TaskFailChance;
+}
+
+void ADCCrewCharacter::StartItemWork(UDCItem* Item, EDCItemAction Action, const FDCTaskCheck& Check)
 {
 	if (AAIController* AI = Cast<AAIController>(GetController()))
 	{
@@ -743,7 +860,10 @@ void ADCCrewCharacter::StartItemWork(UDCItem* Item, EDCItemAction Action, float 
 	TaskPickup.Reset();
 	TaskItem = Item;
 	TaskItemAction = Action;
-	TaskWorkSeconds = Seconds;
+	TaskWorkSeconds = Check.Seconds;
+	TaskFailChance = Check.FailChance;
+	TaskNoiseFactor = Check.NoiseFactor;
+	ClickTimer = 0.f;
 	SetPhase(ETaskPhase::ItemWork);
 }
 
@@ -751,11 +871,24 @@ void ADCCrewCharacter::FinishItemWork()
 {
 	UDCItem* Item = TaskItem.Get();
 	TaskItem.Reset();
+	if (Item && !RollSuccess())
+	{
+		// Failed: the time is gone, the lock stays; breaking things is loud either way.
+		ShowNotice(FText::Format(LOCTEXT("WorkFailed", "nicht geschafft – {0} bleibt zu"), Item->GetDisplayName()));
+		if (TaskItemAction == EDCItemAction::Force)
+		{
+			EmitNoise(DCItems::Noise::Force * FMath::Max(1.f, TaskNoiseFactor), FText::Format(LOCTEXT("NoiseForceFail", "Holz kracht ({0})"), Item->GetDisplayName()));
+		}
+		UE_LOG(LogDerClou, Log, TEXT("%s: failed at %s"), *GetName(), *Item->GetDefId().ToString());
+		SetPhase(ETaskPhase::Idle);
+		return;
+	}
 	if (Item && TaskItemAction == EDCItemAction::Smash)
 	{
 		Item->Smash();
 		ShowNotice(FText::Format(LOCTEXT("Smashed", "{0} eingeschlagen"), Item->GetDisplayName()));
-		EmitNoise(DCItems::Noise::Smash, FText::Format(LOCTEXT("NoiseSmash", "Glas splittert ({0})"), Item->GetDisplayName()));
+		// Breaking glass or wood is loud however skilled one is; clumsy hands make it worse.
+		EmitNoise(DCItems::Noise::Smash * FMath::Max(1.f, TaskNoiseFactor), FText::Format(LOCTEXT("NoiseSmash", "Glas splittert ({0})"), Item->GetDisplayName()));
 		UE_LOG(LogDerClou, Log, TEXT("%s: smashed %s"), *GetName(), *Item->GetDefId().ToString());
 	}
 	else if (Item && Item->IsLocked())
@@ -764,7 +897,7 @@ void ADCCrewCharacter::FinishItemWork()
 		{
 			Item->BreakLock();
 			ShowNotice(FText::Format(LOCTEXT("Forced", "{0} aufgebrochen"), Item->GetDisplayName()));
-			EmitNoise(DCItems::Noise::Force, FText::Format(LOCTEXT("NoiseForce", "Holz kracht ({0} aufgebrochen)"), Item->GetDisplayName()));
+			EmitNoise(DCItems::Noise::Force * FMath::Max(1.f, TaskNoiseFactor), FText::Format(LOCTEXT("NoiseForce", "Holz kracht ({0} aufgebrochen)"), Item->GetDisplayName()));
 		}
 		else
 		{
@@ -806,7 +939,7 @@ void ADCCrewCharacter::UpdateFootsteps(float DeltaSeconds)
 	}
 	StepTimer = 0.f;
 	// Heavier load, louder steps.
-	const float Load = FMath::Clamp(Inventory->GetTotalMass() / UDCInventoryComponent::MaxCarryMassKg, 0.f, 1.f);
+	const float Load = FMath::Clamp(Inventory->GetTotalMass() / Inventory->GetMaxCarryMass(), 0.f, 1.f);
 	const float Range = DCItems::Noise::Footstep + DCItems::Noise::FootstepLoad * Load + (Inventory->HasBothHandsFull() ? DCItems::Noise::FootstepBothHands : 0.f);
 	EmitNoise(Range, LOCTEXT("NoiseSteps", "Schritte"), false);
 }
@@ -847,7 +980,7 @@ FText ADCCrewCharacter::GetActivityText() const
 	case ETaskPhase::AtDoor:
 		if (TaskAction == EDCDoorAction::PickLock)
 		{
-			const float Total = TaskDoor.IsValid() ? TaskDoor->GetPickLockSeconds() : 0.f;
+			const float Total = TaskWorkSeconds;
 			const int32 Remaining = FMath::Max(1, FMath::CeilToInt(Total - PhaseTime));
 			return FText::Format(LOCTEXT("Picking", "knackt das Schloss … {0} s"), FText::AsNumber(Remaining));
 		}

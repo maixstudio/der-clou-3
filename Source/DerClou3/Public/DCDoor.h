@@ -53,6 +53,8 @@ public:
 
 	/** How long picking this lock takes. */
 	float GetPickLockSeconds() const { return PickLockSeconds; }
+	/** Lock skill needed (0..10). */
+	int32 GetLockDifficulty() const { return LockDifficulty; }
 
 	//~ IDCInteractable
 	virtual FText GetInteractableName() const override { return DisplayName; }
@@ -92,6 +94,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Door|Info", meta = (ClampMin = "0.5"))
 	float PickLockSeconds = 4.f;
+
+	/** Lock skill needed to pick it (0..10). */
+	UPROPERTY(EditAnywhere, Category = "Door|Info", meta = (ClampMin = "0", ClampMax = "10"))
+	int32 LockDifficulty = 3;
 
 	UPROPERTY(EditAnywhere, Category = "Door", meta = (ClampMin = "60"))
 	float Width = 100.f;

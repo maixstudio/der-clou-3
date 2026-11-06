@@ -245,7 +245,8 @@ void ADCDoor::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
 	OutLines.Add({ LOCTEXT("LabelLocked", "Abgeschlossen"), bLocked ? LOCTEXT("Yes", "ja") : LOCTEXT("No", "nein") });
 	if (bLocked)
 	{
-		OutLines.Add({ LOCTEXT("LabelPick", "Knacken dauert"), FText::Format(LOCTEXT("Seconds", "ca. {0} s"), FText::AsNumber(FMath::RoundToInt(PickLockSeconds))) });
+		OutLines.Add({ LOCTEXT("LabelPick", "Knacken"), FText::Format(LOCTEXT("PickInfo", "Schlösser {0} · ca. {1} s · Dietrich-Set, beide Hände"),
+			FText::AsNumber(LockDifficulty), FText::AsNumber(FMath::RoundToInt(PickLockSeconds))) });
 	}
 	OutLines.Add({ LOCTEXT("LabelSize", "Größe"), FText::Format(LOCTEXT("Size", "{0} × {1} cm"), FText::AsNumber(FMath::RoundToInt(Width)), FText::AsNumber(FMath::RoundToInt(Height))) });
 }

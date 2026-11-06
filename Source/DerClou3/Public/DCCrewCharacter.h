@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "DCDoor.h"
 #include "DCItemTypes.h"
+#include "DCSkills.h"
 #include "GameFramework/Character.h"
 
 #include "DCCrewCharacter.generated.h"
@@ -58,6 +59,11 @@ public:
 	/** The item being worked on right now (lock being picked), if any. */
 	const UDCItem* GetWorkItem() const;
 
+	const FDCSkills& GetSkills() const { return Skills; }
+	/** Can this crew member do it (tool at hand, hands free, skill high enough) – and how long, how likely? */
+	FDCTaskCheck CheckItemAction(const UDCItem* Item, EDCItemAction Action) const;
+	FDCTaskCheck CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const;
+
 	UDCInventoryComponent* GetInventory() const { return Inventory; }
 	bool IsBusy() const { return Phase != ETaskPhase::Idle; }
 	/** Last short feedback ("Klavier ist zu schwer für eine Person"), even after it faded. */
@@ -78,6 +84,10 @@ protected:
 	/** What the crew member has on them when the game starts. */
 	UPROPERTY(EditAnywhere, Category = "Crew", meta = (GetOptions = "GetItemIdOptions"))
 	TArray<FName> StartItems = { TEXT("work_clothes"), TEXT("lockpicks"), TEXT("flashlight") };
+
+	/** What this crew member is good at (0..10). */
+	UPROPERTY(EditAnywhere, Category = "Crew")
+	FDCSkills Skills;
 
 	/** Walking speed without load. */
 	UPROPERTY(EditAnywhere, Category = "Crew")
@@ -153,7 +163,11 @@ private:
 	void ShowNotice(const FText& Text);
 	void FinishPickUp();
 	void WalkToPickup(ADCItemPickup* Pickup, bool bSearch);
-	void StartItemWork(UDCItem* Item, EDCItemAction Action, float Seconds);
+	void StartItemWork(UDCItem* Item, EDCItemAction Action, const FDCTaskCheck& Check);
+	/** Tool at hand and enough free hands; empty = fine. */
+	FText CheckToolAndHands(FName Tool, int32 Hands, const FText& What) const;
+	/** Rolls against the current task's fail chance. */
+	bool RollSuccess() const;
 	void FinishItemWork();
 	/** Noise at the crew member's feet. */
 	void EmitNoise(float Range, const FText& What, bool bLabel = true);
@@ -181,6 +195,8 @@ private:
 	TWeakObjectPtr<UDCItem> TaskItem;
 	EDCItemAction TaskItemAction = EDCItemAction::PickLock;
 	float TaskWorkSeconds = 0.f;
+	float TaskFailChance = 0.f;
+	float TaskNoiseFactor = 1.f;
 	float StepTimer = 0.f;
 	float ClickTimer = 0.f;
 

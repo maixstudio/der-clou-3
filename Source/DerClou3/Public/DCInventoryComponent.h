@@ -25,10 +25,12 @@ class DERCLOU3_API UDCInventoryComponent : public UActorComponent
 public:
 	UDCInventoryComponent();
 
-	/** Most one person can carry in total. */
-	static constexpr float MaxCarryMassKg = 60.f;
-	/** Heaviest single item one person can lift. */
-	static constexpr float MaxItemMassKg = 40.f;
+	/** Strength 0..10 of whoever carries this: sets the carry limits. */
+	void SetStrength(int32 InStrength) { Strength = InStrength; }
+	/** Most this person can carry in total (60 kg at strength 5). */
+	float GetMaxCarryMass() const { return 40.f + 4.f * Strength; }
+	/** Heaviest single item this person can lift (40 kg at strength 5). */
+	float GetMaxItemMass() const { return 25.f + 3.f * Strength; }
 
 	UDCItem* GetSlotItem(EDCEquipSlot Slot) const;
 	/** Worn containers in a fixed order: clothes, vest, backpack. */
@@ -39,6 +41,10 @@ public:
 	bool HasBothHandsFull() const;
 	/** True if the crew member has an item of this kind anywhere on them. */
 	bool HasTool(FName DefId) const;
+	/** The tool if it is at hand: held, or directly in clothes or vest pockets (not deep in the backpack). */
+	UDCItem* FindReadyTool(FName DefId) const;
+	/** Hands that are empty or hold the given tool (the tool's own hand counts as free for using it). */
+	int32 CountFreeHands(FName ToolId = NAME_None) const;
 
 	/** Can this person take the item at all (not fixed, not too big or heavy, reachable)? */
 	FText CheckCarry(const UDCItem* Item) const;
@@ -77,4 +83,6 @@ private:
 	/** Indexed by EDCEquipSlot (index 0 = None stays empty). A large item sits in both hands. */
 	UPROPERTY(VisibleAnywhere, Category = "Inventory")
 	TArray<TObjectPtr<UDCItem>> Slots;
+
+	int32 Strength = 5;
 };

@@ -8,7 +8,7 @@ namespace
 {
 	/** Load up to this mass does not slow down at all. */
 	constexpr float FreeLoadKg = 15.f;
-	/** Speed at full load (MaxCarryMassKg). */
+	/** Speed at full load (GetMaxCarryMass). */
 	constexpr float FullLoadSpeed = 0.5f;
 	/** Extra slowdown while both hands carry something large. */
 	constexpr float BothHandsSpeed = 0.75f;
@@ -87,6 +87,43 @@ bool UDCInventoryComponent::HasTool(FName DefId) const
 	return false;
 }
 
+UDCItem* UDCInventoryComponent::FindReadyTool(FName DefId) const
+{
+	for (const EDCEquipSlot Hand : { EDCEquipSlot::RightHand, EDCEquipSlot::LeftHand })
+	{
+		UDCItem* Held = GetSlotItem(Hand);
+		if (Held && Held->GetDefId() == DefId)
+		{
+			return Held;
+		}
+	}
+	for (const EDCEquipSlot Pocket : { EDCEquipSlot::Body, EDCEquipSlot::Vest })
+	{
+		if (const UDCItem* Container = GetSlotItem(Pocket))
+		{
+			for (UDCItem* Item : Container->GetContents())
+			{
+				if (Item->GetDefId() == DefId)
+				{
+					return Item;
+				}
+			}
+		}
+	}
+	return nullptr;
+}
+
+int32 UDCInventoryComponent::CountFreeHands(FName ToolId) const
+{
+	int32 Free = 0;
+	for (const EDCEquipSlot Hand : { EDCEquipSlot::RightHand, EDCEquipSlot::LeftHand })
+	{
+		const UDCItem* Held = GetSlotItem(Hand);
+		Free += !Held || (!ToolId.IsNone() && Held->GetDefId() == ToolId) ? 1 : 0;
+	}
+	return Free;
+}
+
 FText UDCInventoryComponent::CheckCarry(const UDCItem* Item) const
 {
 	if (!Item)
@@ -107,7 +144,7 @@ FText UDCInventoryComponent::CheckCarry(const UDCItem* Item) const
 	{
 		return Reason;
 	}
-	if (Item->GetTotalMass() > MaxItemMassKg)
+	if (Item->GetTotalMass() > GetMaxItemMass())
 	{
 		return FText::Format(LOCTEXT("TooHeavyAlone", "{0} ist zu schwer für eine Person ({1})"), Def.Name, DCItems::FormatKg(Item->GetTotalMass()));
 	}
@@ -115,9 +152,9 @@ FText UDCInventoryComponent::CheckCarry(const UDCItem* Item) const
 	{
 		return FText::Format(LOCTEXT("TooBulkyAlone", "{0} ist zu sperrig für eine Person"), Def.Name);
 	}
-	if (GetTotalMass() + Item->GetTotalMass() > MaxCarryMassKg)
+	if (GetTotalMass() + Item->GetTotalMass() > GetMaxCarryMass())
 	{
-		return FText::Format(LOCTEXT("Overloaded", "Zu viel Gewicht – mehr als {0} schafft niemand"), DCItems::FormatKg(MaxCarryMassKg));
+		return FText::Format(LOCTEXT("Overloaded", "Zu viel Gewicht – mehr als {0} schafft diese Person nicht"), DCItems::FormatKg(GetMaxCarryMass()));
 	}
 	return FText::GetEmpty();
 }
@@ -362,7 +399,7 @@ int32 UDCInventoryComponent::GetTotalValue() const
 
 float UDCInventoryComponent::GetSpeedFactor() const
 {
-	const float Load = FMath::Clamp((GetTotalMass() - FreeLoadKg) / (MaxCarryMassKg - FreeLoadKg), 0.f, 1.f);
+	const float Load = FMath::Clamp((GetTotalMass() - FreeLoadKg) / FMath::Max(1.f, GetMaxCarryMass() - FreeLoadKg), 0.f, 1.f);
 	float Factor = FMath::Lerp(1.f, FullLoadSpeed, Load);
 	if (HasBothHandsFull())
 	{

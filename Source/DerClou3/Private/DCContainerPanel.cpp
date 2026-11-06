@@ -57,6 +57,11 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 	{
 		return DefaultActions(Item, true, false);
 	};
+	Context->CheckAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
+	{
+		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
+		return Member ? Member->CheckItemAction(Item, Action) : FDCTaskCheck();
+	};
 	Context->DoAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
 	{
 		if (WeakThis.IsValid())
@@ -241,7 +246,7 @@ void UDCContainerPanel::RebuildContent()
 	}
 	// The container itself is not dragged; it can be taken with its button if it is portable.
 	Content->AddSlot().AutoHeight()[DCItemWidgets::MakeItem(Item, Context.ToSharedRef(), false)];
-	if (!Item->IsContainer())
+	if (!Item->IsContainer() && Item->GetContents().IsEmpty())
 	{
 		Content->AddSlot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
 		[

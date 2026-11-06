@@ -305,8 +305,18 @@ void UDCItem::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
 	}
 	if (Def.HasLock())
 	{
-		const FText Lock = Def.bForceable ? LOCTEXT("LockForceable", "knackbar (ca. {0} s) oder aufzubrechen") : LOCTEXT("LockPickOnly", "nur zu knacken (ca. {0} s)");
-		OutLines.Add({ LOCTEXT("LabelLock", "Schloss"), FText::Format(Lock, FText::AsNumber(FMath::RoundToInt(Def.LockPickSeconds))) });
+		const FText Lock = Def.bForceable ? LOCTEXT("LockForceable", "{0} {1} · aufzubrechen (Kraft {2})") : LOCTEXT("LockPickOnly", "{0} {1} · nicht aufzubrechen");
+		OutLines.Add({ LOCTEXT("LabelLock", "Schloss"), FText::Format(Lock, DCSkills::Name(Def.LockSkill), FText::AsNumber(Def.LockDifficulty), FText::AsNumber(Def.ForceDifficulty)) });
+	}
+	if (!Def.IsContainer() && !Contents.IsEmpty())
+	{
+		TArray<FString> Parts;
+		for (const UDCItem* Item : Contents)
+		{
+			const FText PartState = Item->DescribeState();
+			Parts.Add(PartState.IsEmpty() ? Item->GetDisplayName().ToString() : FString::Printf(TEXT("%s (%s)"), *Item->GetDisplayName().ToString(), *PartState.ToString()));
+		}
+		OutLines.Add({ LOCTEXT("LabelParts", "Teile"), FText::FromString(FString::Join(Parts, TEXT(", "))) });
 	}
 	if (Def.IsContainer())
 	{

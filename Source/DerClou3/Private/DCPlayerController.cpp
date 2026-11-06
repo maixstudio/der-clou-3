@@ -218,7 +218,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
 	const UDCItem* Item = Pickup->GetItem();
 	TArray<FDCRadialOption> Options;
-	if (Item && (Item->IsContainer() || Item->GetDef().bOpenable))
+	if (Item && (Item->IsContainer() || Item->GetDef().bOpenable || !Item->GetContents().IsEmpty()))
 	{
 		FDCRadialOption& Search = Options.AddDefaulted_GetRef();
 		Search.Label = LOCTEXT("Search", "Durchsuchen");
@@ -582,7 +582,28 @@ void ADCPlayerController::StartContainerSelfTest()
 		return true;
 	});
 
-	// Safe: cannot be forced, only picked (slowly).
+	// Safe: Vic lacks the skill and the stethoscope; Rosa, the safe expert, takes over.
+	SelfTestSteps.Add(SearchStep(TEXT("safe")));
+	SelfTestSteps.Add(Act(TEXT("safe"), TEXT("safe"), EDCItemAction::PickLock, true));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		ADCCrewCharacter* Rosa = nullptr;
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			Rosa = It->GetCrewName().ToString() == TEXT("Rosa") ? *It : Rosa;
+		}
+		Expect(Rosa != nullptr, TEXT("Rosa is in the level"));
+		if (Rosa)
+		{
+			Select(Rosa);
+			// Below her lock skill: possible, but slower and with a chance to fail.
+			ADCItemPickup* Case = FindPickup(TEXT("display_case"));
+			const FDCTaskCheck Check = Case ? Rosa->CheckItemAction(Case->GetItem(), EDCItemAction::PickLock) : FDCTaskCheck();
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa picks the display case -> %s"), *Check.Describe().ToString());
+			Expect(Check.bPossible && Check.FailChance > 0.f, TEXT("Rosa can pick the display case, but may fail"));
+		}
+		return true;
+	});
 	SelfTestSteps.Add(SearchStep(TEXT("safe")));
 	SelfTestSteps.Add(Act(TEXT("safe"), TEXT("safe"), EDCItemAction::Force, true));
 	SelfTestSteps.Add(Act(TEXT("safe"), TEXT("safe"), EDCItemAction::PickLock, false));

@@ -24,7 +24,17 @@ namespace
 		FDef& Holds(float Liters, EDCItemSize MaxSize) { Def.CapacityLiters = Liters; Def.MaxContentSize = MaxSize; return *this; }
 		FDef& Soft() { Def.bRigid = false; return *this; }
 		FDef& Openable() { Def.bOpenable = true; return *this; }
-		FDef& Lock(float PickSeconds, bool bForceable) { Def.LockPickSeconds = PickSeconds; Def.bForceable = bForceable; return *this; }
+		/** Lock: pick time and difficulty; ForceDifficulty < 0 = cannot be broken open. */
+		FDef& Lock(float PickSeconds, int32 Difficulty, int32 ForceDifficulty, EDCSkill Skill = EDCSkill::Locks, const TCHAR* Tool = TEXT("lockpicks"))
+		{
+			Def.LockPickSeconds = PickSeconds;
+			Def.LockDifficulty = Difficulty;
+			Def.bForceable = ForceDifficulty >= 0;
+			Def.ForceDifficulty = FMath::Max(0, ForceDifficulty);
+			Def.LockSkill = Skill;
+			Def.LockTool = Tool;
+			return *this;
+		}
 		FDef& Fixed() { Def.bMovable = false; return *this; }
 		FDef& Glass() { Def.bBreakable = true; return *this; }
 		FDef& Parts(TArray<FName> Parts) { Def.FixedParts = MoveTemp(Parts); return *this; }
@@ -60,7 +70,9 @@ namespace
 
 			// Tools.
 			FDef(TEXT("lockpicks"), LOCTEXT("Lockpicks", "Dietrich-Set"), Tool, 0.2f, 0.3f, S::Small)
-				.Look(P::Box, FVector(18, 10, 4), FLinearColor(0.7f, 0.7f, 0.75f)).Note(LOCTEXT("LockpicksDesc", "Öffnet Schlösser leise – braucht aber Zeit.")),
+				.Look(P::Box, FVector(18, 10, 4), FLinearColor(0.7f, 0.7f, 0.75f)).Note(LOCTEXT("LockpicksDesc", "Öffnet Schlösser leise – braucht aber Zeit und beide Hände.")),
+			FDef(TEXT("stethoscope"), LOCTEXT("Stethoscope", "Stethoskop"), Tool, 0.3f, 0.5f, S::Small)
+				.Look(P::Box, FVector(16, 12, 5), FLinearColor(0.2f, 0.55f, 0.6f)).Note(LOCTEXT("StethoscopeDesc", "Zum Abhören von Tresorschlössern.")),
 			FDef(TEXT("flashlight"), LOCTEXT("Flashlight", "Taschenlampe"), Tool, 0.4f, 0.6f, S::Small)
 				.Look(P::Cylinder, FVector(8, 8, 25), FLinearColor(0.9f, 0.75f, 0.1f)).Note(LOCTEXT("FlashlightDesc", "Licht für dunkle Räume.")),
 			FDef(TEXT("crowbar"), LOCTEXT("Crowbar", "Brecheisen"), Tool, 2.5f, 2.f, S::Medium)
@@ -93,19 +105,19 @@ namespace
 				.Look(P::Box, FVector(150, 60, 130), FLinearColor(0.04f, 0.04f, 0.05f)).Note(LOCTEXT("PianoDesc", "Wertvoll, aber viel zu schwer für eine Person.")),
 
 			// Boxes.
-			FDef(TEXT("jewelry_box"), LOCTEXT("JewelryBox", "Schmuckschatulle"), Box, 0.3f, 0.8f, S::Small, 150).Holds(0.5f, S::Small).Openable().Lock(3.f, true)
+			FDef(TEXT("jewelry_box"), LOCTEXT("JewelryBox", "Schmuckschatulle"), Box, 0.3f, 0.8f, S::Small, 150).Holds(0.5f, S::Small).Openable().Lock(3.f, 2, 1)
 				.Look(P::Box, FVector(20, 15, 10), FLinearColor(0.45f, 0.1f, 0.15f)).Note(LOCTEXT("JewelryBoxDesc", "Kleine Schatulle mit Samtfutter.")),
 			FDef(TEXT("cardboard_box"), LOCTEXT("CardboardBox", "Umzugskarton"), Box, 0.6f, 40.f, S::Large).Holds(38.f, S::Medium).Openable()
 				.Look(P::Box, FVector(55, 40, 38), FLinearColor(0.65f, 0.48f, 0.28f)).Note(LOCTEXT("CardboardBoxDesc", "Offen zugeklappt, nichts verklebt.")),
 
 			// Furniture. Parts (drawers) are separate items fixed inside their furniture.
-			FDef(TEXT("desk_drawer"), LOCTEXT("DeskDrawer", "Schublade"), Part, 3.f, 20.f, S::Large).Holds(15.f, S::Medium).Openable().Lock(5.f, true)
+			FDef(TEXT("desk_drawer"), LOCTEXT("DeskDrawer", "Schublade"), Part, 3.f, 20.f, S::Large).Holds(15.f, S::Medium).Openable().Lock(5.f, 3, 3)
 				.Note(LOCTEXT("DeskDrawerDesc", "Mit einfachem Möbelschloss.")),
 			FDef(TEXT("desk"), LOCTEXT("Desk", "Schreibtisch"), Furniture, 55.f, 400.f, S::Huge, 400).Parts({ TEXT("desk_drawer") })
 				.Look(P::Box, FVector(120, 60, 75), FLinearColor(0.38f, 0.22f, 0.1f)).Note(LOCTEXT("DeskDesc", "Massivholz mit einer abschließbaren Schublade.")),
-			FDef(TEXT("safe"), LOCTEXT("Safe", "Wandtresor"), Furniture, 120.f, 250.f, S::Huge).Fixed().Holds(30.f, S::Medium).Openable().Lock(20.f, false)
-				.Look(P::Box, FVector(60, 60, 80), FLinearColor(0.22f, 0.23f, 0.25f)).Note(LOCTEXT("SafeDesc", "Fest verankert. Mit dem Brecheisen ist nichts zu machen – das Schloss lässt sich nur langsam knacken.")),
-			FDef(TEXT("display_case"), LOCTEXT("DisplayCase", "Vitrine"), Furniture, 45.f, 350.f, S::Huge, 600).Holds(40.f, S::Medium).Openable().Lock(6.f, false).Glass()
+			FDef(TEXT("safe"), LOCTEXT("Safe", "Wandtresor"), Furniture, 120.f, 250.f, S::Huge).Fixed().Holds(30.f, S::Medium).Openable().Lock(20.f, 6, -1, EDCSkill::Safes, TEXT("stethoscope"))
+				.Look(P::Box, FVector(60, 60, 80), FLinearColor(0.22f, 0.23f, 0.25f)).Note(LOCTEXT("SafeDesc", "Fest verankert. Mit dem Brecheisen ist nichts zu machen – knacken nur mit Stethoskop und Tresor-Erfahrung.")),
+			FDef(TEXT("display_case"), LOCTEXT("DisplayCase", "Vitrine"), Furniture, 45.f, 350.f, S::Huge, 600).Holds(40.f, S::Medium).Openable().Lock(6.f, 4, -1).Glass()
 				.Look(P::Box, FVector(90, 50, 120), FLinearColor(0.55f, 0.75f, 0.85f)).Note(LOCTEXT("DisplayCaseDesc", "Glasvitrine mit kleinem Schloss. Das Glas lässt sich einschlagen – das hört man weit.")),
 			FDef(TEXT("wardrobe"), LOCTEXT("Wardrobe", "Kleiderschrank"), Furniture, 80.f, 1100.f, S::Huge, 200).Holds(600.f, S::Large).Openable()
 				.Look(P::Box, FVector(100, 55, 190), FLinearColor(0.45f, 0.3f, 0.18f)).Note(LOCTEXT("WardrobeDesc", "Groß genug, um sich darin zu verstecken.")),

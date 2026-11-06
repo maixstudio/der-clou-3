@@ -283,10 +283,15 @@ namespace DCItemWidgets
 		{
 			for (const EDCItemAction Action : Context->GetActions(Item))
 			{
+				// Greyed out when not possible; the tooltip says why or how long and how likely.
+				const FDCTaskCheck Check = Context->CheckAction ? Context->CheckAction(Item, Action) : FDCTaskCheck();
+				const FText Hint = Check.Describe();
 				Buttons->AddSlot().AutoWidth().Padding(2.f, 0.f, 0.f, 0.f)
 				[
 					SNew(SButton)
 					.IsFocusable(false)
+					.ToolTipText(Hint)
+					.ForegroundColor(Check.bPossible ? FLinearColor::White : MutedColor)
 					.ContentPadding(FMargin(4.f, 0.f))
 					.OnClicked_Lambda([Context, WeakItem, Action]()
 					{
@@ -298,6 +303,7 @@ namespace DCItemWidgets
 					})
 					[
 						SNew(STextBlock).Text(DCItems::DescribeAction(Action)).Font(Font(10))
+						.ColorAndOpacity(Check.bPossible ? FLinearColor::White : MutedColor)
 					]
 				];
 			}
@@ -336,7 +342,17 @@ namespace DCItemWidgets
 		}
 		if (!Item->IsContainer())
 		{
-			return Tile;
+			if (Item->GetContents().IsEmpty())
+			{
+				return Tile;
+			}
+			// Not a container itself, but it has parts (the desk's drawer): list them.
+			TSharedRef<SVerticalBox> Parts = SNew(SVerticalBox) + SVerticalBox::Slot().AutoHeight()[Tile];
+			for (UDCItem* Part : Item->GetContents())
+			{
+				Parts->AddSlot().AutoHeight().Padding(Indent, 2.f, 0.f, 0.f)[MakeItem(Part, Context, true)];
+			}
+			return Parts;
 		}
 
 		// Container: fill level and, while open, what is inside.

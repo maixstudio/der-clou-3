@@ -8,6 +8,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
@@ -47,6 +48,11 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 		}
 	};
 	Context->GetActions = [](UDCItem* Item) { return DefaultActions(Item, false, true); };
+	Context->CheckAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
+	{
+		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
+		return Member ? Member->CheckItemAction(Item, Action) : FDCTaskCheck();
+	};
 	Context->DoAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
 	{
 		ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
@@ -144,7 +150,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 									return FText::GetEmpty();
 								}
 								return FText::Format(LOCTEXT("Summary", "Gewicht {0} / {1}  ·  Tempo {2} %  ·  Wert {3}"),
-									DCItems::FormatKg(Inventory->GetTotalMass()), DCItems::FormatKg(UDCInventoryComponent::MaxCarryMassKg),
+									DCItems::FormatKg(Inventory->GetTotalMass()), DCItems::FormatKg(Inventory->GetMaxCarryMass()),
 									FText::AsNumber(FMath::RoundToInt(Inventory->GetSpeedFactor() * 100.f)), DCItems::FormatEuro(Inventory->GetTotalValue()));
 							})
 							.Font(Font(11))
@@ -283,10 +289,62 @@ void UDCInventoryPanel::RebuildContent()
 		Content->AddSlot().AutoHeight()[DCItemWidgets::MakeMuted(LOCTEXT("Nobody", "Niemand ausgewählt."), 12)];
 		return;
 	}
+	Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)[MakeSkills()];
 	for (const EDCEquipSlot EquipSlot : { EDCEquipSlot::Head, EDCEquipSlot::Body, EDCEquipSlot::Vest, EDCEquipSlot::Back, EDCEquipSlot::LeftHand, EDCEquipSlot::RightHand })
 	{
 		Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 3.f)[MakeSlotRow(EquipSlot)];
 	}
+}
+
+TSharedRef<SWidget> UDCInventoryPanel::MakeSkills()
+{
+	using namespace DCItemWidgets;
+	const FDCSkills& Skills = Crew->GetSkills();
+	// Two columns: name, bar, value. Skills nothing uses yet are dimmed.
+	TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+	TSharedPtr<SHorizontalBox> Row;
+	for (int32 Index = 0; Index < static_cast<int32>(EDCSkill::Count); ++Index)
+	{
+		const EDCSkill Skill = static_cast<EDCSkill>(Index);
+		if (Index % 2 == 0)
+		{
+			Rows->AddSlot().AutoHeight().Padding(0.f, 1.f)[SAssignNew(Row, SHorizontalBox)];
+		}
+		const int32 Value = Skills.Get(Skill);
+		const bool bUnused = DCSkills::IsUnused(Skill);
+		Row->AddSlot().FillWidth(1.f).Padding(0.f, 0.f, 10.f, 0.f)
+		[
+			SNew(SHorizontalBox)
+			.ToolTipText(bUnused ? LOCTEXT("SkillUnused", "Wird noch nicht gebraucht.") : FText::GetEmpty())
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(SBox).WidthOverride(80.f)
+				[
+					SNew(STextBlock).Text(DCSkills::Name(Skill)).Font(Font(10, !bUnused)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
+				]
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+			[
+				SNew(SBox).HeightOverride(5.f)
+				[
+					SNew(SProgressBar).Style(&BarStyle()).Percent(Value / 10.f).FillColorAndOpacity(bUnused ? MutedColor : TitleColor)
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5.f, 0.f, 0.f, 0.f)
+			[
+				SNew(SBox).WidthOverride(16.f)
+				[
+					SNew(STextBlock).Text(FText::AsNumber(Value)).Font(Font(10, true)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
+				]
+			]
+		];
+	}
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 3.f)
+		[
+			SNew(STextBlock).Text(LOCTEXT("SkillsTitle", "Fähigkeiten")).Font(Font(12, true)).ColorAndOpacity(TextColor)
+		]
+		+ SVerticalBox::Slot().AutoHeight()[Rows];
 }
 
 TSharedRef<SWidget> UDCInventoryPanel::MakeSlotRow(EDCEquipSlot EquipSlot)

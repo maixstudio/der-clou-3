@@ -46,6 +46,7 @@ protected:
 private:
 	void RebuildContent();
 	TSharedRef<SWidget> MakeSlotRow(EDCEquipSlot EquipSlot);
+	TSharedRef<SWidget> MakeSkills();
 	void Unbind();
 
 	TWeakObjectPtr<ADCCrewCharacter> Crew;
