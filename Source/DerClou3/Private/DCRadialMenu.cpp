@@ -14,7 +14,7 @@ namespace
 	const FVector2D ButtonSize(150.0, 40.0);
 	const FVector2D TitleSize(130.0, 30.0);
 
-	FSlateFontInfo Font(int32 Size, bool bBold)
+	FSlateFontInfo RadialFont(int32 Size, bool bBold)
 	{
 		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
 	}
@@ -69,7 +69,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 			.VAlign(VAlign_Center)
 			.Visibility(EVisibility::HitTestInvisible)
 			[
-				SNew(STextBlock).Text(Title).Font(Font(12, true)).ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.25f))
+				SNew(STextBlock).Text(Title).Font(RadialFont(12, true)).ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.25f))
 			]
 		];
 
@@ -100,7 +100,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 					return FReply::Handled();
 				})
 				[
-					SNew(STextBlock).Text(Options[Index].Label).Font(Font(13, true))
+					SNew(STextBlock).Text(Options[Index].Label).Font(RadialFont(13, true))
 				]
 			];
 	}

@@ -6,6 +6,9 @@
 
 #include "DCCrewCharacter.generated.h"
 
+class ADCItemPickup;
+class UDCInventoryComponent;
+class UDCItem;
 class UStaticMeshComponent;
 class UTextRenderComponent;
 
@@ -36,6 +39,16 @@ public:
 	/** Like InteractWithDoor, but runs after the current and already queued door actions. */
 	void QueueDoorAction(ADCDoor* Door, EDCDoorAction Action);
 
+	/** Walks to the item and picks it up (if it can be carried). Replaces whatever the crew member was doing. */
+	void PickUp(ADCItemPickup* Pickup);
+	/** Puts the item down at the crew member's feet. */
+	void DropItem(UDCItem* Item);
+
+	UDCInventoryComponent* GetInventory() const { return Inventory; }
+	bool IsBusy() const { return Phase != ETaskPhase::Idle; }
+	/** Last short feedback ("Klavier ist zu schwer für eine Person"), even after it faded. */
+	const FText& GetLastNotice() const { return Notice; }
+
 	/** What the crew member is doing right now (shown under the name). */
 	FText GetActivityText() const;
 
@@ -47,6 +60,20 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Crew")
 	FLinearColor BodyColor = FLinearColor(1.f, 0.42f, 0.05f);
+
+	/** What the crew member has on them when the game starts. */
+	UPROPERTY(EditAnywhere, Category = "Crew", meta = (GetOptions = "GetItemIdOptions"))
+	TArray<FName> StartItems = { TEXT("work_clothes"), TEXT("lockpicks"), TEXT("flashlight") };
+
+	/** Walking speed without load. */
+	UPROPERTY(EditAnywhere, Category = "Crew")
+	float BaseWalkSpeed = 250.f;
+
+	UFUNCTION()
+	TArray<FName> GetItemIdOptions() const;
+
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UDCInventoryComponent> Inventory;
 
 	/** Self-test: on play start, pick the lock of the nearest door (if needed) and walk through. */
 	UPROPERTY(EditAnywhere, Category = "Debug")
@@ -80,7 +107,9 @@ private:
 		ToDoor,          // walking to the stand point in front of the door
 		AtDoor,          // hand on the door
 		WaitingForDoor,  // door swings open, then walk through
-		ThroughDoor      // walking to the other side
+		ThroughDoor,     // walking to the other side
+		ToItem,          // walking to an item on the floor
+		PickingUp        // bending down for it
 	};
 
 	/** Starts an AI move; false if the target cannot be reached. OutGoal: the target on the nav mesh. */
@@ -94,6 +123,8 @@ private:
 	ADCDoor* FindNearestDoor() const;
 	void TickCloseFromSideTest();
 	void ShowNotice(const FText& Text);
+	void FinishPickUp();
+	void OnInventoryChanged();
 
 	bool bSelected = false;
 	ETaskPhase Phase = ETaskPhase::Idle;
@@ -109,6 +140,7 @@ private:
 		EDCDoorAction Action = EDCDoorAction::Open;
 	};
 	TArray<FQueuedDoorAction> DoorQueue;
+	TWeakObjectPtr<ADCItemPickup> TaskPickup;
 
 	FTimerHandle SelfTestTimer;
 	int32 SelfTestStep = 0;

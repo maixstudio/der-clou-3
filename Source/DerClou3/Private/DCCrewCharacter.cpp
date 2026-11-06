@@ -5,6 +5,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "DCInventoryComponent.h"
+#include "DCItem.h"
+#include "DCItemPickup.h"
 #include "DCVisuals.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
@@ -29,6 +32,10 @@ namespace
 	constexpr float NoticeSeconds = 2.5f;
 	/** A move that ends further than this from its goal was stopped by something in the way. */
 	constexpr double ArrivedTolerance = 60.0;
+	/** Time it takes to pick something up. */
+	constexpr float PickUpSeconds = 0.6f;
+	/** Gap between the crew member and an item they walk up to. */
+	constexpr double ItemReach = 40.0;
 	/** Name above the head (relative to the capsule centre); the activity line sits below it along the camera's up axis. */
 	constexpr double LabelHeight = 120.0;
 	constexpr double ActivityOffset = 30.0;
@@ -72,7 +79,9 @@ ADCCrewCharacter::ADCCrewCharacter()
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->bOrientRotationToMovement = true;
 	Movement->RotationRate = FRotator(0.0, 720.0, 0.0);
-	Movement->MaxWalkSpeed = 250.f;
+	Movement->MaxWalkSpeed = BaseWalkSpeed;
+
+	Inventory = CreateDefaultSubobject<UDCInventoryComponent>(TEXT("Inventory"));
 
 	// Clicks on the figure select it.
 	UCapsuleComponent* Capsule = GetCapsuleComponent();
@@ -102,9 +111,30 @@ void ADCCrewCharacter::OnConstruction(const FTransform& Transform)
 	ActivityLabel->SetText(FText::GetEmpty());
 }
 
+TArray<FName> ADCCrewCharacter::GetItemIdOptions() const
+{
+	TArray<FName> Ids;
+	for (const FDCItemDef& Def : DCItems::GetAll())
+	{
+		Ids.Add(Def.Id);
+	}
+	return Ids;
+}
+
 void ADCCrewCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	Inventory->OnChanged.AddUObject(this, &ADCCrewCharacter::OnInventoryChanged);
+	for (const FName Id : StartItems)
+	{
+		FText Reason;
+		UDCItem* Item = UDCItem::Create(Inventory, Id);
+		if (Item && !Inventory->AddAnywhere(Item, Reason))
+		{
+			UE_LOG(LogDerClou, Warning, TEXT("%s: start item %s does not fit: %s"), *GetName(), *Id.ToString(), *Reason.ToString());
+		}
+	}
+	OnInventoryChanged();
 	if (bDebugWalkThroughDoorOnStart)
 	{
 		// Give the AI controller and the nav mesh a moment to come up.
@@ -269,6 +299,7 @@ void ADCCrewCharacter::SetPhase(ETaskPhase InPhase)
 bool ADCCrewCharacter::MoveToLocation(const FVector& Location)
 {
 	TaskDoor.Reset();
+	TaskPickup.Reset();
 	DoorQueue.Reset();
 	const bool bStarted = StartMove(Location);
 	SetPhase(bStarted ? ETaskPhase::Walking : ETaskPhase::Idle);
@@ -278,6 +309,7 @@ bool ADCCrewCharacter::MoveToLocation(const FVector& Location)
 void ADCCrewCharacter::InteractWithDoor(ADCDoor* Door, EDCDoorAction Action)
 {
 	DoorQueue.Reset();
+	TaskPickup.Reset();
 	StartDoorTask(Door, Action);
 }
 
@@ -413,7 +445,114 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			SetPhase(ETaskPhase::Idle);
 		}
 		return;
+
+	case ETaskPhase::ToItem:
+		if (!TaskPickup.IsValid())
+		{
+			SetPhase(ETaskPhase::Idle);
+			return;
+		}
+		if (HasArrived())
+		{
+			if (FVector::Dist2D(GetActorLocation(), DoorGoal) > ArrivedTolerance)
+			{
+				ShowNotice(LOCTEXT("CannotReachItem", "kommt nicht hin"));
+				SetPhase(ETaskPhase::Idle);
+				return;
+			}
+			const FVector ToItem = TaskPickup->GetActorLocation() - GetActorLocation();
+			SetActorRotation(FRotator(0.0, ToItem.Rotation().Yaw, 0.0));
+			SetPhase(ETaskPhase::PickingUp);
+		}
+		return;
+
+	case ETaskPhase::PickingUp:
+		if (PhaseTime >= PickUpSeconds)
+		{
+			FinishPickUp();
+		}
+		return;
 	}
+}
+
+void ADCCrewCharacter::PickUp(ADCItemPickup* Pickup)
+{
+	UDCItem* Item = Pickup ? Pickup->GetItem() : nullptr;
+	if (!Item)
+	{
+		return;
+	}
+	// Do not walk all the way just to find out it does not fit.
+	const FText Reason = Inventory->CheckAdd(Item);
+	if (!Reason.IsEmpty())
+	{
+		ShowNotice(Reason);
+		return;
+	}
+	DoorQueue.Reset();
+	TaskDoor.Reset();
+	TaskPickup = Pickup;
+	const FVector ItemLocation = Pickup->GetActorLocation();
+	FVector Away = (GetActorLocation() - ItemLocation).GetSafeNormal2D();
+	if (Away.IsNearlyZero())
+	{
+		Away = -GetActorForwardVector();
+	}
+	if (StartMove(ItemLocation + Away * (Pickup->GetFootprintRadius() + ItemReach), &DoorGoal))
+	{
+		SetPhase(ETaskPhase::ToItem);
+		return;
+	}
+	ShowNotice(LOCTEXT("CannotReachItem", "kommt nicht hin"));
+	SetPhase(ETaskPhase::Idle);
+}
+
+void ADCCrewCharacter::FinishPickUp()
+{
+	ADCItemPickup* Pickup = TaskPickup.Get();
+	TaskPickup.Reset();
+	UDCItem* Item = Pickup ? Pickup->GetItem() : nullptr;
+	FText Reason;
+	if (Item && Inventory->AddAnywhere(Item, Reason))
+	{
+		// The item now belongs to the inventory; the pickup actor goes away.
+		Item->Rename(nullptr, Inventory, REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+		Pickup->Destroy();
+		ShowNotice(FText::Format(LOCTEXT("PickedUp", "{0} genommen"), Item->GetDisplayName()));
+		UE_LOG(LogDerClou, Log, TEXT("%s: picked up %s"), *GetName(), *Item->GetDefId().ToString());
+	}
+	else if (Item)
+	{
+		ShowNotice(Reason);
+		UE_LOG(LogDerClou, Log, TEXT("%s: cannot pick up %s: %s"), *GetName(), *Item->GetDefId().ToString(), *Reason.ToString());
+	}
+	SetPhase(ETaskPhase::Idle);
+}
+
+void ADCCrewCharacter::DropItem(UDCItem* Item)
+{
+	if (!Item || !Inventory->Remove(Item))
+	{
+		return;
+	}
+	const FVector Feet = GetActorLocation() - FVector(0.0, 0.0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	const FTransform Transform(FRotator(0.0, GetActorRotation().Yaw, 0.0), Feet + GetActorForwardVector() * 50.0);
+	ADCItemPickup* Pickup = GetWorld()->SpawnActorDeferred<ADCItemPickup>(ADCItemPickup::StaticClass(), Transform, nullptr, nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!Pickup)
+	{
+		return;
+	}
+	Item->Rename(nullptr, Pickup, REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
+	Pickup->SetItem(Item);
+	Pickup->FinishSpawning(Transform);
+	ShowNotice(FText::Format(LOCTEXT("Dropped", "{0} abgelegt"), Item->GetDisplayName()));
+	UE_LOG(LogDerClou, Log, TEXT("%s: dropped %s"), *GetName(), *Item->GetDefId().ToString());
+}
+
+void ADCCrewCharacter::OnInventoryChanged()
+{
+	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed * Inventory->GetSpeedFactor();
 }
 
 FText ADCCrewCharacter::GetActivityText() const
@@ -437,6 +576,8 @@ FText ADCCrewCharacter::GetActivityText() const
 		return TaskDoor.IsValid() && TaskDoor->IsOpen() ? LOCTEXT("Passing", "geht durch die Tür") : LOCTEXT("Opening", "öffnet die Tür");
 	case ETaskPhase::WaitingForDoor: return LOCTEXT("OpeningWait", "öffnet die Tür");
 	case ETaskPhase::ThroughDoor: return LOCTEXT("Through", "geht durch die Tür");
+	case ETaskPhase::ToItem: return LOCTEXT("ToItem", "geht hin");
+	case ETaskPhase::PickingUp: return LOCTEXT("PickingUp", "hebt auf");
 	}
 	return FText::GetEmpty();
 }

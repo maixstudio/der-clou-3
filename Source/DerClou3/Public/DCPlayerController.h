@@ -8,12 +8,15 @@
 class ADCClickMarker;
 class ADCCrewCharacter;
 class ADCDoor;
+class ADCItemPickup;
 class UDCInfoPanel;
+class UDCInventoryPanel;
 class UDCRadialMenu;
 
 /**
  * Mouse control: click a crew member to select it, click the floor to send the selected
- * crew member there, click a door to choose what to do with it (radial menu).
+ * crew member there, click a door or an item to choose what to do with it (radial menu).
+ * I opens the inventory of the selected crew member.
  */
 UCLASS()
 class DERCLOU3_API ADCPlayerController : public APlayerController
@@ -32,7 +35,15 @@ private:
 	void HandleClick();
 	void Select(ADCCrewCharacter* Crew);
 	void OpenDoorMenu(ADCDoor* Door);
+	void OpenPickupMenu(ADCItemPickup* Pickup);
 	void UpdateHoverCursor();
+	ADCItemPickup* FindPickup(FName ItemId) const;
+
+	/** Command-line self-test -DCSelfTest=Inventory: pick up the test items, check the rules, screenshot, quit. */
+	void StartInventorySelfTest();
+	void FinishSelfTest(bool bPassed);
+	/** Each step returns true when it is done. */
+	TArray<TFunction<bool()>> SelfTestSteps;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ADCCrewCharacter> Selected;
@@ -45,4 +56,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCInfoPanel> InfoPanel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCInventoryPanel> InventoryPanel;
+
+	TWeakObjectPtr<ADCItemPickup> HoveredPickup;
 };

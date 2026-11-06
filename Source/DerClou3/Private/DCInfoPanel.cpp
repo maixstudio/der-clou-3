@@ -13,7 +13,7 @@
 
 namespace
 {
-	FSlateFontInfo Font(int32 Size, bool bBold = false)
+	FSlateFontInfo InfoFont(int32 Size, bool bBold = false)
 	{
 		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
 	}
@@ -57,7 +57,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetTitle() : FText::GetEmpty(); })
-							.Font(Font(15, true))
+							.Font(InfoFont(15, true))
 							.ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.25f))
 						]
 						+ SHorizontalBox::Slot().AutoWidth()
@@ -74,7 +74,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 								return FReply::Handled();
 							})
 							[
-								SNew(STextBlock).Text(FText::FromString(TEXT("×"))).Font(Font(13, true))
+								SNew(STextBlock).Text(FText::FromString(TEXT("×"))).Font(InfoFont(13, true))
 							]
 						]
 					]
@@ -82,7 +82,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 					[
 						SNew(STextBlock)
 						.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetKind() : FText::GetEmpty(); })
-						.Font(Font(11))
+						.Font(InfoFont(11))
 						.ColorAndOpacity(FLinearColor(0.6f, 0.63f, 0.68f))
 					]
 					+ SVerticalBox::Slot().AutoHeight()
@@ -92,14 +92,14 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetLabels() : FText::GetEmpty(); })
-							.Font(Font(12))
+							.Font(InfoFont(12))
 							.ColorAndOpacity(FLinearColor(0.65f, 0.68f, 0.73f))
 						]
 						+ SHorizontalBox::Slot().AutoWidth()
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetValues() : FText::GetEmpty(); })
-							.Font(Font(12, true))
+							.Font(InfoFont(12, true))
 							.ColorAndOpacity(FLinearColor(0.93f, 0.94f, 0.96f))
 						]
 					]
