@@ -58,14 +58,30 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Porzellanfigur.
   - Getragenes sichtbar an der Figur: groß vor dem Körper, sonst rechte/linke Hand, Rucksack am Rücken.
   - Selbsttest: `-game -DCSelfTest=Noise` (Screenshots `noise_selftest*.png`).
-- Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer, schleichen
-  vs. rennen, zu zweit tragen / Sackkarre, Übergeben zwischen Crew-Mitgliedern, sich im Schrank
-  verstecken, zerbrechliche Beute (Porzellan) beim Fallenlassen. Katalog als Data Assets erst, wenn
-  der User Werte selbst im Editor ändern will.
+- **Fähigkeiten (Schritt 4)**, angelehnt an die Bandenmitglieder des Genres (eigene Bezeichnungen):
+  - `FDCSkills` (`DCSkills.h`) pro Crew-Mitglied, 0–10: Schlösser, Tresore, Elektronik, Sprengstoff,
+    Fahren, Kampf, Aufpassen, Kraft. Benutzt werden bisher Schlösser, Tresore, Kraft (Rest gedimmt).
+  - `DCSkills::Evaluate(Skill, Wert, Schwierigkeit, Grunddauer)`: mehr als 2 unter der Schwierigkeit
+    = unmöglich; 1–2 darunter = Dauer ×1,5/×2, 25/50 % Fehlschlag, lauter; gleich = normal; darüber =
+    schneller (bis ×0,4) und leiser (nur Klicken; Holz/Glas krachen immer). Fehlschlag: Zeit weg,
+    Schloss bleibt zu.
+  - Schlösser im Katalog: Fertigkeit, Schwierigkeit, Werkzeug (`Lock(...)`), Aufbrechen mit Kraft-
+    Schwierigkeit. Tresor: Tresore 6 + Stethoskop, nicht aufzubrechen. Türen: `LockDifficulty`.
+  - Voraussetzungen (`CheckItemAction`/`CheckDoorAction`): Werkzeug griffbereit (Hand, Kleidung,
+    Weste – nicht tief im Rucksack), Knacken und Aufbrechen beide Hände frei (die Werkzeug-Hand zählt
+    als frei), Öffnen/Schließen/Einschlagen eine Hand. Kraft bestimmt die Traglast (40 + 4 × Kraft kg).
+  - Knöpfe: Tooltip mit Dauer, Erfolgschance und Fertigkeit; unmögliche ausgegraut, Klick sagt warum.
+  - Crew: Vic (Schlösser 6, Kraft 6, Tresore 1, Dietrich-Set) und Rosa (Tresore 7, Elektronik 6,
+    Schlösser 3, Kraft 3, Stethoskop, Outliner „Crew“). Anklicken wechselt, das Inventar zeigt die Werte.
+- Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer (Aufpassen),
+  Alarmanlagen (Elektronik), schleichen vs. rennen, zu zweit tragen / Sackkarre, Übergeben zwischen
+  Crew-Mitgliedern, sich im Schrank verstecken, zerbrechliche Beute, Fähigkeiten lernen/verbessern.
+  Katalog als Data Assets erst, wenn der User Werte selbst im Editor ändern will.
 
 **Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
 Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus),
-Lärm-Balance (wie schnell der Nachbar misstrauisch wird).
+Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus.
+- Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

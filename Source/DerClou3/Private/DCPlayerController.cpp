@@ -543,6 +543,13 @@ void ADCPlayerController::StartContainerSelfTest()
 	SelfTestSteps.Add(Wait(1.5f));
 	// Desk: locked drawer > jewellery box > ring.
 	SelfTestSteps.Add(SearchStep(TEXT("desk")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this]()
+	{
+		FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/containers_desk.png")), true, false);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
 	SelfTestSteps.Add(Act(TEXT("desk"), TEXT("ring"), EDCItemAction::Take, true));
 	SelfTestSteps.Add(Act(TEXT("desk"), TEXT("desk_drawer"), EDCItemAction::Open, true));
 	SelfTestSteps.Add(Act(TEXT("desk"), TEXT("desk_drawer"), EDCItemAction::Force, true));
@@ -596,11 +603,19 @@ void ADCPlayerController::StartContainerSelfTest()
 		if (Rosa)
 		{
 			Select(Rosa);
-			// Below her lock skill: possible, but slower and with a chance to fail.
+			// Without lockpicks she cannot pick the display case at all ...
 			ADCItemPickup* Case = FindPickup(TEXT("display_case"));
-			const FDCTaskCheck Check = Case ? Rosa->CheckItemAction(Case->GetItem(), EDCItemAction::PickLock) : FDCTaskCheck();
-			UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa picks the display case -> %s"), *Check.Describe().ToString());
-			Expect(Check.bPossible && Check.FailChance > 0.f, TEXT("Rosa can pick the display case, but may fail"));
+			const FDCTaskCheck NoTool = Case ? Rosa->CheckItemAction(Case->GetItem(), EDCItemAction::PickLock) : FDCTaskCheck();
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa picks the display case -> %s"), *NoTool.Describe().ToString());
+			Expect(!NoTool.bPossible, TEXT("Rosa has no lockpicks"));
+			// ... and with them it would be one below her lock skill: slower, may fail.
+			const FDCItemDef* CaseDef = DCItems::Find(TEXT("display_case"));
+			const FDCTaskCheck Skill = DCSkills::Evaluate(EDCSkill::Locks, Rosa->GetSkills().Locks, CaseDef->LockDifficulty, CaseDef->LockPickSeconds, Rosa->GetCrewName());
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa's lock skill on the display case -> %s"), *Skill.Describe().ToString());
+			Expect(Skill.bPossible && Skill.FailChance > 0.f && Skill.Seconds > CaseDef->LockPickSeconds, TEXT("below the difficulty: possible, slower, may fail"));
+			const FDCTaskCheck TooHard = DCSkills::Evaluate(EDCSkill::Safes, 1, 6, 20.f, FText::FromString(TEXT("Vic")));
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: Vic's safe skill -> %s"), *TooHard.Describe().ToString());
+			Expect(!TooHard.bPossible, TEXT("far below the difficulty: impossible"));
 		}
 		return true;
 	});

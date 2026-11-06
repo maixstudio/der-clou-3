@@ -173,8 +173,10 @@ void ADCCrewCharacter::BeginPlay()
 
 	// Command-line self-test: -DCSelfTest=CloseFromSide (walk through, step behind the open
 	// panel, close the door from there, then quit).
+	// Only the first crew member runs it.
 	FString SelfTest;
-	if (FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), SelfTest) && SelfTest == TEXT("CloseFromSide"))
+	TActorIterator<ADCCrewCharacter> First(GetWorld());
+	if (First && *First == this && FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), SelfTest) && SelfTest == TEXT("CloseFromSide"))
 	{
 		GetWorldTimerManager().SetTimer(SelfTestTimer, this, &ADCCrewCharacter::TickCloseFromSideTest, 0.25f, true, 1.5f);
 	}
