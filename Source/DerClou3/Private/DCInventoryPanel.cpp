@@ -4,7 +4,9 @@
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "Input/DragAndDrop.h"
+#include "Brushes/SlateColorBrush.h"
 #include "Styling/CoreStyle.h"
+#include "Styling/SlateTypes.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -194,7 +196,17 @@ namespace
 
 	TSharedRef<SWidget> MutedText(const FText& Text, int32 Size = 11)
 	{
-		return SNew(STextBlock).Text(Text).Font(PanelFont(Size)).ColorAndOpacity(MutedColor);
+		return SNew(STextBlock).Text(Text).Font(PanelFont(Size)).ColorAndOpacity(MutedColor).AutoWrapText(true);
+	}
+
+	/** Plain flat bar; the default style tints the fill blue. */
+	const FProgressBarStyle& FillBarStyle()
+	{
+		static const FProgressBarStyle Style = FProgressBarStyle()
+			.SetBackgroundImage(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.5f)))
+			.SetFillImage(FSlateColorBrush(FLinearColor::White))
+			.SetMarqueeImage(FSlateColorBrush(FLinearColor::White));
+		return Style;
 	}
 }
 
@@ -525,6 +537,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeContainerSection(UDCItem* Container)
 				SNew(SBox).HeightOverride(6.f)
 				[
 					SNew(SProgressBar)
+					.Style(&FillBarStyle())
 					.Percent(Def.CapacityLiters > 0.f ? Container->GetUsedVolume() / Def.CapacityLiters : 0.f)
 					.FillColorAndOpacity(TitleColor)
 				]
@@ -579,7 +592,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeItemTile(UDCItem* Item)
 					SNew(STextBlock)
 					.Text(Item->GetDisplayName())
 					.Font(PanelFont(12, true))
-					.ColorAndOpacity(Item->GetTotalValue() > 0 ? LootColor : TextColor)
+					.ColorAndOpacity(Item->GetDef().Value > 0 ? LootColor : TextColor)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.f, 0.f)
 				[

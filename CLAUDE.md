@@ -17,8 +17,24 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   die Tür zu ist. Kleine Befehlskette (`QueueDoorAction`), Tätigkeit/Hinweise unter dem Namen.
 - `IDCInteractable` + `UDCInfoPanel`: „Info“ im Radialmenü zeigt live alle Infos zum Objekt (oben rechts).
 - `ADCCameraPawn`: WASD, Q/E bzw. rechte/mittlere Maustaste ziehen (drehen/neigen), Mausrad.
+- **Inventar (Schritt 1)**, angelehnt an Arma, aber einfacher:
+  - Katalog in C++ (`DCItemTypes.cpp`, später evtl. Data Assets): Gewicht, Volumen (L), Größenklasse
+    klein/mittel/groß/sperrig, Wert, Trageplatz, Behälter-Fassung.
+  - `UDCInventoryComponent` an der Figur: Kopf, Kleidung, Weste, Rücken, linke/rechte Hand. Behälter
+    (Kleidungstaschen 3 L klein, Weste 6 L klein, Rucksack 25 L bis mittel). „Groß“ nur mit beiden
+    Händen, „sperrig“ oder > 40 kg zu schwer für eine Person, max. 60 kg. Last ab 15 kg und beide
+    Hände voll bremsen.
+  - `ADCItemPickup` in der Welt (Ordner „Gegenstaende“, 9 Testgegenstände inkl. Klavier):
+    Radialmenü Aufheben/Info, Name beim Überfahren. Vic startet mit Arbeitskleidung, Dietrich, Taschenlampe.
+  - `UDCInventoryPanel` (Taste I / Knopf unten links): Drag & Drop, grün/rot beim Ziehen, Begründung
+    bei Ablehnung, „ablegen“ bzw. aus dem Fenster ziehen = auf den Boden.
+  - Selbsttest: `-game -DCSelfTest=Inventory` (Aufheben, Regeln, Screenshot nach
+    `Saved/Screenshots/inventory_selftest.png`).
+  - Offen für spätere Schritte: Gegenstände in der Hand sichtbar an der Figur, zu zweit tragen /
+    Sackkarre, Übergeben zwischen Crew-Mitgliedern, Gegenstände in Schränken/Kisten.
 
-**Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen.
+**Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
+Inventar per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus).
 
 **Wichtige Erkenntnisse:**
 - NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
