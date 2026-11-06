@@ -30,13 +30,30 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     bei Ablehnung, „ablegen“ bzw. aus dem Fenster ziehen = auf den Boden.
   - Selbsttest: `-game -DCSelfTest=Inventory` (Aufheben, Regeln, Screenshot nach
     `Saved/Screenshots/inventory_selftest.png`).
-  - Offen für spätere Schritte: Gegenstände in der Hand sichtbar an der Figur, zu zweit tragen /
-    Sackkarre, Übergeben zwischen Crew-Mitgliedern, Gegenstände in Schränken/Kisten.
+- **Gegenstände in Gegenständen (Schritt 2):**
+  - Möbel sind auch Gegenstände (`UDCItem`), beliebig verschachtelt: Schreibtisch > Schublade
+    (Einbauteil, `FixedParts`) > Schmuckschatulle > Ring. Eigenschaften im Katalog: beweglich/fest
+    eingebaut, Behälter (Liter, max. Größe), mit Tür/Deckel, starr/weich (weich wächst mit Inhalt),
+    Schloss (Knack-Dauer, aufzubrechen ja/nein). Zustände: zu/offen/versperrt/aufgebrochen.
+  - Knacken braucht das Dietrich-Set (auch bei Türen), Aufbrechen das Brecheisen (Schloss danach
+    kaputt). Tresor: fest eingebaut, nur knackbar (20 s).
+  - Startinhalt pro platziertem `ADCItemPickup`: `Contents` (ItemId + Pfad `Inside`, z. B.
+    „desk_drawer/jewelry_box“; ein Eintrag mit der Id eines Einbauteils stellt dessen Zustand ein).
+  - „Durchsuchen“: Figur geht hin, `UDCContainerPanel` rechts zeigt den Baum (öffnen, knacken,
+    aufbrechen, nehmen), Drag & Drop zwischen Behälter und Inventar, Verstecken in Möbeln (Sofa-Polster).
+    Fenster schließt, wenn die Figur weggeht. Gemeinsame Slate-Bausteine in `DCItemWidgets`.
+  - Raum: Schreibtisch + Stuhl, Wandtresor, Kleiderschrank (Mantel > Brieftasche > Geld), Sofa (Geld
+    versteckt), Sessel, Esstisch + 2 Stühle, Umzugskarton, Schmuckschatulle (versperrt), Klavier u. a.
+  - Selbsttest: `-game -DCSelfTest=Containers` (Screenshot `containers_selftest.png`).
+- Offen für spätere Schritte: Gegenstände in der Hand sichtbar an der Figur, zu zweit tragen /
+  Sackkarre, Übergeben zwischen Crew-Mitgliedern, sich im Schrank verstecken, Lärm beim Aufbrechen,
+  Dinge kaputt machen (Vitrine einschlagen), Katalog als Data Assets.
 
 **Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
-Inventar per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus).
+Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus).
 
 **Wichtige Erkenntnisse:**
+- MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.
 - NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
   100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock.
 - Slate-Buttons mit `IsFocusable(false)`, sonst kommen Tastatureingaben danach nicht mehr im Spiel an.
