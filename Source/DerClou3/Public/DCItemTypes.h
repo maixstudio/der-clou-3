@@ -34,28 +34,59 @@ enum class EDCItemShape : uint8
 	Sphere
 };
 
-/** Everything that is the same for all items of one kind ("Brecheisen", "Rucksack", …). */
+/** What a crew member can do with an item (in the inventory or in a container in the world). */
+enum class EDCItemAction : uint8
+{
+	Open,
+	Close,
+	/** Pick the lock with the lockpicks (quiet, takes a while, the lock stays intact). */
+	PickLock,
+	/** Break it open with the crowbar (fast, the lock is broken for good). */
+	Force,
+	/** From a container in the world into the inventory. */
+	Take,
+	/** From the inventory onto the floor. */
+	Drop
+};
+
+/**
+ * Everything that is the same for all items of one kind ("Brecheisen", "Schreibtisch", …).
+ * Furniture is an item too: it is just too big or too heavy to carry, or fixed in place.
+ */
 struct FDCItemDef
 {
 	FName Id;
 	FText Name;
-	/** Category shown in the info panel, e.g. "Werkzeug", "Beute". */
+	/** Category shown in the info panel, e.g. "Werkzeug", "Beute", "Möbel". */
 	FText Kind;
 	FText Description;
 
 	float MassKg = 0.f;
-	/** Space it takes up in a container. */
+	/** Space it takes up in a container (outer size). */
 	float VolumeLiters = 0.f;
 	EDCItemSize Size = EDCItemSize::Small;
 	/** Fence value in euros (0 = worthless). */
 	int32 Value = 0;
+	/** False: fixed in place (built-in, bolted down) – nobody can move it. */
+	bool bMovable = true;
 
 	/** Head, Body, Vest or Back if it can be worn there; None otherwise. */
 	EDCEquipSlot WearSlot = EDCEquipSlot::None;
-	/** > 0 makes it a container (pockets of clothes, vest, backpack). */
+
+	/** > 0 makes it a container (pockets, drawer, safe, cushions as a hiding place, …). */
 	float CapacityLiters = 0.f;
 	/** Largest size class that fits into this container. */
 	EDCItemSize MaxContentSize = EDCItemSize::Small;
+	/** Has a door, lid or drawer front: contents can only be reached while it is open. */
+	bool bOpenable = false;
+	/** Rigid (box, safe): outer volume stays the same. Soft (bag, backpack): grows with the contents. */
+	bool bRigid = true;
+	/** Can be locked. 0 = no lock; otherwise the time it takes to pick it. */
+	float LockPickSeconds = 0.f;
+	/** The lock can be broken with a crowbar. */
+	bool bForceable = false;
+	/** Built-in parts every item of this kind has (the drawers of a desk). They cannot be taken out. */
+	TArray<FName> FixedParts;
 
 	EDCItemShape Shape = EDCItemShape::Box;
 	/** Size of the world representation in cm (X, Y, Z). */
@@ -63,6 +94,9 @@ struct FDCItemDef
 	FLinearColor Color = FLinearColor::Gray;
 
 	bool IsContainer() const { return CapacityLiters > 0.f; }
+	bool HasLock() const { return LockPickSeconds > 0.f; }
+	/** Furniture and other big things stand in the way. */
+	bool IsObstacle() const { return Size >= EDCItemSize::Large; }
 };
 
 namespace DCItems
@@ -74,9 +108,16 @@ namespace DCItems
 
 	DERCLOU3_API FText DescribeSize(EDCItemSize Size);
 	DERCLOU3_API FText DescribeSlot(EDCEquipSlot Slot);
+	DERCLOU3_API FText DescribeAction(EDCItemAction Action);
 
 	/** "2,5 kg", "12 L", "4.500 €" (German number format). */
 	DERCLOU3_API FText FormatKg(float Kg);
 	DERCLOU3_API FText FormatLiters(float Liters);
 	DERCLOU3_API FText FormatEuro(int32 Euro);
+
+	/** Tools the actions need. */
+	inline const FName LockpicksId(TEXT("lockpicks"));
+	inline const FName CrowbarId(TEXT("crowbar"));
+	/** Breaking a lock open takes this long. */
+	constexpr float ForceSeconds = 3.f;
 }

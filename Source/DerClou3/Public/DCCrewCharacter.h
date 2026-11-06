@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "DCDoor.h"
+#include "DCItemTypes.h"
 #include "GameFramework/Character.h"
 
 #include "DCCrewCharacter.generated.h"
@@ -11,6 +12,8 @@ class UDCInventoryComponent;
 class UDCItem;
 class UStaticMeshComponent;
 class UTextRenderComponent;
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FDCOnContainerReached, ADCItemPickup*);
 
 /**
  * A crew member: a real Unreal character, controlled by an AI controller and walking on the
@@ -43,6 +46,17 @@ public:
 	void PickUp(ADCItemPickup* Pickup);
 	/** Puts the item down at the crew member's feet. */
 	void DropItem(UDCItem* Item);
+	/** Walks to a container in the world (desk, safe, ...); OnContainerReached fires on arrival. */
+	void Search(ADCItemPickup* Pickup);
+	FDCOnContainerReached OnContainerReached;
+	/**
+	 * Does something with an item on the crew member or in a container next to them. Opening and
+	 * closing is instant; picking or breaking a lock takes a while. Source: the pickup the item
+	 * belongs to, if it lies in the world. Returns why it is not possible (empty = done or started).
+	 */
+	FText PerformItemAction(UDCItem* Item, EDCItemAction Action, ADCItemPickup* Source = nullptr);
+	/** The item being worked on right now (lock being picked), if any. */
+	const UDCItem* GetWorkItem() const;
 
 	UDCInventoryComponent* GetInventory() const { return Inventory; }
 	bool IsBusy() const { return Phase != ETaskPhase::Idle; }
@@ -108,8 +122,9 @@ private:
 		AtDoor,          // hand on the door
 		WaitingForDoor,  // door swings open, then walk through
 		ThroughDoor,     // walking to the other side
-		ToItem,          // walking to an item on the floor
-		PickingUp        // bending down for it
+		ToItem,          // walking to an item on the floor or a container
+		PickingUp,       // bending down for it
+		ItemWork         // picking or breaking a lock
 	};
 
 	/** Starts an AI move; false if the target cannot be reached. OutGoal: the target on the nav mesh. */
@@ -124,6 +139,9 @@ private:
 	void TickCloseFromSideTest();
 	void ShowNotice(const FText& Text);
 	void FinishPickUp();
+	void WalkToPickup(ADCItemPickup* Pickup, bool bSearch);
+	void StartItemWork(UDCItem* Item, EDCItemAction Action, float Seconds);
+	void FinishItemWork();
 	void OnInventoryChanged();
 
 	bool bSelected = false;
@@ -141,6 +159,11 @@ private:
 	};
 	TArray<FQueuedDoorAction> DoorQueue;
 	TWeakObjectPtr<ADCItemPickup> TaskPickup;
+	/** Walking to TaskPickup to search it rather than to pick it up. */
+	bool bSearchTask = false;
+	TWeakObjectPtr<UDCItem> TaskItem;
+	EDCItemAction TaskItemAction = EDCItemAction::PickLock;
+	float TaskWorkSeconds = 0.f;
 
 	FTimerHandle SelfTestTimer;
 	int32 SelfTestStep = 0;

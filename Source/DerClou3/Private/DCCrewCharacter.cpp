@@ -300,6 +300,7 @@ bool ADCCrewCharacter::MoveToLocation(const FVector& Location)
 {
 	TaskDoor.Reset();
 	TaskPickup.Reset();
+	TaskItem.Reset();
 	DoorQueue.Reset();
 	const bool bStarted = StartMove(Location);
 	SetPhase(bStarted ? ETaskPhase::Walking : ETaskPhase::Idle);
@@ -310,6 +311,7 @@ void ADCCrewCharacter::InteractWithDoor(ADCDoor* Door, EDCDoorAction Action)
 {
 	DoorQueue.Reset();
 	TaskPickup.Reset();
+	TaskItem.Reset();
 	StartDoorTask(Door, Action);
 }
 
@@ -327,6 +329,12 @@ void ADCCrewCharacter::StartDoorTask(ADCDoor* Door, EDCDoorAction Action)
 {
 	if (!Door)
 	{
+		return;
+	}
+	if (Action == EDCDoorAction::PickLock && !Inventory->HasTool(DCItems::LockpicksId))
+	{
+		ShowNotice(LOCTEXT("NeedLockpicks", "Ohne Dietrich-Set geht das nicht"));
+		SetPhase(ETaskPhase::Idle);
 		return;
 	}
 	TaskDoor = Door;
@@ -462,7 +470,27 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			}
 			const FVector ToItem = TaskPickup->GetActorLocation() - GetActorLocation();
 			SetActorRotation(FRotator(0.0, ToItem.Rotation().Yaw, 0.0));
+			if (bSearchTask)
+			{
+				ADCItemPickup* Container = TaskPickup.Get();
+				TaskPickup.Reset();
+				SetPhase(ETaskPhase::Idle);
+				OnContainerReached.Broadcast(Container);
+				return;
+			}
 			SetPhase(ETaskPhase::PickingUp);
+		}
+		return;
+
+	case ETaskPhase::ItemWork:
+		if (!TaskItem.IsValid())
+		{
+			SetPhase(ETaskPhase::Idle);
+			return;
+		}
+		if (PhaseTime >= TaskWorkSeconds)
+		{
+			FinishItemWork();
 		}
 		return;
 
@@ -489,9 +517,24 @@ void ADCCrewCharacter::PickUp(ADCItemPickup* Pickup)
 		ShowNotice(Reason);
 		return;
 	}
+	WalkToPickup(Pickup, false);
+}
+
+void ADCCrewCharacter::Search(ADCItemPickup* Pickup)
+{
+	if (Pickup && Pickup->GetItem())
+	{
+		WalkToPickup(Pickup, true);
+	}
+}
+
+void ADCCrewCharacter::WalkToPickup(ADCItemPickup* Pickup, bool bSearch)
+{
 	DoorQueue.Reset();
 	TaskDoor.Reset();
+	TaskItem.Reset();
 	TaskPickup = Pickup;
+	bSearchTask = bSearch;
 	const FVector ItemLocation = Pickup->GetActorLocation();
 	FVector Away = (GetActorLocation() - ItemLocation).GetSafeNormal2D();
 	if (Away.IsNearlyZero())
@@ -516,7 +559,6 @@ void ADCCrewCharacter::FinishPickUp()
 	if (Item && Inventory->AddAnywhere(Item, Reason))
 	{
 		// The item now belongs to the inventory; the pickup actor goes away.
-		Item->Rename(nullptr, Inventory, REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
 		Pickup->Destroy();
 		ShowNotice(FText::Format(LOCTEXT("PickedUp", "{0} genommen"), Item->GetDisplayName()));
 		UE_LOG(LogDerClou, Log, TEXT("%s: picked up %s"), *GetName(), *Item->GetDefId().ToString());
@@ -543,11 +585,126 @@ void ADCCrewCharacter::DropItem(UDCItem* Item)
 	{
 		return;
 	}
-	Item->Rename(nullptr, Pickup, REN_DontCreateRedirectors | REN_NonTransactional | REN_DoNotDirty);
 	Pickup->SetItem(Item);
 	Pickup->FinishSpawning(Transform);
 	ShowNotice(FText::Format(LOCTEXT("Dropped", "{0} abgelegt"), Item->GetDisplayName()));
 	UE_LOG(LogDerClou, Log, TEXT("%s: dropped %s"), *GetName(), *Item->GetDefId().ToString());
+}
+
+const UDCItem* ADCCrewCharacter::GetWorkItem() const
+{
+	return Phase == ETaskPhase::ItemWork ? TaskItem.Get() : nullptr;
+}
+
+FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, ADCItemPickup* Source)
+{
+	if (!Item)
+	{
+		return FText::GetEmpty();
+	}
+	const FDCItemDef& Def = Item->GetDef();
+	// Doors, lids and locks of things inside a closed container cannot be reached.
+	if (Action != EDCItemAction::Take && Action != EDCItemAction::Drop && Item->GetParent() && !Item->GetParent()->IsReachable())
+	{
+		return Item->CheckCanTakeOut();
+	}
+	FText Reason;
+	switch (Action)
+	{
+	case EDCItemAction::Open:
+		if (Item->IsLocked())
+		{
+			return FText::Format(LOCTEXT("IsLocked", "{0} ist versperrt"), Item->GetDisplayName());
+		}
+		Item->SetOpen(true);
+		return FText::GetEmpty();
+
+	case EDCItemAction::Close:
+		Item->SetOpen(false);
+		return FText::GetEmpty();
+
+	case EDCItemAction::PickLock:
+		if (!Item->IsLocked())
+		{
+			return FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName());
+		}
+		if (!Inventory->HasTool(DCItems::LockpicksId))
+		{
+			return LOCTEXT("NeedLockpicks", "Ohne Dietrich-Set geht das nicht");
+		}
+		StartItemWork(Item, Action, Def.LockPickSeconds);
+		return FText::GetEmpty();
+
+	case EDCItemAction::Force:
+		if (!Item->IsLocked())
+		{
+			return FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName());
+		}
+		if (!Def.bForceable)
+		{
+			return FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Item->GetDisplayName());
+		}
+		if (!Inventory->HasTool(DCItems::CrowbarId))
+		{
+			return LOCTEXT("NeedCrowbar", "Ohne Brecheisen geht das nicht");
+		}
+		StartItemWork(Item, Action, DCItems::ForceSeconds);
+		return FText::GetEmpty();
+
+	case EDCItemAction::Take:
+		if (!Inventory->AddAnywhere(Item, Reason))
+		{
+			return Reason;
+		}
+		if (Source && Source->GetItem() == Item)
+		{
+			Source->Destroy();
+		}
+		ShowNotice(FText::Format(LOCTEXT("PickedUp", "{0} genommen"), Item->GetDisplayName()));
+		UE_LOG(LogDerClou, Log, TEXT("%s: took %s"), *GetName(), *Item->GetDefId().ToString());
+		return FText::GetEmpty();
+
+	case EDCItemAction::Drop:
+		DropItem(Item);
+		return FText::GetEmpty();
+	}
+	return FText::GetEmpty();
+}
+
+void ADCCrewCharacter::StartItemWork(UDCItem* Item, EDCItemAction Action, float Seconds)
+{
+	if (AAIController* AI = Cast<AAIController>(GetController()))
+	{
+		AI->StopMovement();
+	}
+	DoorQueue.Reset();
+	TaskDoor.Reset();
+	TaskPickup.Reset();
+	TaskItem = Item;
+	TaskItemAction = Action;
+	TaskWorkSeconds = Seconds;
+	SetPhase(ETaskPhase::ItemWork);
+}
+
+void ADCCrewCharacter::FinishItemWork()
+{
+	UDCItem* Item = TaskItem.Get();
+	TaskItem.Reset();
+	if (Item && Item->IsLocked())
+	{
+		if (TaskItemAction == EDCItemAction::Force)
+		{
+			Item->BreakLock();
+			ShowNotice(FText::Format(LOCTEXT("Forced", "{0} aufgebrochen"), Item->GetDisplayName()));
+		}
+		else
+		{
+			Item->SetLocked(false);
+			ShowNotice(FText::Format(LOCTEXT("Picked", "{0}: Schloss offen"), Item->GetDisplayName()));
+		}
+		UE_LOG(LogDerClou, Log, TEXT("%s: %s %s"), *GetName(), TaskItemAction == EDCItemAction::Force ? TEXT("forced") : TEXT("picked"), *Item->GetDefId().ToString());
+	}
+	SetPhase(ETaskPhase::Idle);
 }
 
 void ADCCrewCharacter::OnInventoryChanged()
@@ -578,6 +735,14 @@ FText ADCCrewCharacter::GetActivityText() const
 	case ETaskPhase::ThroughDoor: return LOCTEXT("Through", "geht durch die Tür");
 	case ETaskPhase::ToItem: return LOCTEXT("ToItem", "geht hin");
 	case ETaskPhase::PickingUp: return LOCTEXT("PickingUp", "hebt auf");
+	case ETaskPhase::ItemWork:
+	{
+		const int32 Remaining = FMath::Max(1, FMath::CeilToInt(TaskWorkSeconds - PhaseTime));
+		const FText Name = TaskItem.IsValid() ? TaskItem->GetDisplayName() : FText::GetEmpty();
+		return TaskItemAction == EDCItemAction::Force
+			? FText::Format(LOCTEXT("Forcing", "bricht {0} auf ... {1} s"), Name, FText::AsNumber(Remaining))
+			: FText::Format(LOCTEXT("PickingItem", "knackt {0} ... {1} s"), Name, FText::AsNumber(Remaining));
+	}
 	}
 	return FText::GetEmpty();
 }

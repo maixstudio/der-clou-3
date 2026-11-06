@@ -40,19 +40,28 @@ TArray<UDCItem*> UDCInventoryComponent::GetContainers() const
 	return Result;
 }
 
+TArray<UDCItem*> UDCInventoryComponent::GetTopItems() const
+{
+	TArray<UDCItem*> Items;
+	for (const TObjectPtr<UDCItem>& Item : Slots)
+	{
+		if (Item)
+		{
+			Items.AddUnique(Item);
+		}
+	}
+	return Items;
+}
+
 bool UDCInventoryComponent::Owns(const UDCItem* Item) const
 {
 	if (!Item)
 	{
 		return false;
 	}
-	if (Slots.Contains(Item))
+	for (const UDCItem* Top : GetTopItems())
 	{
-		return true;
-	}
-	for (const UDCItem* Container : GetContainers())
-	{
-		if (Container->Contents.Contains(Item))
+		if (Item->IsInside(Top))
 		{
 			return true;
 		}
@@ -66,6 +75,18 @@ bool UDCInventoryComponent::HasBothHandsFull() const
 	return Left && Left == GetSlotItem(EDCEquipSlot::RightHand);
 }
 
+bool UDCInventoryComponent::HasTool(FName DefId) const
+{
+	for (const UDCItem* Top : GetTopItems())
+	{
+		if (Top->GetDefId() == DefId || Top->FindInside(DefId))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 FText UDCInventoryComponent::CheckCarry(const UDCItem* Item) const
 {
 	if (!Item)
@@ -77,9 +98,22 @@ FText UDCInventoryComponent::CheckCarry(const UDCItem* Item) const
 		return FText::GetEmpty();
 	}
 	const FDCItemDef& Def = Item->GetDef();
-	if (Def.Size == EDCItemSize::Huge || Item->GetTotalMass() > MaxItemMassKg)
+	if (!Def.bMovable)
 	{
-		return FText::Format(LOCTEXT("TooHeavyAlone", "{0} ist zu schwer für eine Person"), Def.Name);
+		return FText::Format(LOCTEXT("Fixed", "{0} ist fest eingebaut und lässt sich nicht bewegen"), Def.Name);
+	}
+	FText Reason = Item->CheckCanTakeOut();
+	if (!Reason.IsEmpty())
+	{
+		return Reason;
+	}
+	if (Item->GetTotalMass() > MaxItemMassKg)
+	{
+		return FText::Format(LOCTEXT("TooHeavyAlone", "{0} ist zu schwer für eine Person ({1})"), Def.Name, DCItems::FormatKg(Item->GetTotalMass()));
+	}
+	if (Def.Size == EDCItemSize::Huge)
+	{
+		return FText::Format(LOCTEXT("TooBulkyAlone", "{0} ist zu sperrig für eine Person"), Def.Name);
 	}
 	if (GetTotalMass() + Item->GetTotalMass() > MaxCarryMassKg)
 	{
@@ -98,6 +132,12 @@ FText UDCInventoryComponent::CheckSlot(const UDCItem* Item, EDCEquipSlot Slot) c
 	if (Slot == EDCEquipSlot::None)
 	{
 		return LOCTEXT("NoSlot", "Kein Platz");
+	}
+	// Taking something out of a container the crew member carries.
+	Reason = Item->CheckCanTakeOut();
+	if (!Reason.IsEmpty())
+	{
+		return Reason;
 	}
 	const FDCItemDef& Def = Item->GetDef();
 	const UDCItem* Current = GetSlotItem(Slot);
@@ -134,41 +174,35 @@ FText UDCInventoryComponent::CheckSlot(const UDCItem* Item, EDCEquipSlot Slot) c
 	return FText::GetEmpty();
 }
 
-FText UDCInventoryComponent::CheckContainer(const UDCItem* Item, const UDCItem* Container) const
+FText UDCInventoryComponent::CheckInto(const UDCItem* Item, const UDCItem* Container) const
 {
-	FText Reason = CheckCarry(Item);
+	if (!Item || !Container)
+	{
+		return LOCTEXT("NoItem", "Kein Gegenstand");
+	}
+	if (Item->GetParent() == Container)
+	{
+		return FText::GetEmpty();
+	}
+	FText Reason = Item->CheckCanTakeOut();
 	if (!Reason.IsEmpty())
 	{
 		return Reason;
 	}
-	if (!Container || !GetContainers().Contains(Container))
+	Reason = Container->CheckCanHold(Item);
+	if (!Reason.IsEmpty())
 	{
-		return LOCTEXT("NotWorn", "Dieser Behälter wird nicht getragen");
+		return Reason;
 	}
-	if (Container->Contents.Contains(Item))
+	// From the world onto oneself: the usual carrying limits apply.
+	if (Owns(Container) && !Owns(Item))
 	{
-		return FText::GetEmpty();
+		return CheckCarry(Item);
 	}
-	const FDCItemDef& Def = Item->GetDef();
-	const FDCItemDef& ContainerDef = Container->GetDef();
-	if (Item == Container)
+	// From the world into the world (one drawer into another): only movable things.
+	if (!Owns(Item) && !Item->GetDef().bMovable)
 	{
-		return FText::Format(LOCTEXT("IntoItself", "{0} passt nicht in sich selbst"), Def.Name);
-	}
-	if (Item->IsContainer() && !Item->Contents.IsEmpty())
-	{
-		return FText::Format(LOCTEXT("EmptyFirst", "{0} erst ausleeren"), Def.Name);
-	}
-	if (Def.Size > ContainerDef.MaxContentSize)
-	{
-		return FText::Format(LOCTEXT("TooBig", "{0} ist zu groß für {1} (passt nur bis „{2}“)"),
-			Def.Name, ContainerDef.Name, DCItems::DescribeSize(ContainerDef.MaxContentSize));
-	}
-	if (Container->GetUsedVolume() + Def.VolumeLiters > ContainerDef.CapacityLiters + KINDA_SMALL_NUMBER)
-	{
-		return FText::Format(LOCTEXT("TooFull", "{0} ist zu voll ({1} von {2} belegt, {3} braucht {4})"),
-			ContainerDef.Name, DCItems::FormatLiters(Container->GetUsedVolume()), DCItems::FormatLiters(ContainerDef.CapacityLiters),
-			Def.Name, DCItems::FormatLiters(Def.VolumeLiters));
+		return FText::Format(LOCTEXT("Fixed", "{0} ist fest eingebaut und lässt sich nicht bewegen"), Item->GetDisplayName());
 	}
 	return FText::GetEmpty();
 }
@@ -188,7 +222,7 @@ FText UDCInventoryComponent::CheckAdd(const UDCItem* Item) const
 	}
 	for (const UDCItem* Container : GetContainers())
 	{
-		if (CheckContainer(Item, Container).IsEmpty())
+		if (Container->CheckCanHold(Item).IsEmpty())
 		{
 			return FText::GetEmpty();
 		}
@@ -225,19 +259,19 @@ bool UDCInventoryComponent::MoveToSlot(UDCItem* Item, EDCEquipSlot Slot, FText& 
 	return true;
 }
 
-bool UDCInventoryComponent::MoveToContainer(UDCItem* Item, UDCItem* Container, FText& OutReason)
+bool UDCInventoryComponent::MoveInto(UDCItem* Item, UDCItem* Container, FText& OutReason)
 {
-	OutReason = CheckContainer(Item, Container);
+	OutReason = CheckInto(Item, Container);
 	if (!OutReason.IsEmpty())
 	{
 		return false;
 	}
-	if (Container->Contents.Contains(Item))
+	if (Item->GetParent() == Container)
 	{
 		return true;
 	}
 	Detach(Item);
-	Container->Contents.Add(Item);
+	Container->AddContent(Item);
 	Changed();
 	return true;
 }
@@ -259,9 +293,9 @@ bool UDCInventoryComponent::AddAnywhere(UDCItem* Item, FText& OutReason)
 	// Pockets, vest, backpack: the first one with room.
 	for (UDCItem* Container : GetContainers())
 	{
-		if (CheckContainer(Item, Container).IsEmpty())
+		if (Container->CheckCanHold(Item).IsEmpty())
 		{
-			return MoveToContainer(Item, Container, OutReason);
+			return MoveInto(Item, Container, OutReason);
 		}
 	}
 	// Otherwise carry it.
@@ -282,43 +316,36 @@ bool UDCInventoryComponent::AddAnywhere(UDCItem* Item, FText& OutReason)
 
 bool UDCInventoryComponent::Remove(UDCItem* Item)
 {
-	if (!Detach(Item))
+	if (!Owns(Item))
 	{
 		return false;
 	}
+	Detach(Item);
 	Changed();
 	return true;
 }
 
-bool UDCInventoryComponent::Detach(UDCItem* Item)
+void UDCInventoryComponent::Detach(UDCItem* Item)
 {
-	bool bFound = false;
 	for (TObjectPtr<UDCItem>& SlotItem : Slots)
 	{
 		if (SlotItem == Item)
 		{
 			SlotItem = nullptr;
-			bFound = true;
 		}
 	}
-	for (UDCItem* Container : GetContainers())
+	if (UDCItem* Parent = Item->GetParent())
 	{
-		bFound |= Container->Contents.Remove(Item) > 0;
+		Parent->RemoveContent(Item);
 	}
-	return bFound;
 }
 
 float UDCInventoryComponent::GetTotalMass() const
 {
 	float Mass = 0.f;
-	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	for (const UDCItem* Item : GetTopItems())
 	{
-		const UDCItem* Item = Slots[Index];
-		// A large item sits in both hands; count it once.
-		if (Item && !(Index == SlotIndex(EDCEquipSlot::RightHand) && Item == GetSlotItem(EDCEquipSlot::LeftHand)))
-		{
-			Mass += Item->GetTotalMass();
-		}
+		Mass += Item->GetTotalMass();
 	}
 	return Mass;
 }
@@ -326,13 +353,9 @@ float UDCInventoryComponent::GetTotalMass() const
 int32 UDCInventoryComponent::GetTotalValue() const
 {
 	int32 Value = 0;
-	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	for (const UDCItem* Item : GetTopItems())
 	{
-		const UDCItem* Item = Slots[Index];
-		if (Item && !(Index == SlotIndex(EDCEquipSlot::RightHand) && Item == GetSlotItem(EDCEquipSlot::LeftHand)))
-		{
-			Value += Item->GetTotalValue();
-		}
+		Value += Item->GetTotalValue();
 	}
 	return Value;
 }

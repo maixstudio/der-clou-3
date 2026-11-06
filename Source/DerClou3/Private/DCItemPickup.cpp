@@ -5,6 +5,7 @@
 #include "Components/TextRenderComponent.h"
 #include "DCItem.h"
 #include "DCVisuals.h"
+#include "DerClou3.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 
@@ -46,6 +47,13 @@ void ADCItemPickup::BeginPlay()
 	Super::BeginPlay();
 	GetItem();
 	ApplyLook();
+	ChangedHandle = UDCItem::OnAnyChanged().AddUObject(this, &ADCItemPickup::OnItemChanged);
+}
+
+void ADCItemPickup::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UDCItem::OnAnyChanged().Remove(ChangedHandle);
+	Super::EndPlay(EndPlayReason);
 }
 
 TArray<FName> ADCItemPickup::GetItemIdOptions() const
@@ -62,9 +70,78 @@ UDCItem* ADCItemPickup::GetItem()
 {
 	if (!Item)
 	{
-		Item = UDCItem::Create(this, ItemId);
+		BuildItem();
 	}
 	return Item;
+}
+
+void ADCItemPickup::BuildItem()
+{
+	Item = UDCItem::Create(ItemId);
+	if (!Item)
+	{
+		return;
+	}
+	TSet<UDCItem*> Configured;
+	for (const FDCContentSpec& Spec : Contents)
+	{
+		// Walk down the path of ids to the container.
+		UDCItem* Container = Item;
+		TArray<FString> Path;
+		Spec.Inside.ParseIntoArray(Path, TEXT("/"), true);
+		for (const FString& Segment : Path)
+		{
+			UDCItem* Next = nullptr;
+			for (UDCItem* Child : Container->GetContents())
+			{
+				if (Child->GetDefId() == FName(*Segment))
+				{
+					Next = Child;
+					break;
+				}
+			}
+			Container = Next;
+			if (!Container)
+			{
+				break;
+			}
+		}
+		if (!Container)
+		{
+			UE_LOG(LogDerClou, Warning, TEXT("%s: no '%s' inside %s for %s"), *GetName(), *Spec.Inside, *ItemId.ToString(), *Spec.ItemId.ToString());
+			continue;
+		}
+
+		// A fixed part of this kind (the desk's drawer) gets configured instead of adding another one.
+		UDCItem* Target = nullptr;
+		for (UDCItem* Child : Container->GetContents())
+		{
+			if (Child->IsAttached() && Child->GetDefId() == Spec.ItemId && !Configured.Contains(Child))
+			{
+				Target = Child;
+				break;
+			}
+		}
+		if (!Target)
+		{
+			Target = UDCItem::Create(Spec.ItemId);
+			if (!Target)
+			{
+				continue;
+			}
+			// The level designer decides; still say so if it would not fit by the rules.
+			if (Target->GetDef().Size > Container->GetDef().MaxContentSize || !Container->IsContainer())
+			{
+				UE_LOG(LogDerClou, Warning, TEXT("%s: %s does not really fit into %s"), *GetName(), *Spec.ItemId.ToString(), *Container->GetDefId().ToString());
+			}
+			Container->AddContent(Target);
+		}
+		Configured.Add(Target);
+		Target->SetOpen(Spec.bOpen);
+		Target->SetLocked(Spec.bLocked);
+	}
+	Item->SetOpen(bOpen);
+	Item->SetLocked(bLocked);
 }
 
 void ADCItemPickup::SetItem(UDCItem* InItem)
@@ -75,6 +152,15 @@ void ADCItemPickup::SetItem(UDCItem* InItem)
 		ItemId = Item->GetDefId();
 	}
 	ApplyLook();
+}
+
+void ADCItemPickup::OnItemChanged()
+{
+	if (Item)
+	{
+		const FText State = Item->DescribeState();
+		Label->SetText(State.IsEmpty() ? Item->GetDisplayName() : FText::Format(LOCTEXT("LabelWithState", "{0} ({1})"), Item->GetDisplayName(), State));
+	}
 }
 
 void ADCItemPickup::ApplyLook()
@@ -95,13 +181,14 @@ void ADCItemPickup::ApplyLook()
 	Mesh->SetRelativeLocation(FVector(0.0, 0.0, Def->ShapeSize.Z * 0.5));
 	DCVisuals::Paint(Mesh, Def->Color);
 
-	// Only bulky things are in the way; the crew walks over small ones.
-	const bool bBulky = Def->Size == EDCItemSize::Huge;
-	Mesh->SetCollisionResponseToChannel(ECC_Pawn, bBulky ? ECR_Block : ECR_Ignore);
-	Mesh->SetCanEverAffectNavigation(bBulky);
+	// Furniture and other big things are in the way; the crew walks over small ones.
+	const bool bObstacle = Def->IsObstacle();
+	Mesh->SetCollisionResponseToChannel(ECC_Pawn, bObstacle ? ECR_Block : ECR_Ignore);
+	Mesh->SetCanEverAffectNavigation(bObstacle);
 
 	Label->SetText(Def->Name);
 	Label->SetRelativeLocation(FVector(0.0, 0.0, Def->ShapeSize.Z + 30.0));
+	OnItemChanged();
 }
 
 float ADCItemPickup::GetFootprintRadius() const
@@ -150,15 +237,6 @@ void ADCItemPickup::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
 	if (Item)
 	{
 		Item->GetInfoLines(OutLines);
-		if (!Item->Contents.IsEmpty())
-		{
-			TArray<FString> Names;
-			for (const UDCItem* Content : Item->Contents)
-			{
-				Names.Add(Content->GetDisplayName().ToString());
-			}
-			OutLines.Add({ LOCTEXT("LabelContents", "Inhalt"), FText::FromString(FString::Join(Names, TEXT(", "))) });
-		}
 	}
 	const FDCItemDef* Def = DCItems::Find(ItemId);
 	if (Def && !Def->Description.IsEmpty())

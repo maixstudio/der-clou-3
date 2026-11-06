@@ -9,6 +9,7 @@ class ADCClickMarker;
 class ADCCrewCharacter;
 class ADCDoor;
 class ADCItemPickup;
+class UDCContainerPanel;
 class UDCInfoPanel;
 class UDCInventoryPanel;
 class UDCRadialMenu;
@@ -41,7 +42,10 @@ private:
 
 	/** Command-line self-test -DCSelfTest=Inventory: pick up the test items, check the rules, screenshot, quit. */
 	void StartInventorySelfTest();
+	/** -DCSelfTest=Containers: search furniture, open, pick and force locks, take and hide things. */
+	void StartContainerSelfTest();
 	void FinishSelfTest(bool bPassed);
+	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 
@@ -59,6 +63,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCInventoryPanel> InventoryPanel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCContainerPanel> ContainerPanel;
+
+	FDelegateHandle ContainerReachedHandle;
 
 	TWeakObjectPtr<ADCItemPickup> HoveredPickup;
 };
