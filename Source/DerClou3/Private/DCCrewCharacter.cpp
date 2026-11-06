@@ -8,6 +8,7 @@
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCNoise.h"
 #include "DCVisuals.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
@@ -36,6 +37,19 @@ namespace
 	constexpr float PickUpSeconds = 0.6f;
 	/** Gap between the crew member and an item they walk up to. */
 	constexpr double ItemReach = 40.0;
+	/** One footstep noise per this many seconds while walking; lock-picking clicks likewise. */
+	constexpr float StepSeconds = 0.55f;
+	constexpr float ClickSeconds = 1.2f;
+
+	UStaticMeshComponent* MakeCarried(ACharacter* Owner, const TCHAR* Name)
+	{
+		UStaticMeshComponent* Part = Owner->CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Part->SetupAttachment(Owner->GetCapsuleComponent());
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetCanEverAffectNavigation(false);
+		Part->SetVisibility(false);
+		return Part;
+	}
 	/** Name above the head (relative to the capsule centre); the activity line sits below it along the camera's up axis. */
 	constexpr double LabelHeight = 120.0;
 	constexpr double ActivityOffset = 30.0;
@@ -98,6 +112,11 @@ ADCCrewCharacter::ADCCrewCharacter()
 
 	NameLabel = MakeLabel(this, TEXT("NameLabel"), 118.f, 36.f, FColor::White);
 	ActivityLabel = MakeLabel(this, TEXT("ActivityLabel"), 96.f, 24.f, FColor(255, 215, 60));
+
+	CarriedFront = MakeCarried(this, TEXT("CarriedFront"));
+	CarriedRight = MakeCarried(this, TEXT("CarriedRight"));
+	CarriedLeft = MakeCarried(this, TEXT("CarriedLeft"));
+	CarriedBack = MakeCarried(this, TEXT("CarriedBack"));
 }
 
 void ADCCrewCharacter::OnConstruction(const FTransform& Transform)
@@ -237,6 +256,7 @@ void ADCCrewCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	UpdateTask(DeltaSeconds);
+	UpdateFootsteps(DeltaSeconds);
 	UpdateLabels(DeltaSeconds);
 }
 
@@ -400,6 +420,12 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 		}
 		if (PhaseTime < (TaskAction == EDCDoorAction::PickLock ? Door->GetPickLockSeconds() : HandOnDoorSeconds))
 		{
+			// Picking a lock clicks quietly now and then.
+			if (TaskAction == EDCDoorAction::PickLock && (ClickTimer += DeltaSeconds) >= ClickSeconds)
+			{
+				ClickTimer = 0.f;
+				EmitNoise(DCItems::Noise::PickClick, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
+			}
 			return;
 		}
 		switch (TaskAction)
@@ -409,13 +435,25 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 			{
 				ShowNotice(LOCTEXT("Locked", "Tür ist verschlossen"));
 			}
+			else
+			{
+				UDCNoiseSubsystem::Get(this)->Emit(Door->GetCenter(), DCItems::Noise::DoorOpen, LOCTEXT("NoiseDoorOpen", "Tür knarrt"), this);
+			}
 			SetPhase(ETaskPhase::Idle);
 			return;
 		case EDCDoorAction::Close:
+			if (Door->IsOpen())
+			{
+				UDCNoiseSubsystem::Get(this)->Emit(Door->GetCenter(), DCItems::Noise::DoorClose, LOCTEXT("NoiseDoorClose", "Tür fällt zu"), this);
+			}
 			Door->Close();
 			SetPhase(ETaskPhase::Idle);
 			return;
 		case EDCDoorAction::GoThrough:
+			if (!Door->IsOpen() && !Door->IsLocked())
+			{
+				UDCNoiseSubsystem::Get(this)->Emit(Door->GetCenter(), DCItems::Noise::DoorOpen, LOCTEXT("NoiseDoorOpen", "Tür knarrt"), this);
+			}
 			if (!Door->OpenAwayFrom(GetActorLocation()))
 			{
 				ShowNotice(LOCTEXT("Locked", "Tür ist verschlossen"));
@@ -491,6 +529,12 @@ void ADCCrewCharacter::UpdateTask(float DeltaSeconds)
 		if (PhaseTime >= TaskWorkSeconds)
 		{
 			FinishItemWork();
+			return;
+		}
+		if (TaskItemAction == EDCItemAction::PickLock && (ClickTimer += DeltaSeconds) >= ClickSeconds)
+		{
+			ClickTimer = 0.f;
+			EmitNoise(DCItems::Noise::PickClick, LOCTEXT("NoiseClick", "Klicken am Schloss"), false);
 		}
 		return;
 
@@ -587,6 +631,11 @@ void ADCCrewCharacter::DropItem(UDCItem* Item)
 	}
 	Pickup->SetItem(Item);
 	Pickup->FinishSpawning(Transform);
+	const float Thud = Item->GetTotalMass() >= 1.f ? FMath::Min(DCItems::Noise::DropMax, Item->GetTotalMass() * DCItems::Noise::DropPerKg) : 0.f;
+	if (Thud > 0.f)
+	{
+		UDCNoiseSubsystem::Get(this)->Emit(Feet, Thud, FText::Format(LOCTEXT("NoiseDrop", "{0} poltert auf den Boden"), Item->GetDisplayName()), this);
+	}
 	ShowNotice(FText::Format(LOCTEXT("Dropped", "{0} abgelegt"), Item->GetDisplayName()));
 	UE_LOG(LogDerClou, Log, TEXT("%s: dropped %s"), *GetName(), *Item->GetDefId().ToString());
 }
@@ -667,6 +716,18 @@ FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, A
 	case EDCItemAction::Drop:
 		DropItem(Item);
 		return FText::GetEmpty();
+
+	case EDCItemAction::Smash:
+		if (!Def.bBreakable || Item->IsDestroyed())
+		{
+			return FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Item->GetDisplayName());
+		}
+		if (!Inventory->HasTool(DCItems::CrowbarId))
+		{
+			return LOCTEXT("NeedCrowbarSmash", "Zum Einschlagen braucht es das Brecheisen");
+		}
+		StartItemWork(Item, Action, DCItems::SmashSeconds);
+		return FText::GetEmpty();
 	}
 	return FText::GetEmpty();
 }
@@ -690,12 +751,20 @@ void ADCCrewCharacter::FinishItemWork()
 {
 	UDCItem* Item = TaskItem.Get();
 	TaskItem.Reset();
-	if (Item && Item->IsLocked())
+	if (Item && TaskItemAction == EDCItemAction::Smash)
+	{
+		Item->Smash();
+		ShowNotice(FText::Format(LOCTEXT("Smashed", "{0} eingeschlagen"), Item->GetDisplayName()));
+		EmitNoise(DCItems::Noise::Smash, FText::Format(LOCTEXT("NoiseSmash", "Glas splittert ({0})"), Item->GetDisplayName()));
+		UE_LOG(LogDerClou, Log, TEXT("%s: smashed %s"), *GetName(), *Item->GetDefId().ToString());
+	}
+	else if (Item && Item->IsLocked())
 	{
 		if (TaskItemAction == EDCItemAction::Force)
 		{
 			Item->BreakLock();
 			ShowNotice(FText::Format(LOCTEXT("Forced", "{0} aufgebrochen"), Item->GetDisplayName()));
+			EmitNoise(DCItems::Noise::Force, FText::Format(LOCTEXT("NoiseForce", "Holz kracht ({0} aufgebrochen)"), Item->GetDisplayName()));
 		}
 		else
 		{
@@ -710,6 +779,62 @@ void ADCCrewCharacter::FinishItemWork()
 void ADCCrewCharacter::OnInventoryChanged()
 {
 	GetCharacterMovement()->MaxWalkSpeed = BaseWalkSpeed * Inventory->GetSpeedFactor();
+	UpdateCarriedLook();
+}
+
+void ADCCrewCharacter::EmitNoise(float Range, const FText& What, bool bLabel)
+{
+	if (UDCNoiseSubsystem* Noise = UDCNoiseSubsystem::Get(this))
+	{
+		const FVector Feet = GetActorLocation() - FVector(0.0, 0.0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		Noise->Emit(Feet, Range, What, this, bLabel);
+	}
+}
+
+void ADCCrewCharacter::UpdateFootsteps(float DeltaSeconds)
+{
+	if (GetVelocity().Size2D() < 50.f)
+	{
+		// The first step after standing still is heard right away.
+		StepTimer = StepSeconds;
+		return;
+	}
+	StepTimer += DeltaSeconds;
+	if (StepTimer < StepSeconds)
+	{
+		return;
+	}
+	StepTimer = 0.f;
+	// Heavier load, louder steps.
+	const float Load = FMath::Clamp(Inventory->GetTotalMass() / UDCInventoryComponent::MaxCarryMassKg, 0.f, 1.f);
+	const float Range = DCItems::Noise::Footstep + DCItems::Noise::FootstepLoad * Load + (Inventory->HasBothHandsFull() ? DCItems::Noise::FootstepBothHands : 0.f);
+	EmitNoise(Range, LOCTEXT("NoiseSteps", "Schritte"), false);
+}
+
+void ADCCrewCharacter::UpdateCarriedLook()
+{
+	// Graybox copies of what is carried, so one can tell from above who has the painting.
+	const auto Show = [](UStaticMeshComponent* Part, const UDCItem* Item, const FVector& Location, double Yaw)
+	{
+		if (!Item)
+		{
+			Part->SetVisibility(false);
+			return;
+		}
+		const FDCItemDef& Def = Item->GetDef();
+		Part->SetStaticMesh(Def.Shape == EDCItemShape::Cylinder ? DCVisuals::Cylinder() : Def.Shape == EDCItemShape::Sphere ? DCVisuals::Sphere() : DCVisuals::Cube());
+		Part->SetRelativeLocationAndRotation(Location, FRotator(0.0, Yaw, 0.0));
+		Part->SetRelativeScale3D(Def.ShapeSize / 100.0);
+		DCVisuals::Paint(Part, Def.Color);
+		Part->SetVisibility(true);
+	};
+	const UDCItem* Right = Inventory->GetSlotItem(EDCEquipSlot::RightHand);
+	const UDCItem* Left = Inventory->GetSlotItem(EDCEquipSlot::LeftHand);
+	const bool bBothHands = Inventory->HasBothHandsFull();
+	Show(CarriedFront, bBothHands ? Right : nullptr, FVector(45.0, 0.0, -5.0), 0.0);
+	Show(CarriedRight, bBothHands ? nullptr : Right, FVector(20.0, 32.0, -25.0), 0.0);
+	Show(CarriedLeft, bBothHands ? nullptr : Left, FVector(20.0, -32.0, -25.0), 0.0);
+	Show(CarriedBack, Inventory->GetSlotItem(EDCEquipSlot::Back), FVector(-30.0, 0.0, 10.0), 90.0);
 }
 
 FText ADCCrewCharacter::GetActivityText() const

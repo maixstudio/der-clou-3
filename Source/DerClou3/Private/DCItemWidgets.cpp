@@ -250,9 +250,13 @@ namespace DCItemWidgets
 				Actions.Add(EDCItemAction::Force);
 			}
 		}
-		else if (Def.bOpenable)
+		else if (Def.bOpenable && !Item->IsDestroyed())
 		{
 			Actions.Add(Item->IsOpen() ? EDCItemAction::Close : EDCItemAction::Open);
+		}
+		if (Def.bBreakable && !Item->IsDestroyed() && !Item->IsOpen())
+		{
+			Actions.Add(EDCItemAction::Smash);
 		}
 		if (!Item->IsAttached() && Def.bMovable)
 		{

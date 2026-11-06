@@ -45,12 +45,27 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Raum: Schreibtisch + Stuhl, Wandtresor, Kleiderschrank (Mantel > Brieftasche > Geld), Sofa (Geld
     versteckt), Sessel, Esstisch + 2 Stühle, Umzugskarton, Schmuckschatulle (versperrt), Klavier u. a.
   - Selbsttest: `-game -DCSelfTest=Containers` (Screenshot `containers_selftest.png`).
-- Offen für spätere Schritte: Gegenstände in der Hand sichtbar an der Figur, zu zweit tragen /
-  Sackkarre, Übergeben zwischen Crew-Mitgliedern, sich im Schrank verstecken, Lärm beim Aufbrechen,
-  Dinge kaputt machen (Vitrine einschlagen), Katalog als Data Assets.
+- **Lärm (Schritt 3):**
+  - `UDCNoiseSubsystem` (`DCNoise.h`): `Emit(Ort, Reichweite, Was, Quelle)`; sichtbar als Ring auf dem
+    Boden, der auf die Reichweite anwächst (grau leise < 200 cm, gelb hörbar, orange laut, rot sehr laut
+    ≥ 1200 cm). Oben in der Mitte `UDCNoiseHud`: letzter Lärm ab 300 cm und roter Alarm-Banner.
+  - Reichweiten in `DCItems::Noise`: Schritte 110 cm (+ Last, + beide Hände voll), Knacken-Klicken
+    140, Tür auf/zu 320/420, Aufbrechen 1300, Glas einschlagen 1700, Fallenlassen 25 cm/kg (max. 900).
+  - Wände dämpfen auf 35 %, geschlossene Türen auf 50 % (Linientrace, Wände = `AStaticMeshActor`).
+  - `ADCNoiseListener` „Nachbar“ (Outliner „Personen“, hinter der linken Wand): Misstrauen 0–100 %,
+    Symbol zzz/?/!/!!, beruhigt sich nach 5 s Ruhe; bei 100 % Alarm („ruft die Polizei“). Anklicken = Info.
+  - Vitrine (versperrt, nur knackbar, Glas einschlagen mit Brecheisen → „eingeschlagen“): Diamantbrosche,
+    Porzellanfigur.
+  - Getragenes sichtbar an der Figur: groß vor dem Körper, sonst rechte/linke Hand, Rucksack am Rücken.
+  - Selbsttest: `-game -DCSelfTest=Noise` (Screenshots `noise_selftest*.png`).
+- Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer, schleichen
+  vs. rennen, zu zweit tragen / Sackkarre, Übergeben zwischen Crew-Mitgliedern, sich im Schrank
+  verstecken, zerbrechliche Beute (Porzellan) beim Fallenlassen. Katalog als Data Assets erst, wenn
+  der User Werte selbst im Editor ändern will.
 
 **Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
-Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus).
+Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus),
+Lärm-Balance (wie schnell der Nachbar misstrauisch wird).
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

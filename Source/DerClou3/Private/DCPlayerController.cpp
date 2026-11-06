@@ -9,6 +9,9 @@
 #include "DCInventoryPanel.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCNoise.h"
+#include "DCNoiseHud.h"
+#include "DCNoiseListener.h"
 #include "DCRadialMenu.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
@@ -63,6 +66,12 @@ void ADCPlayerController::BeginPlay()
 		InventoryPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		InventoryPanel->AddToViewport(6);
 	}
+	NoiseHud = CreateWidget<UDCNoiseHud>(this, UDCNoiseHud::StaticClass());
+	if (NoiseHud)
+	{
+		NoiseHud->SetVisibility(ESlateVisibility::HitTestInvisible);
+		NoiseHud->AddToViewport(4);
+	}
 	ContainerPanel = CreateWidget<UDCContainerPanel>(this, UDCContainerPanel::StaticClass());
 	if (ContainerPanel)
 	{
@@ -85,6 +94,10 @@ void ADCPlayerController::BeginPlay()
 	else if (SelfTest == TEXT("Containers"))
 	{
 		StartContainerSelfTest();
+	}
+	else if (SelfTest == TEXT("Noise"))
+	{
+		StartNoiseSelfTest();
 	}
 }
 
@@ -141,7 +154,7 @@ void ADCPlayerController::UpdateHoverCursor()
 	FHitResult Hit;
 	const bool bHit = GetHitResultUnderCursor(ECC_Visibility, false, Hit);
 	ADCItemPickup* Pickup = bHit ? Cast<ADCItemPickup>(Hit.GetActor()) : nullptr;
-	const bool bOverDoor = bHit && Cast<ADCDoor>(Hit.GetActor());
+	const bool bOverDoor = bHit && (Cast<ADCDoor>(Hit.GetActor()) || Cast<ADCNoiseListener>(Hit.GetActor()));
 	CurrentMouseCursor = bOverDoor || Pickup ? EMouseCursor::Hand : EMouseCursor::Default;
 
 	// Name label over the item under the mouse.
@@ -289,6 +302,15 @@ void ADCPlayerController::HandleClick()
 	if (ADCItemPickup* Pickup = Cast<ADCItemPickup>(Hit.GetActor()))
 	{
 		OpenPickupMenu(Pickup);
+		return;
+	}
+	// People who listen: clicking them shows how suspicious they are.
+	if (ADCNoiseListener* Listener = Cast<ADCNoiseListener>(Hit.GetActor()))
+	{
+		if (InfoPanel)
+		{
+			InfoPanel->ShowFor(Listener);
+		}
 		return;
 	}
 	const bool bReachable = Selected->MoveToLocation(Hit.ImpactPoint);
@@ -597,6 +619,156 @@ void ADCPlayerController::StartContainerSelfTest()
 		Expect(Refused(TEXT("piano")), TEXT("piano is too heavy"));
 		return true;
 	});
+	SelfTestSteps.Add([this, bPassed]()
+	{
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartNoiseSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Noise started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const TSharedRef<float> Before = MakeShared<float>(0.f);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Neighbour = [this]() -> ADCNoiseListener*
+	{
+		TActorIterator<ADCNoiseListener> It(GetWorld());
+		return It ? *It : nullptr;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto WaitIdle = [this]() { return [this]() { return !Selected || !Selected->IsBusy(); }; };
+	const auto WaitFor = [this](FName Id)
+	{
+		return [this, Id, bStarted = false]() mutable
+		{
+			if (!bStarted)
+			{
+				bStarted = true;
+				if (ADCItemPickup* Pickup = FindPickup(Id))
+				{
+					Selected->Search(Pickup);
+				}
+				return false;
+			}
+			return ContainerPanel && ContainerPanel->IsOpen() && !Selected->IsBusy();
+		};
+	};
+	const auto Act = [this](FName Container, FName Id, EDCItemAction Action)
+	{
+		return [this, Container, Id, Action]()
+		{
+			ADCItemPickup* Pickup = FindPickup(Container);
+			UDCItem* Item = Pickup ? (Pickup->GetItem()->GetDefId() == Id ? Pickup->GetItem() : Pickup->GetItem()->FindInside(Id)) : nullptr;
+			const FText Reason = Item ? Selected->PerformItemAction(Item, Action, Pickup->GetItem() == Item ? Pickup : nullptr) : FText::FromString(TEXT("missing"));
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s -> '%s'"), *DCItems::DescribeAction(Action).ToString(), *Id.ToString(), *Reason.ToString());
+			return true;
+		};
+	};
+
+	SelfTestSteps.Add(Wait(1.5f));
+	SelfTestSteps.Add([Expect, Neighbour]() { Expect(Neighbour() != nullptr, TEXT("neighbour is in the level")); return true; });
+	// Footsteps are quiet: the neighbour behind the wall does not hear them.
+	SelfTestSteps.Add([this]()
+	{
+		Selected->MoveToLocation(FVector(550.0, 450.0, 0.0));
+		return true;
+	});
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add([this]()
+	{
+		if (ADCItemPickup* Pickup = FindPickup(TEXT("crowbar")))
+		{
+			Selected->PickUp(Pickup);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add([this, Expect, Neighbour]()
+	{
+		const UDCNoiseSubsystem* Noise = UDCNoiseSubsystem::Get(this);
+		Expect(Noise && Noise->GetNoiseCount() > 0, FString::Printf(TEXT("footsteps make noise (%d rings)"), Noise ? Noise->GetNoiseCount() : 0));
+		Expect(Neighbour() && Neighbour()->GetSuspicion() < 1.f, TEXT("neighbour did not hear the footsteps"));
+		return true;
+	});
+	// Breaking the drawer open is loud.
+	SelfTestSteps.Add(WaitFor(TEXT("desk")));
+	SelfTestSteps.Add(Act(TEXT("desk"), TEXT("desk_drawer"), EDCItemAction::Force));
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add([Expect, Neighbour, Before]()
+	{
+		*Before = Neighbour() ? Neighbour()->GetSuspicion() : 0.f;
+		Expect(*Before > 5.f, FString::Printf(TEXT("neighbour heard the drawer (%.0f %%)"), *Before));
+		return true;
+	});
+	// Smashing the display case is louder still.
+	SelfTestSteps.Add(WaitFor(TEXT("display_case")));
+	SelfTestSteps.Add(Act(TEXT("display_case"), TEXT("display_case"), EDCItemAction::Smash));
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add(Wait(0.35f));
+	SelfTestSteps.Add([this]()
+	{
+		const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/noise_selftest.png"));
+		FScreenshotRequest::RequestScreenshot(File, true, false);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this, Expect, Neighbour, Before]()
+	{
+		ADCItemPickup* Case = FindPickup(TEXT("display_case"));
+		Expect(Case && Case->GetItem()->IsDestroyed(), TEXT("display case is smashed"));
+		const float After = Neighbour() ? Neighbour()->GetSuspicion() : 0.f;
+		Expect(After > *Before, FString::Printf(TEXT("neighbour heard the glass (%.0f %%)"), After));
+		return true;
+	});
+	SelfTestSteps.Add(Act(TEXT("display_case"), TEXT("brooch"), EDCItemAction::Take));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		Expect(Selected->GetInventory()->HasTool(TEXT("brooch")), TEXT("brooch taken from the smashed case"));
+		return true;
+	});
+	// The jewellery box far away on the other side of the room: too far for the neighbour.
+	SelfTestSteps.Add(WaitFor(TEXT("jewelry_box")));
+	SelfTestSteps.Add(Act(TEXT("jewelry_box"), TEXT("jewelry_box"), EDCItemAction::Force));
+	SelfTestSteps.Add(WaitIdle());
+	// Two more bangs right at the wall: the neighbour calls the police.
+	SelfTestSteps.Add([this, Neighbour]()
+	{
+		UDCNoiseSubsystem* Noise = UDCNoiseSubsystem::Get(this);
+		const FVector AtWall = Neighbour() ? Neighbour()->GetActorLocation() + FVector(0.0, 260.0, 0.0) : FVector::ZeroVector;
+		for (int32 Bang = 0; Bang < 2 && Noise; ++Bang)
+		{
+			Noise->Emit(AtWall, 1700.f, FText::FromString(TEXT("Test: lauter Schlag an der Wand")), nullptr);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.4f));
+	SelfTestSteps.Add([this, Expect, Neighbour]()
+	{
+		const UDCNoiseSubsystem* Noise = UDCNoiseSubsystem::Get(this);
+		Expect(Noise && Noise->IsAlarm(), FString::Printf(TEXT("alarm raised (neighbour %.0f %%)"), Neighbour() ? Neighbour()->GetSuspicion() : -1.f));
+		const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots/noise_selftest_2.png"));
+		FScreenshotRequest::RequestScreenshot(File, true, false);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
 	SelfTestSteps.Add([this, bPassed]()
 	{
 		FinishSelfTest(*bPassed);

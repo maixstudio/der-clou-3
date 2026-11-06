@@ -45,7 +45,10 @@ public:
 	UDCItem* FindInside(FName Id) const;
 
 	//~ State
-	bool IsOpen() const { return !GetDef().bOpenable || bOpen; }
+	bool IsOpen() const { return !GetDef().bOpenable || bOpen || bDestroyed; }
+	/** Glass smashed: open for good. */
+	bool IsDestroyed() const { return bDestroyed; }
+	void Smash();
 	bool IsLocked() const { return bLocked; }
 	bool IsLockBroken() const { return bLockBroken; }
 	/** A fixed part of its parent (a drawer): cannot be taken out. */
@@ -102,4 +105,7 @@ private:
 
 	UPROPERTY()
 	bool bAttached = false;
+
+	UPROPERTY()
+	bool bDestroyed = false;
 };

@@ -123,7 +123,7 @@ bool UDCItem::IsReachable() const
 
 void UDCItem::SetOpen(bool bInOpen)
 {
-	if (bInOpen && bLocked)
+	if ((bInOpen && bLocked) || bDestroyed)
 	{
 		return;
 	}
@@ -141,6 +141,14 @@ void UDCItem::SetLocked(bool bInLocked)
 	NotifyChanged();
 }
 
+void UDCItem::Smash()
+{
+	bDestroyed = true;
+	bLocked = false;
+	bOpen = true;
+	NotifyChanged();
+}
+
 void UDCItem::BreakLock()
 {
 	bLocked = false;
@@ -154,6 +162,10 @@ FText UDCItem::DescribeState() const
 	if (!GetDef().bOpenable)
 	{
 		return FText::GetEmpty();
+	}
+	if (bDestroyed)
+	{
+		return LOCTEXT("StateDestroyed", "eingeschlagen");
 	}
 	if (bLocked)
 	{

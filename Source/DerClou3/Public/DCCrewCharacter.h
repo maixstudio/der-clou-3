@@ -113,6 +113,19 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Crew")
 	TObjectPtr<UTextRenderComponent> ActivityLabel;
 
+	/** What is carried, so one can see it: in front (large things, both hands), right/left hand, on the back. */
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UStaticMeshComponent> CarriedFront;
+
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UStaticMeshComponent> CarriedRight;
+
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UStaticMeshComponent> CarriedLeft;
+
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UStaticMeshComponent> CarriedBack;
+
 private:
 	enum class ETaskPhase : uint8
 	{
@@ -142,6 +155,10 @@ private:
 	void WalkToPickup(ADCItemPickup* Pickup, bool bSearch);
 	void StartItemWork(UDCItem* Item, EDCItemAction Action, float Seconds);
 	void FinishItemWork();
+	/** Noise at the crew member's feet. */
+	void EmitNoise(float Range, const FText& What, bool bLabel = true);
+	void UpdateFootsteps(float DeltaSeconds);
+	void UpdateCarriedLook();
 	void OnInventoryChanged();
 
 	bool bSelected = false;
@@ -164,6 +181,8 @@ private:
 	TWeakObjectPtr<UDCItem> TaskItem;
 	EDCItemAction TaskItemAction = EDCItemAction::PickLock;
 	float TaskWorkSeconds = 0.f;
+	float StepTimer = 0.f;
+	float ClickTimer = 0.f;
 
 	FTimerHandle SelfTestTimer;
 	int32 SelfTestStep = 0;

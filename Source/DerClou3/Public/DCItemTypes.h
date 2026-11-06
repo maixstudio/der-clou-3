@@ -46,7 +46,9 @@ enum class EDCItemAction : uint8
 	/** From a container in the world into the inventory. */
 	Take,
 	/** From the inventory onto the floor. */
-	Drop
+	Drop,
+	/** Smash the glass (display case): very loud, it stays broken. */
+	Smash
 };
 
 /**
@@ -85,6 +87,8 @@ struct FDCItemDef
 	float LockPickSeconds = 0.f;
 	/** The lock can be broken with a crowbar. */
 	bool bForceable = false;
+	/** Glass that can be smashed with the crowbar (opens it for good, very loud). */
+	bool bBreakable = false;
 	/** Built-in parts every item of this kind has (the drawers of a desk). They cannot be taken out. */
 	TArray<FName> FixedParts;
 
@@ -120,4 +124,22 @@ namespace DCItems
 	inline const FName CrowbarId(TEXT("crowbar"));
 	/** Breaking a lock open takes this long. */
 	constexpr float ForceSeconds = 3.f;
+	constexpr float SmashSeconds = 1.5f;
+
+	/** How far noises carry in open space (cm). */
+	namespace Noise
+	{
+		constexpr float Footstep = 110.f;
+		/** Extra footstep range at full load / with both hands full. */
+		constexpr float FootstepLoad = 220.f;
+		constexpr float FootstepBothHands = 120.f;
+		constexpr float PickClick = 140.f;
+		constexpr float DoorOpen = 320.f;
+		constexpr float DoorClose = 420.f;
+		constexpr float Force = 1300.f;
+		constexpr float Smash = 1700.f;
+		/** Dropping: range per kg, capped. */
+		constexpr float DropPerKg = 25.f;
+		constexpr float DropMax = 900.f;
+	}
 }

@@ -12,6 +12,7 @@ class ADCItemPickup;
 class UDCContainerPanel;
 class UDCInfoPanel;
 class UDCInventoryPanel;
+class UDCNoiseHud;
 class UDCRadialMenu;
 
 /**
@@ -44,6 +45,8 @@ private:
 	void StartInventorySelfTest();
 	/** -DCSelfTest=Containers: search furniture, open, pick and force locks, take and hide things. */
 	void StartContainerSelfTest();
+	/** -DCSelfTest=Noise: walk, break a drawer, smash the display case; the neighbour must notice. */
+	void StartNoiseSelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */
@@ -66,6 +69,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCContainerPanel> ContainerPanel;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCNoiseHud> NoiseHud;
 
 	FDelegateHandle ContainerReachedHandle;
 

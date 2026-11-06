@@ -26,6 +26,7 @@ namespace
 		FDef& Openable() { Def.bOpenable = true; return *this; }
 		FDef& Lock(float PickSeconds, bool bForceable) { Def.LockPickSeconds = PickSeconds; Def.bForceable = bForceable; return *this; }
 		FDef& Fixed() { Def.bMovable = false; return *this; }
+		FDef& Glass() { Def.bBreakable = true; return *this; }
 		FDef& Parts(TArray<FName> Parts) { Def.FixedParts = MoveTemp(Parts); return *this; }
 		FDef& Note(const FText& Text) { Def.Description = Text; return *this; }
 	};
@@ -84,6 +85,10 @@ namespace
 				.Look(P::Box, FVector(8, 100, 80), FLinearColor(0.55f, 0.35f, 0.1f)).Note(LOCTEXT("PaintingDesc", "Schwerer Goldrahmen. Passt in keine Tasche – nur mit beiden Händen.")),
 			FDef(TEXT("statue"), LOCTEXT("Statue", "Bronzefigur"), Loot, 35.f, 30.f, S::Large, 12000)
 				.Look(P::Cylinder, FVector(30, 30, 80), FLinearColor(0.55f, 0.33f, 0.15f)).Note(LOCTEXT("StatueDesc", "Massiv und schwer. Mit beiden Händen gerade noch tragbar.")),
+			FDef(TEXT("brooch"), LOCTEXT("Brooch", "Diamantbrosche"), Loot, 0.05f, 0.05f, S::Small, 15000)
+				.Look(P::Box, FVector(10, 10, 4), FLinearColor(0.85f, 0.9f, 1.f)).Note(LOCTEXT("BroochDesc", "Das Prunkstück der Sammlung.")),
+			FDef(TEXT("figurine"), LOCTEXT("Figurine", "Porzellanfigur"), Loot, 0.6f, 1.5f, S::Medium, 2500)
+				.Look(P::Cylinder, FVector(10, 10, 22), FLinearColor(0.95f, 0.95f, 0.92f)).Note(LOCTEXT("FigurineDesc", "Meißner Porzellan, zerbrechlich.")),
 			FDef(TEXT("piano"), LOCTEXT("Piano", "Klavier"), Loot, 250.f, 900.f, S::Huge, 18000)
 				.Look(P::Box, FVector(150, 60, 130), FLinearColor(0.04f, 0.04f, 0.05f)).Note(LOCTEXT("PianoDesc", "Wertvoll, aber viel zu schwer für eine Person.")),
 
@@ -100,6 +105,8 @@ namespace
 				.Look(P::Box, FVector(120, 60, 75), FLinearColor(0.38f, 0.22f, 0.1f)).Note(LOCTEXT("DeskDesc", "Massivholz mit einer abschließbaren Schublade.")),
 			FDef(TEXT("safe"), LOCTEXT("Safe", "Wandtresor"), Furniture, 120.f, 250.f, S::Huge).Fixed().Holds(30.f, S::Medium).Openable().Lock(20.f, false)
 				.Look(P::Box, FVector(60, 60, 80), FLinearColor(0.22f, 0.23f, 0.25f)).Note(LOCTEXT("SafeDesc", "Fest verankert. Mit dem Brecheisen ist nichts zu machen – das Schloss lässt sich nur langsam knacken.")),
+			FDef(TEXT("display_case"), LOCTEXT("DisplayCase", "Vitrine"), Furniture, 45.f, 350.f, S::Huge, 600).Holds(40.f, S::Medium).Openable().Lock(6.f, false).Glass()
+				.Look(P::Box, FVector(90, 50, 120), FLinearColor(0.55f, 0.75f, 0.85f)).Note(LOCTEXT("DisplayCaseDesc", "Glasvitrine mit kleinem Schloss. Das Glas lässt sich einschlagen – das hört man weit.")),
 			FDef(TEXT("wardrobe"), LOCTEXT("Wardrobe", "Kleiderschrank"), Furniture, 80.f, 1100.f, S::Huge, 200).Holds(600.f, S::Large).Openable()
 				.Look(P::Box, FVector(100, 55, 190), FLinearColor(0.45f, 0.3f, 0.18f)).Note(LOCTEXT("WardrobeDesc", "Groß genug, um sich darin zu verstecken.")),
 			FDef(TEXT("sofa"), LOCTEXT("Sofa", "Sofa"), Furniture, 60.f, 1200.f, S::Huge, 300).Holds(3.f, S::Small)
@@ -182,6 +189,7 @@ namespace DCItems
 		case EDCItemAction::Force: return LOCTEXT("ActionForce", "aufbrechen");
 		case EDCItemAction::Take: return LOCTEXT("ActionTake", "nehmen");
 		case EDCItemAction::Drop: return LOCTEXT("ActionDrop", "ablegen");
+		case EDCItemAction::Smash: return LOCTEXT("ActionSmash", "einschlagen");
 		}
 		return FText::GetEmpty();
 	}
