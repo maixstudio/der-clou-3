@@ -76,6 +76,11 @@ struct FDCTaskCheck
 
 	/** One line for tooltips: "ca. 3 s · Erfolg 100 % · Schlösser 6 (nötig 3): geübt". */
 	FText Describe() const;
+	/** Short form for menus: "3 s · 100 % · geübt" (or the reason it is not possible). */
+	FText DescribeShort() const;
+
+	/** -1 below the difficulty, 0 fair, 1 above (for the short form). */
+	int32 Rating = 0;
 };
 
 namespace DCSkills

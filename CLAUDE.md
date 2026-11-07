@@ -73,15 +73,37 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Knöpfe: Tooltip mit Dauer, Erfolgschance und Fertigkeit; unmögliche ausgegraut, Klick sagt warum.
   - Crew: Vic (Schlösser 6, Kraft 6, Tresore 1, Dietrich-Set) und Rosa (Tresore 7, Elektronik 6,
     Schlösser 3, Kraft 3, Stethoskop, Outliner „Crew“). Anklicken wechselt, das Inventar zeigt die Werte.
+- **Zeitleiste (Schritt 5) – das Herzstück:**
+  - Modi (`EDCPlanMode`): **Planung** (Start; Klicks hängen Schritte an den Plan der ausgewählten Figur),
+    **Abspielen**, **Direkt** (Klicks wirken sofort, zum Ausprobieren). Plan in `UDCPlanSubsystem`
+    (GameInstance) – Schritte `FDCPlanTask`: Gehen, Warten, Tür (knacken/öffnen/schließen/durch),
+    Gegenstand (knacken/aufbrechen/einschlagen/öffnen/nehmen, auch Einbauteile), Aufheben, Ausräumen
+    (öffnet Unverschlossenes, nimmt alles mit Wert). Ziele per Actor-Name, überleben das Neuladen.
+  - **Zustandsmanager** `UDCHeistStateSubsystem` (`DCHeistState.h`): Momentaufnahme aller Türen und
+    Gegenstandsbäume; `Simulate()` spielt alle Pläne ereignisgesteuert durch (Weg per NavMesh-Pfad,
+    Dauer aus Fähigkeits-Prüfung, Ereignisse „Tür aufgesperrt“ …). Braucht ein Schritt einen Zustand,
+    den erst jemand anderes herstellt, wartet die Figur (grau in der Zeitleiste); passiert das nie →
+    rot „geht nicht“. Geplanter Endzustand bestimmt, was die Planungs-Menüs anbieten.
+  - Abspielen: `UDCPlanRunnerComponent` je Figur – hingehen, am Ort warten bis der echte Zustand passt
+    (bei Türen seitlich, damit der Knacker Platz hat), ausführen, Schloss-Fehlschläge bis zu 3× neu.
+    „Zurück zur Planung“ / erneutes Abspielen lädt den Raum neu (Plan bleibt, `bPlayAfterLoad`).
+  - Radialmenü: zweite Zeile mit Dauer · Erfolg · Einschätzung (Tooltip lang), Unmögliches ausgegraut.
+  - `UDCTimelinePanel` unten (Abspielen/Pause/Tempo 1–4×/Warten +5 s/Schritt zurück/Plan leeren/Direkt/
+    Inventar; Leertaste, Rücktaste), `ADCPlanMarker` = nummerierte Punkte + Linien in der Welt.
+  - Test-Beispiel: Vic knackt Schublade, räumt aus, knackt Hintertür; Rosa wartet an der Tür (geplant
+    10,2 s), geht durch und zurück, knackt Tresor. Geplant 41 s, gespielt 40 s.
 - Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer (Aufpassen),
-  Alarmanlagen (Elektronik), schleichen vs. rennen, zu zweit tragen / Sackkarre, Übergeben zwischen
-  Crew-Mitgliedern, sich im Schrank verstecken, zerbrechliche Beute, Fähigkeiten lernen/verbessern.
+  Alarmanlagen (Elektronik), Gegner überwältigen (Kampf), schleichen vs. rennen, zu zweit tragen /
+  Sackkarre, Übergeben zwischen Crew-Mitgliedern, Plan-Schritte verschieben/einfügen, „warten auf
+  Signal“, Lärm-Vorhersage in der Zeitleiste, sich im Schrank verstecken, Fähigkeiten verbessern.
   Katalog als Data Assets erst, wenn der User Werte selbst im Editor ändern will.
 
 **Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
 Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus),
-Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus.
-- Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`.
+Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus,
+Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüft).
+- Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
+  `Timeline`, `Reload`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

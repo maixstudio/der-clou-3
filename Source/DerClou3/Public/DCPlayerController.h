@@ -13,6 +13,11 @@ class UDCContainerPanel;
 class UDCInfoPanel;
 class UDCInventoryPanel;
 class UDCNoiseHud;
+class UDCTimelinePanel;
+struct FDCPlanTask;
+struct FDCRadialOption;
+struct FDCTaskCheck;
+enum class EDCPlanMode : uint8;
 class UDCRadialMenu;
 
 /**
@@ -30,6 +35,24 @@ public:
 
 	virtual void PlayerTick(float DeltaTime) override;
 
+	ADCCrewCharacter* GetSelectedCrew() const { return Selected; }
+
+	//~ Timeline buttons
+	/** Plays the plan (reloads the level first if it was already played or changed). */
+	void StartPlayback();
+	void TogglePause();
+	bool IsPlaybackPaused() const;
+	/** Back to the start state of the level, plan kept. */
+	void ReturnToPlanning();
+	void SetDirectMode(bool bDirect);
+	void ToggleInventory();
+	/** Planning: the selected crew member waits. */
+	void AddWait(float Seconds);
+	void RemoveLastStep();
+	void ClearPlan();
+	/** 1x, 2x, 4x. */
+	void CycleSpeed();
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -38,6 +61,12 @@ private:
 	void Select(ADCCrewCharacter* Crew);
 	void OpenDoorMenu(ADCDoor* Door);
 	void OpenPickupMenu(ADCItemPickup* Pickup);
+	EDCPlanMode GetMode() const;
+	/** Planning: add to the selected crew member's plan. Direct: do it now. */
+	void IssueTask(const FDCPlanTask& Task);
+	/** A menu entry for a step, with duration and chance; not possible = greyed, says why when clicked. */
+	FDCRadialOption MakeTaskOption(const FText& Label, const FDCTaskCheck& Check, const FDCPlanTask& Task);
+	void ReloadLevel();
 	void UpdateHoverCursor();
 	ADCItemPickup* FindPickup(FName ItemId) const;
 
@@ -47,6 +76,10 @@ private:
 	void StartContainerSelfTest();
 	/** -DCSelfTest=Noise: walk, break a drawer, smash the display case; the neighbour must notice. */
 	void StartNoiseSelfTest();
+	/** -DCSelfTest=Timeline: Vic picks the back door while Rosa waits at it, then both work through their plans. */
+	void StartTimelineSelfTest();
+	/** -DCSelfTest=Reload: play, back to planning (level reset, plan kept), play again via reload. */
+	void StartReloadSelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */
@@ -72,6 +105,11 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCNoiseHud> NoiseHud;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCTimelinePanel> TimelinePanel;
+
+	float RefreshTimer = 0.f;
 
 	FDelegateHandle ContainerReachedHandle;
 

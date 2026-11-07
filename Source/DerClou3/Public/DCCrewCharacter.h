@@ -10,6 +10,7 @@
 
 class ADCItemPickup;
 class UDCInventoryComponent;
+class UDCPlanRunnerComponent;
 class UDCItem;
 class UStaticMeshComponent;
 class UTextRenderComponent;
@@ -63,6 +64,18 @@ public:
 	/** Can this crew member do it (tool at hand, hands free, skill high enough) – and how long, how likely? */
 	FDCTaskCheck CheckItemAction(const UDCItem* Item, EDCItemAction Action) const;
 	FDCTaskCheck CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const;
+	/**
+	 * For planning: what the action would take on an item of this kind, whatever state it is in
+	 * now (the plan may change it first). Tools and hands are judged by what is carried now.
+	 */
+	FDCTaskCheck PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action) const;
+	FDCTaskCheck PlanCheckDoor(const ADCDoor* Door, EDCDoorAction Action) const { return CheckDoorAction(Door, Action); }
+
+	/** Plays this crew member's part of the plan. */
+	UDCPlanRunnerComponent* GetPlanRunner() const { return PlanRunner; }
+	const FLinearColor& GetBodyColor() const { return BodyColor; }
+	/** Short feedback under the name ("gibt auf"). */
+	void Say(const FText& Text) { ShowNotice(Text); }
 
 	UDCInventoryComponent* GetInventory() const { return Inventory; }
 	bool IsBusy() const { return Phase != ETaskPhase::Idle; }
@@ -98,6 +111,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Crew")
 	TObjectPtr<UDCInventoryComponent> Inventory;
+
+	UPROPERTY(VisibleAnywhere, Category = "Crew")
+	TObjectPtr<UDCPlanRunnerComponent> PlanRunner;
 
 	/** Self-test: on play start, pick the lock of the nearest door (if needed) and walk through. */
 	UPROPERTY(EditAnywhere, Category = "Debug")

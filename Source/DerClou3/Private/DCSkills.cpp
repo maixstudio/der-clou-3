@@ -34,6 +34,21 @@ FText FDCTaskCheck::Describe() const
 	return SkillNote.IsEmpty() ? Base : FText::Format(LOCTEXT("DescribeSkill", "{0} · {1}"), Base, SkillNote);
 }
 
+FText FDCTaskCheck::DescribeShort() const
+{
+	if (!bPossible)
+	{
+		return Reason;
+	}
+	if (Seconds <= 0.f)
+	{
+		return FText::GetEmpty();
+	}
+	const FText Word = Rating > 0 ? LOCTEXT("ShortEasy", "geübt") : Rating < 0 ? LOCTEXT("ShortHard", "schwierig") : LOCTEXT("ShortFair", "passt");
+	return FText::Format(LOCTEXT("Short", "{0} s · {1} % · {2}"), FText::AsNumber(FMath::RoundToInt(Seconds)),
+		FText::AsNumber(FMath::RoundToInt((1.f - FailChance) * 100.f)), SkillNote.IsEmpty() ? FText::GetEmpty() : Word);
+}
+
 namespace DCSkills
 {
 	FText Name(EDCSkill Skill)
@@ -77,6 +92,7 @@ namespace DCSkills
 			Check.Seconds = BaseSeconds * (1.f + 0.5f * Shortfall);
 			Check.FailChance = 0.25f * Shortfall;
 			Check.NoiseFactor = 1.f + 0.3f * Shortfall;
+			Check.Rating = -1;
 			Check.SkillNote = FText::Format(LOCTEXT("Hard", "{0} {1} (nötig {2}): schwierig – langsamer, lauter, kann misslingen"),
 				SkillName, FText::AsNumber(Value), FText::AsNumber(Difficulty));
 		}
@@ -90,6 +106,7 @@ namespace DCSkills
 			// Above the task: quicker and quieter.
 			Check.Seconds = BaseSeconds * FMath::Max(0.4f, 1.f - 0.15f * Delta);
 			Check.NoiseFactor = FMath::Max(0.5f, 1.f - 0.1f * Delta);
+			Check.Rating = 1;
 			Check.SkillNote = FText::Format(LOCTEXT("Easy", "{0} {1} (nötig {2}): geübt – schneller, leiser"), SkillName, FText::AsNumber(Value), FText::AsNumber(Difficulty));
 		}
 		return Check;

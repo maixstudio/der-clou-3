@@ -130,7 +130,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 						]
-						+ SVerticalBox::Slot().MaxHeight(620.f)
+						+ SVerticalBox::Slot().MaxHeight(430.f)
 						[
 							SNew(SScrollBox)
 							+ SScrollBox::Slot()

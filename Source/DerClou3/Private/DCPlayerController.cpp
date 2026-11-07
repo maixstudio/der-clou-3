@@ -1,6 +1,11 @@
 #include "DCPlayerController.h"
 
 #include "DCClickMarker.h"
+#include "DCHeistState.h"
+#include "DCPlan.h"
+#include "DCPlanRunner.h"
+#include "DCTimelinePanel.h"
+#include "Kismet/GameplayStatics.h"
 #include "DCContainerPanel.h"
 #include "DCCrewCharacter.h"
 #include "DCDoor.h"
@@ -28,6 +33,8 @@ ADCPlayerController::ADCPlayerController()
 {
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Default;
+	// Keys and buttons keep working while the plan is paused.
+	bShouldPerformFullTickWhenPaused = true;
 }
 
 void ADCPlayerController::BeginPlay()
@@ -72,6 +79,12 @@ void ADCPlayerController::BeginPlay()
 		NoiseHud->SetVisibility(ESlateVisibility::HitTestInvisible);
 		NoiseHud->AddToViewport(4);
 	}
+	TimelinePanel = CreateWidget<UDCTimelinePanel>(this, UDCTimelinePanel::StaticClass());
+	if (TimelinePanel)
+	{
+		TimelinePanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		TimelinePanel->AddToViewport(8);
+	}
 	ContainerPanel = CreateWidget<UDCContainerPanel>(this, UDCContainerPanel::StaticClass());
 	if (ContainerPanel)
 	{
@@ -99,6 +112,27 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartNoiseSelfTest();
 	}
+	else if (SelfTest == TEXT("Timeline"))
+	{
+		StartTimelineSelfTest();
+	}
+	else if (SelfTest == TEXT("Reload"))
+	{
+		StartReloadSelfTest();
+	}
+
+	// Coming back from "Abspielen" after a reload: play right away.
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (Plans && Plans->bPlayAfterLoad)
+	{
+		Plans->bPlayAfterLoad = false;
+		FTimerHandle Handle;
+		GetWorldTimerManager().SetTimer(Handle, this, &ADCPlayerController::StartPlayback, 0.5f, false);
+	}
+	else if (Plans && Plans->GetMode() == EDCPlanMode::Playing)
+	{
+		Plans->SetMode(EDCPlanMode::Planning);
+	}
 }
 
 void ADCPlayerController::PlayerTick(float DeltaTime)
@@ -113,6 +147,24 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (InventoryPanel && WasInputKeyJustPressed(EKeys::I))
 	{
 		InventoryPanel->Toggle();
+	}
+	// Planning: keep the timeline up to date (walking times change with what is carried).
+	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this); Heist && GetMode() == EDCPlanMode::Planning)
+	{
+		RefreshTimer += DeltaTime;
+		if (RefreshTimer >= 0.5f)
+		{
+			RefreshTimer = 0.f;
+			Heist->Refresh(false);
+		}
+	}
+	if (WasInputKeyJustPressed(EKeys::SpaceBar))
+	{
+		GetMode() == EDCPlanMode::Planning ? StartPlayback() : TogglePause();
+	}
+	if (WasInputKeyJustPressed(EKeys::BackSpace))
+	{
+		RemoveLastStep();
 	}
 
 	const bool bMenuOpen = RadialMenu && RadialMenu->IsOpen();
@@ -174,27 +226,56 @@ void ADCPlayerController::UpdateHoverCursor()
 
 void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 {
-	if (!RadialMenu || !Door)
+	if (!RadialMenu || !Door || !Selected)
 	{
 		return;
 	}
-	TWeakObjectPtr<ADCDoor> WeakDoor = Door;
-	TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
-	TArray<FDCRadialOption> Options;
-	for (const EDCDoorAction Action : Door->GetActions())
+	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
+	// Planning offers what the door will allow once the plan so far has run.
+	bool bLocked = Door->IsLocked();
+	bool bOpen = Door->IsOpen();
+	if (bPlanning)
 	{
-		FDCRadialOption& Option = Options.AddDefaulted_GetRef();
-		Option.Label = ADCDoor::DescribeAction(Action);
-		Option.OnSelected = [WeakDoor, WeakCrew, Action]()
+		if (const FDCSimDoor* Planned = const_cast<FDCWorldSnapshot&>(UDCHeistStateSubsystem::Get(this)->GetPlannedState()).FindDoor(Door->GetFName()))
 		{
-			if (WeakDoor.IsValid() && WeakCrew.IsValid())
-			{
-				WeakCrew->InteractWithDoor(WeakDoor.Get(), Action);
-			}
-		};
+			bLocked = Planned->bLocked;
+			bOpen = Planned->bOpen;
+		}
+	}
+	TArray<EDCDoorAction> Actions;
+	if (bLocked)
+	{
+		Actions = { EDCDoorAction::PickLock, EDCDoorAction::GoThrough };
+	}
+	else
+	{
+		Actions = { bOpen ? EDCDoorAction::Close : EDCDoorAction::Open, EDCDoorAction::GoThrough };
+	}
+
+	TArray<FDCRadialOption> Options;
+	for (const EDCDoorAction Action : Actions)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Door;
+		Task.Target = Door->GetFName();
+		Task.Action = static_cast<uint8>(Action);
+		FDCTaskCheck Check = Selected->CheckDoorAction(Door, Action);
+		if (Check.bPossible && bLocked && Action == EDCDoorAction::GoThrough)
+		{
+			// Through a locked door: only planned, waiting for someone to unlock it.
+			Check.bPossible = bPlanning;
+			Check.Reason = bPlanning ? LOCTEXT("ThroughLockedPlan", "wartet, bis jemand aufsperrt") : LOCTEXT("ThroughLocked", "ist verschlossen");
+			Options.Add(MakeTaskOption(ADCDoor::DescribeAction(Action), Check, Task));
+			Options.Last().Detail = Check.Reason;
+			Options.Last().Tooltip = Check.Reason;
+			Options.Last().bEnabled = bPlanning;
+			continue;
+		}
+		Options.Add(MakeTaskOption(ADCDoor::DescribeAction(Action), Check, Task));
 	}
 	// Info is always the last entry, for every interactable.
 	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
+	TWeakObjectPtr<ADCDoor> WeakDoor = Door;
 	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
 	Info.Label = LOCTEXT("Info", "Info");
 	Info.OnSelected = [WeakPanel, WeakDoor]()
@@ -204,55 +285,161 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 			WeakPanel->ShowFor(WeakDoor.Get());
 		}
 	};
-	RadialMenu->Open(Door->DescribeState(), MoveTemp(Options));
+	const FText Title = FText::Format(bPlanning ? LOCTEXT("PlanTitle", "{0}\nplant: {1}") : LOCTEXT("DirectTitle", "{0}\n{1}"), Door->DescribeState(), Selected->GetCrewName());
+	RadialMenu->Open(Title, MoveTemp(Options));
 }
 
 void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 {
-	if (!RadialMenu || !Pickup)
+	UDCItem* Root = Pickup ? Pickup->GetItem() : nullptr;
+	if (!RadialMenu || !Root || !Selected)
 	{
 		return;
 	}
-	TWeakObjectPtr<ADCItemPickup> WeakPickup = Pickup;
-	TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
-	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
-	const UDCItem* Item = Pickup->GetItem();
-	TArray<FDCRadialOption> Options;
-	if (Item && (Item->IsContainer() || Item->GetDef().bOpenable || !Item->GetContents().IsEmpty()))
+	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	const FDCSimPickup* Planned = bPlanning ? const_cast<FDCWorldSnapshot&>(Heist->GetPlannedState()).FindPickup(Pickup->GetFName()) : nullptr;
+	// Locked, smashed, ... as it will be after the plan so far (planning) or as it is now (direct).
+	const auto StateOf = [Planned](const UDCItem* Item, bool& bLocked, bool& bDestroyed)
 	{
+		bLocked = Item->IsLocked();
+		bDestroyed = Item->IsDestroyed();
+		if (Planned)
+		{
+			const int32 Index = FDCWorldSnapshot::FindItem(*Planned, UDCHeistStateSubsystem::PathOf(Item));
+			if (Index != INDEX_NONE)
+			{
+				bLocked = Planned->Items[Index].bLocked;
+				bDestroyed = Planned->Items[Index].bDestroyed;
+			}
+		}
+	};
+	const auto Check = [this, bPlanning](const UDCItem* Item, EDCItemAction Action)
+	{
+		return bPlanning ? Selected->PlanCheckItem(Item->GetDef(), Action) : Selected->CheckItemAction(Item, Action);
+	};
+	const auto ItemTask = [Pickup](const UDCItem* Item, EDCItemAction Action)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Item;
+		Task.Target = Pickup->GetFName();
+		Task.ItemPath = UDCHeistStateSubsystem::PathOf(Item);
+		Task.Action = static_cast<uint8>(Action);
+		return Task;
+	};
+
+	TArray<FDCRadialOption> Options;
+	// Locks and glass: the thing itself and its built-in parts (the desk's drawer).
+	TArray<UDCItem*> WithLocks = { Root };
+	for (UDCItem* Part : Root->GetContents())
+	{
+		if (Part->IsAttached())
+		{
+			WithLocks.Add(Part);
+		}
+	}
+	for (UDCItem* Item : WithLocks)
+	{
+		const FDCItemDef& Def = Item->GetDef();
+		bool bLocked = false;
+		bool bDestroyed = false;
+		StateOf(Item, bLocked, bDestroyed);
+		const auto Label = [Item, Root](const FText& Verb)
+		{
+			return Item == Root ? Verb : FText::Format(LOCTEXT("PartAction", "{0} {1}"), Item->GetDisplayName(), Verb);
+		};
+		if (bLocked && Def.HasLock())
+		{
+			Options.Add(MakeTaskOption(Label(LOCTEXT("PickVerb", "knacken")), Check(Item, EDCItemAction::PickLock), ItemTask(Item, EDCItemAction::PickLock)));
+			if (Def.bForceable)
+			{
+				Options.Add(MakeTaskOption(Label(LOCTEXT("ForceVerb", "aufbrechen")), Check(Item, EDCItemAction::Force), ItemTask(Item, EDCItemAction::Force)));
+			}
+		}
+		if (Def.bBreakable && !bDestroyed)
+		{
+			Options.Add(MakeTaskOption(Label(LOCTEXT("SmashVerb", "einschlagen")), Check(Item, EDCItemAction::Smash), ItemTask(Item, EDCItemAction::Smash)));
+		}
+	}
+	// Loot: open what opens, take what is worth something.
+	if (Root->IsContainer() || !Root->GetContents().IsEmpty())
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Loot;
+		Task.Target = Pickup->GetFName();
+		FDCTaskCheck LootCheck;
+		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Ausräumen"), LootCheck, Task);
+		Option.Detail = LOCTEXT("LootDetail", "öffnet, was aufgeht · nimmt alles Wertvolle");
+		Options.Add(Option);
+	}
+	if (Root->GetDef().bMovable)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::PickUp;
+		Task.Target = Pickup->GetFName();
+		FDCTaskCheck Take;
+		const FText Reason = Selected->GetInventory()->CheckAdd(Root);
+		Take.bPossible = Reason.IsEmpty();
+		Take.Reason = Reason;
+		Options.Add(MakeTaskOption(LOCTEXT("PickUp", "Aufheben"), Take, Task));
+	}
+	if (!bPlanning && (Root->IsContainer() || !Root->GetContents().IsEmpty()))
+	{
+		TWeakObjectPtr<ADCItemPickup> WeakPickup = Pickup;
+		TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
 		FDCRadialOption& Search = Options.AddDefaulted_GetRef();
 		Search.Label = LOCTEXT("Search", "Durchsuchen");
+		Search.Detail = LOCTEXT("SearchDetail", "hingehen und selbst umpacken");
 		Search.OnSelected = [WeakPickup, WeakCrew]()
 		{
 			if (WeakPickup.IsValid() && WeakCrew.IsValid())
 			{
+				WeakCrew->GetPlanRunner()->Stop();
 				WeakCrew->Search(WeakPickup.Get());
 			}
 		};
 	}
-	if (Item && Item->GetDef().bMovable)
-	{
-		FDCRadialOption& Take = Options.AddDefaulted_GetRef();
-		Take.Label = LOCTEXT("PickUp", "Aufheben");
-		Take.OnSelected = [WeakPickup, WeakCrew]()
-		{
-			if (WeakPickup.IsValid() && WeakCrew.IsValid())
-			{
-				WeakCrew->PickUp(WeakPickup.Get());
-			}
-		};
-	}
 	// Info is always the last entry, for every interactable.
+	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
+	TWeakObjectPtr<ADCItemPickup> WeakInfo = Pickup;
 	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
 	Info.Label = LOCTEXT("Info", "Info");
-	Info.OnSelected = [WeakPanel, WeakPickup]()
+	Info.OnSelected = [WeakPanel, WeakInfo]()
 	{
-		if (WeakPanel.IsValid() && WeakPickup.IsValid())
+		if (WeakPanel.IsValid() && WeakInfo.IsValid())
 		{
-			WeakPanel->ShowFor(WeakPickup.Get());
+			WeakPanel->ShowFor(WeakInfo.Get());
 		}
 	};
-	RadialMenu->Open(Pickup->GetInteractableName(), MoveTemp(Options));
+	const FText Title = FText::Format(bPlanning ? LOCTEXT("PlanTitle", "{0}\nplant: {1}") : LOCTEXT("DirectTitle", "{0}\n{1}"), Pickup->GetInteractableName(), Selected->GetCrewName());
+	RadialMenu->Open(Title, MoveTemp(Options));
+}
+
+FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FDCTaskCheck& Check, const FDCPlanTask& Task)
+{
+	FDCRadialOption Option;
+	Option.Label = Label;
+	Option.Detail = Check.DescribeShort();
+	Option.Tooltip = Check.Describe();
+	Option.bEnabled = Check.bPossible;
+	TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+	TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
+	const bool bPossible = Check.bPossible;
+	const FText Reason = Check.Reason;
+	Option.OnSelected = [WeakThis, WeakCrew, Task, bPossible, Reason]()
+	{
+		if (!WeakThis.IsValid() || !WeakCrew.IsValid())
+		{
+			return;
+		}
+		if (!bPossible)
+		{
+			WeakCrew->Say(Reason);
+			return;
+		}
+		WeakThis->IssueTask(Task);
+	};
+	return Option;
 }
 
 void ADCPlayerController::Select(ADCCrewCharacter* Crew)
@@ -290,7 +477,17 @@ void ADCPlayerController::HandleClick()
 		Select(Crew);
 		return;
 	}
-	if (!Selected)
+	// People who listen: clicking them shows how suspicious they are.
+	if (ADCNoiseListener* Listener = Cast<ADCNoiseListener>(Hit.GetActor()))
+	{
+		if (InfoPanel)
+		{
+			InfoPanel->ShowFor(Listener);
+		}
+		return;
+	}
+	// While the plan plays, the crew does what was planned.
+	if (!Selected || GetMode() == EDCPlanMode::Playing)
 	{
 		return;
 	}
@@ -304,16 +501,24 @@ void ADCPlayerController::HandleClick()
 		OpenPickupMenu(Pickup);
 		return;
 	}
-	// People who listen: clicking them shows how suspicious they are.
-	if (ADCNoiseListener* Listener = Cast<ADCNoiseListener>(Hit.GetActor()))
+	if (GetMode() == EDCPlanMode::Planning)
 	{
-		if (InfoPanel)
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Move;
+		Task.Location = Hit.ImpactPoint;
+		IssueTask(Task);
+		if (Marker)
 		{
-			InfoPanel->ShowFor(Listener);
+			Marker->Show(Hit.ImpactPoint, true);
 		}
 		return;
 	}
+	Selected->GetPlanRunner()->Stop();
 	const bool bReachable = Selected->MoveToLocation(Hit.ImpactPoint);
+	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this))
+	{
+		Heist->MarkWorldUsed();
+	}
 	if (Marker)
 	{
 		Marker->Show(Hit.ImpactPoint, bReachable);
@@ -321,8 +526,151 @@ void ADCPlayerController::HandleClick()
 	UE_LOG(LogDerClou, Verbose, TEXT("%s -> %s (%s)"), *Selected->GetCrewName().ToString(), *Hit.ImpactPoint.ToString(), bReachable ? TEXT("ok") : TEXT("unreachable"));
 }
 
+EDCPlanMode ADCPlayerController::GetMode() const
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	return Plans ? Plans->GetMode() : EDCPlanMode::Direct;
+}
+
+void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
+{
+	if (!Selected)
+	{
+		return;
+	}
+	switch (GetMode())
+	{
+	case EDCPlanMode::Planning:
+		UDCPlanSubsystem::Get(this)->AddTask(Selected->GetFName(), Task);
+		return;
+	case EDCPlanMode::Direct:
+		// Direct control: a plan of one step, started right away.
+		Selected->GetPlanRunner()->Start({ Task });
+		UDCHeistStateSubsystem::Get(this)->MarkWorldUsed();
+		return;
+	case EDCPlanMode::Playing:
+		return;
+	}
+}
+
+void ADCPlayerController::StartPlayback()
+{
+	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Heist || !Plans || Heist->IsPlaying())
+	{
+		return;
+	}
+	// The plan always starts from the level's start state.
+	if (Heist->IsWorldUsed())
+	{
+		Plans->bPlayAfterLoad = true;
+		ReloadLevel();
+		return;
+	}
+	if (ContainerPanel)
+	{
+		ContainerPanel->Close();
+	}
+	Heist->StartPlayback();
+}
+
+void ADCPlayerController::TogglePause()
+{
+	if (GetMode() == EDCPlanMode::Playing)
+	{
+		UGameplayStatics::SetGamePaused(this, !UGameplayStatics::IsGamePaused(this));
+	}
+}
+
+bool ADCPlayerController::IsPlaybackPaused() const
+{
+	return UGameplayStatics::IsGamePaused(this);
+}
+
+void ADCPlayerController::ReturnToPlanning()
+{
+	if (UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this))
+	{
+		Plans->bPlayAfterLoad = false;
+		Plans->SetMode(EDCPlanMode::Planning);
+	}
+	ReloadLevel();
+}
+
+void ADCPlayerController::ReloadLevel()
+{
+	UGameplayStatics::SetGamePaused(this, false);
+	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
+	const FString Map = UWorld::RemovePIEPrefix(GetWorld()->GetOutermost()->GetName());
+	UGameplayStatics::OpenLevel(this, FName(*Map));
+}
+
+void ADCPlayerController::SetDirectMode(bool bDirect)
+{
+	if (UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this))
+	{
+		Plans->SetMode(bDirect ? EDCPlanMode::Direct : EDCPlanMode::Planning);
+	}
+}
+
+void ADCPlayerController::ToggleInventory()
+{
+	if (InventoryPanel)
+	{
+		InventoryPanel->Toggle();
+	}
+}
+
+void ADCPlayerController::AddWait(float Seconds)
+{
+	if (GetMode() == EDCPlanMode::Planning)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Wait;
+		Task.Seconds = Seconds;
+		IssueTask(Task);
+	}
+}
+
+void ADCPlayerController::RemoveLastStep()
+{
+	if (Selected && GetMode() == EDCPlanMode::Planning)
+	{
+		UDCPlanSubsystem::Get(this)->RemoveLastTask(Selected->GetFName());
+	}
+}
+
+void ADCPlayerController::ClearPlan()
+{
+	if (GetMode() == EDCPlanMode::Planning)
+	{
+		UDCPlanSubsystem::Get(this)->ClearAll();
+	}
+}
+
+void ADCPlayerController::CycleSpeed()
+{
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Plans)
+	{
+		return;
+	}
+	const float Speed = Plans->GetSpeed() >= 4.f ? 1.f : Plans->GetSpeed() * 2.f;
+	Plans->SetSpeed(Speed);
+	if (GetMode() == EDCPlanMode::Playing)
+	{
+		UGameplayStatics::SetGlobalTimeDilation(this, Speed);
+	}
+}
+
 void ADCPlayerController::OnContainerReached(ADCItemPickup* Pickup)
 {
+	// The search window belongs to direct control; a played plan just walks there.
+	if (GetMode() != EDCPlanMode::Direct)
+	{
+		return;
+	}
 	if (ContainerPanel && Pickup)
 	{
 		ContainerPanel->Open(Selected, Pickup);
@@ -353,6 +701,7 @@ ADCItemPickup* ADCPlayerController::FindPickup(FName ItemId) const
 void ADCPlayerController::StartInventorySelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test Inventory started"));
+	UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Direct);
 	const auto Wait = [this](float Seconds)
 	{
 		return [this, Seconds, End = -1.0]() mutable
@@ -468,6 +817,7 @@ void ADCPlayerController::StartInventorySelfTest()
 void ADCPlayerController::StartContainerSelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test Containers started"));
+	UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Direct);
 	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
 	const auto Expect = [bPassed](bool bCondition, const FString& What)
 	{
@@ -665,6 +1015,7 @@ void ADCPlayerController::StartContainerSelfTest()
 void ADCPlayerController::StartNoiseSelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test Noise started"));
+	UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Direct);
 	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
 	const TSharedRef<float> Before = MakeShared<float>(0.f);
 	const auto Expect = [bPassed](bool bCondition, const FString& What)
@@ -810,6 +1161,300 @@ void ADCPlayerController::StartNoiseSelfTest()
 		FinishSelfTest(*bPassed);
 		return true;
 	});
+}
+
+void ADCPlayerController::StartTimelineSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Timeline started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto Screenshot = [this](const TCHAR* Name)
+	{
+		return [this, Name]()
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name), true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), Name);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	SelfTestSteps.Add(Wait(1.f));
+	// Before planning: the menus show duration and chance for the selected crew member.
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Planning);
+		Select(CrewNamed(TEXT("Rosa")));
+		OpenPickupMenu(FindPickup(TEXT("safe")));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("radial_safe_rosa.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		RadialMenu->Close();
+		Select(CrewNamed(TEXT("Vic")));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this]()
+	{
+		OpenPickupMenu(FindPickup(TEXT("safe")));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("radial_safe_vic.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this]()
+	{
+		RadialMenu->Close();
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.3f));
+	// The plan.
+	SelfTestSteps.Add([this, Expect, CrewNamed]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		TActorIterator<ADCDoor> DoorIt(GetWorld());
+		ADCItemPickup* Desk = FindPickup(TEXT("desk"));
+		ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		Expect(Vic && Rosa && DoorIt && Desk && Safe, TEXT("Vic, Rosa, door, desk and safe are in the level"));
+		if (!Vic || !Rosa || !DoorIt || !Desk || !Safe)
+		{
+			return true;
+		}
+		const FName Door = DoorIt->GetFName();
+		const auto Step = [](EDCPlanTaskType Type, FName Target, uint8 Action, const FString& Path = FString())
+		{
+			FDCPlanTask Task;
+			Task.Type = Type;
+			Task.Target = Target;
+			Task.Action = Action;
+			Task.ItemPath = Path;
+			return Task;
+		};
+		FDCPlanTask Back;
+		Back.Type = EDCPlanTaskType::Move;
+		Back.Location = FVector(350.0, 300.0, 0.0);
+		FDCPlanTask Pause;
+		Pause.Type = EDCPlanTaskType::Wait;
+		Pause.Seconds = 2.f;
+
+		// Vic: drawer, loot the desk, then the back door, then out of the way.
+		Plans->AddTask(Vic->GetFName(), Step(EDCPlanTaskType::Item, Desk->GetFName(), static_cast<uint8>(EDCItemAction::PickLock), TEXT("desk_drawer")));
+		Plans->AddTask(Vic->GetFName(), Step(EDCPlanTaskType::Loot, Desk->GetFName(), 0));
+		Plans->AddTask(Vic->GetFName(), Step(EDCPlanTaskType::Door, Door, static_cast<uint8>(EDCDoorAction::PickLock)));
+		Plans->AddTask(Vic->GetFName(), Back);
+		// Rosa: through the back door at once (has to wait for Vic), back in, then the safe.
+		Plans->AddTask(Rosa->GetFName(), Step(EDCPlanTaskType::Door, Door, static_cast<uint8>(EDCDoorAction::GoThrough)));
+		Plans->AddTask(Rosa->GetFName(), Pause);
+		Plans->AddTask(Rosa->GetFName(), Step(EDCPlanTaskType::Door, Door, static_cast<uint8>(EDCDoorAction::GoThrough)));
+		Plans->AddTask(Rosa->GetFName(), Step(EDCPlanTaskType::Item, Safe->GetFName(), static_cast<uint8>(EDCItemAction::PickLock)));
+		Plans->AddTask(Rosa->GetFName(), Step(EDCPlanTaskType::Loot, Safe->GetFName(), 0));
+
+		// What the state manager expects.
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Heist->Refresh();
+		const FDCSchedule& Schedule = Heist->GetSchedule();
+		for (const FDCCrewSchedule& Crew : Schedule.Crews)
+		{
+			for (const FDCScheduledTask& Task : Crew.Tasks)
+			{
+				UE_LOG(LogDerClou, Display, TEXT("Plan %s %d. %s: %.1f walk %.1f wait %.1f work %.1f%s %s %s"), *Crew.Name.ToString(), Task.Index + 1, *Task.Label.ToString(),
+					Task.Start, Task.Ready, Task.WorkStart, Task.End, Task.bBlocked ? TEXT(" BLOCKED") : TEXT(""), *Task.Detail.ToString(), *Task.WaitReason.ToString());
+				Expect(!Task.bBlocked, FString::Printf(TEXT("%s step %d can happen"), *Crew.Name.ToString(), Task.Index + 1));
+			}
+		}
+		const FDCCrewSchedule* VicPlan = Schedule.Find(Vic->GetFName());
+		const FDCCrewSchedule* RosaPlan = Schedule.Find(Rosa->GetFName());
+		if (VicPlan && RosaPlan && VicPlan->Tasks.Num() >= 3 && !RosaPlan->Tasks.IsEmpty())
+		{
+			const FDCScheduledTask& Through = RosaPlan->Tasks[0];
+			const float Unlocked = VicPlan->Tasks[2].End;
+			Expect(Through.WorkStart - Through.Ready > 1.f, FString::Printf(TEXT("Rosa waits at the door (%.1f s): %s"), Through.WorkStart - Through.Ready, *Through.WaitReason.ToString()));
+			Expect(FMath::Abs(Through.WorkStart - Unlocked) < 0.6f, FString::Printf(TEXT("... until Vic has unlocked it (%.1f vs %.1f)"), Through.WorkStart, Unlocked));
+		}
+		Plans->SetSpeed(2.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Screenshot(TEXT("timeline_plan.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this]() { StartPlayback(); return true; });
+	// Rosa waits at the door for real: the state manager's live state, not the plan.
+	SelfTestSteps.Add([this, Expect, CrewNamed, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		const bool bWaiting = Rosa && !Rosa->GetPlanRunner()->GetWaitText().IsEmpty();
+		if (bWaiting || Now - Started > 40.0)
+		{
+			Expect(bWaiting, FString::Printf(TEXT("Rosa waits during playback: %s"), Rosa ? *Rosa->GetPlanRunner()->GetWaitText().ToString() : TEXT("-")));
+			return true;
+		}
+		return false;
+	});
+	SelfTestSteps.Add(Wait(3.f));
+	SelfTestSteps.Add(Screenshot(TEXT("timeline_play.png")));
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 150.0;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("timeline_done.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		TActorIterator<ADCDoor> Door(GetWorld());
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s)"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration);
+		Expect(Heist->IsPlaybackFinished(), TEXT("everyone is through with the plan"));
+		Expect(Door && !Door->IsLocked(), TEXT("back door unlocked"));
+		Expect(Vic && Vic->GetInventory()->HasTool(TEXT("ring")), TEXT("Vic has the ring from the drawer"));
+		Expect(Rosa && Rosa->GetInventory()->HasTool(TEXT("watch")) && Rosa->GetInventory()->HasTool(TEXT("necklace")), TEXT("Rosa has watch and necklace from the safe"));
+		for (ADCCrewCharacter* Member : { Vic, Rosa })
+		{
+			for (int32 Index = 0; Member && Index < UDCPlanSubsystem::Get(this)->GetTasks(Member->GetFName()).Num(); ++Index)
+			{
+				Expect(Member->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("%s step %d done"), *Member->GetCrewName().ToString(), Index + 1));
+			}
+		}
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartReloadSelfTest()
+{
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	const int32 Stage = Plans->SelfTestStage;
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Reload stage %d"), Stage);
+	const auto Expect = [this](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		UDCPlanSubsystem::Get(this)->bSelfTestPassed &= bCondition;
+	};
+	const auto DoorLocked = [this]()
+	{
+		TActorIterator<ADCDoor> Door(GetWorld());
+		return Door && Door->IsLocked();
+	};
+	const auto WaitPlayed = [this, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist->IsPlaying() && Heist->IsPlaybackFinished()) || Now - Started > 60.0;
+	};
+	const auto WaitSeconds = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			End = End < 0.0 ? Now + Seconds : End;
+			return Now >= End;
+		};
+	};
+
+	SelfTestSteps.Add(WaitSeconds(1.f));
+	if (Stage == 0)
+	{
+		// A one-step plan: Vic picks the back door. Play it.
+		SelfTestSteps.Add([this, Expect, DoorLocked]()
+		{
+			UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+			Plans->SetMode(EDCPlanMode::Planning);
+			Plans->ClearAll();
+			Plans->bSelfTestPassed = true;
+			TActorIterator<ADCDoor> Door(GetWorld());
+			FDCPlanTask Task;
+			Task.Type = EDCPlanTaskType::Door;
+			Task.Target = Door->GetFName();
+			Task.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+			Plans->AddTask(Selected->GetFName(), Task);
+			Expect(DoorLocked(), TEXT("door locked at the start"));
+			StartPlayback();
+			return true;
+		});
+		SelfTestSteps.Add(WaitPlayed);
+		SelfTestSteps.Add([this, Expect, DoorLocked]()
+		{
+			Expect(!DoorLocked(), TEXT("door unlocked after playing"));
+			UDCPlanSubsystem::Get(this)->SelfTestStage = 1;
+			ReturnToPlanning();
+			return true;
+		});
+	}
+	else if (Stage == 1)
+	{
+		// After "back to planning": fresh level, plan kept. Then pretend the world was used and play.
+		SelfTestSteps.Add([this, Expect, DoorLocked]()
+		{
+			UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+			Expect(Plans->GetMode() == EDCPlanMode::Planning, TEXT("back in planning mode"));
+			Expect(DoorLocked(), TEXT("door locked again (level reset)"));
+			Expect(Plans->GetTasks(Selected->GetFName()).Num() == 1, TEXT("the plan is still there"));
+			UDCHeistStateSubsystem::Get(this)->MarkWorldUsed();
+			Plans->SelfTestStage = 2;
+			StartPlayback();
+			return true;
+		});
+	}
+	else
+	{
+		// "Abspielen" on a used world reloaded the level and started on its own.
+		SelfTestSteps.Add([this, Expect]()
+		{
+			Expect(UDCHeistStateSubsystem::Get(this)->IsPlaying(), TEXT("playback started by itself after the reload"));
+			return true;
+		});
+		SelfTestSteps.Add(WaitPlayed);
+		SelfTestSteps.Add([this, Expect, DoorLocked]()
+		{
+			Expect(!DoorLocked(), TEXT("door unlocked again"));
+			UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+			Plans->SelfTestStage = 0;
+			FinishSelfTest(Plans->bSelfTestPassed);
+			return true;
+		});
+	}
 }
 
 void ADCPlayerController::FinishSelfTest(bool bPassed)

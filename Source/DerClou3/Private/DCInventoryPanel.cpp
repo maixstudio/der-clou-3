@@ -73,24 +73,9 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 		}
 	};
 
+	// The button to open it sits in the timeline.
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(20.f)
-		[
-			SNew(SButton)
-			.IsFocusable(false)
-			.OnClicked_Lambda([WeakThis]()
-			{
-				if (WeakThis.IsValid())
-				{
-					WeakThis->Toggle();
-				}
-				return FReply::Handled();
-			})
-			[
-				SNew(STextBlock).Text(LOCTEXT("OpenButton", "Inventar (I)")).Font(Font(12, true))
-			]
-		]
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(20.f)
 		[
 			SNew(SBox)
@@ -156,7 +141,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 						]
-						+ SVerticalBox::Slot().MaxHeight(680.f)
+						+ SVerticalBox::Slot().MaxHeight(430.f)
 						[
 							SNew(SScrollBox)
 							+ SScrollBox::Slot()

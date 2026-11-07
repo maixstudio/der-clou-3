@@ -11,6 +11,12 @@ class SCanvas;
 struct FDCRadialOption
 {
 	FText Label;
+	/** Second, smaller line: duration and chance ("ca. 3 s · Erfolg 75 %") or why it is not possible. */
+	FText Detail;
+	/** Shown when hovering (the long form of Detail). */
+	FText Tooltip;
+	/** Greyed out when false (still clickable, so it can say why). */
+	bool bEnabled = true;
 	TFunction<void()> OnSelected;
 };
 

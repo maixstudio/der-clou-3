@@ -9,6 +9,7 @@
 #include "DCItem.h"
 #include "DCItemPickup.h"
 #include "DCNoise.h"
+#include "DCPlanRunner.h"
 #include "DCVisuals.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
@@ -105,6 +106,7 @@ ADCCrewCharacter::ADCCrewCharacter()
 	Movement->MaxWalkSpeed = BaseWalkSpeed;
 
 	Inventory = CreateDefaultSubobject<UDCInventoryComponent>(TEXT("Inventory"));
+	PlanRunner = CreateDefaultSubobject<UDCPlanRunnerComponent>(TEXT("PlanRunner"));
 
 	// Clicks on the figure select it.
 	UCapsuleComponent* Capsule = GetCapsuleComponent();
@@ -757,7 +759,7 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		return Refuse(FText::GetEmpty());
 	}
 	const FDCItemDef& Def = Item->GetDef();
-	FText Reason;
+	// First what the item's state allows, then what this crew member can do.
 	switch (Action)
 	{
 	case EDCItemAction::Open:
@@ -765,6 +767,44 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		{
 			return Refuse(FText::Format(LOCTEXT("IsLocked", "{0} ist versperrt"), Item->GetDisplayName()));
 		}
+		break;
+	case EDCItemAction::PickLock:
+	case EDCItemAction::Force:
+		if (!Item->IsLocked())
+		{
+			return Refuse(FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName()));
+		}
+		break;
+	case EDCItemAction::Smash:
+		if (Item->IsDestroyed())
+		{
+			return Refuse(FText::Format(LOCTEXT("AlreadySmashed", "{0} ist schon eingeschlagen"), Item->GetDisplayName()));
+		}
+		break;
+	case EDCItemAction::Take:
+	{
+		const FText Reason = Inventory->CheckAdd(Item);
+		return Reason.IsEmpty() ? Check : Refuse(Reason);
+	}
+	default:
+		break;
+	}
+	return PlanCheckItem(Def, Action);
+}
+
+FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action) const
+{
+	FDCTaskCheck Check;
+	const auto Refuse = [&Check](const FText& Reason)
+	{
+		Check.bPossible = false;
+		Check.Reason = Reason;
+		return Check;
+	};
+	FText Reason;
+	switch (Action)
+	{
+	case EDCItemAction::Open:
 		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatOpen", "Öffnen"));
 		return Reason.IsEmpty() ? Check : Refuse(Reason);
 
@@ -773,9 +813,9 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		return Reason.IsEmpty() ? Check : Refuse(Reason);
 
 	case EDCItemAction::PickLock:
-		if (!Item->IsLocked())
+		if (!Def.HasLock())
 		{
-			return Refuse(FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName()));
+			return Refuse(FText::Format(LOCTEXT("NoLock", "{0} hat kein Schloss"), Def.Name));
 		}
 		Reason = CheckToolAndHands(Def.LockTool, 2, LOCTEXT("WhatPick", "Knacken"));
 		if (!Reason.IsEmpty())
@@ -785,13 +825,9 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		return DCSkills::Evaluate(Def.LockSkill, Skills.Get(Def.LockSkill), Def.LockDifficulty, Def.LockPickSeconds, CrewName);
 
 	case EDCItemAction::Force:
-		if (!Item->IsLocked())
-		{
-			return Refuse(FText::Format(LOCTEXT("NotLocked", "{0} ist nicht versperrt"), Item->GetDisplayName()));
-		}
 		if (!Def.bForceable)
 		{
-			return Refuse(FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Item->GetDisplayName()));
+			return Refuse(FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Def.Name));
 		}
 		Reason = CheckToolAndHands(DCItems::CrowbarId, 2, LOCTEXT("WhatForce", "Aufbrechen"));
 		if (!Reason.IsEmpty())
@@ -801,9 +837,9 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, Def.ForceDifficulty, DCItems::ForceSeconds, CrewName);
 
 	case EDCItemAction::Smash:
-		if (!Def.bBreakable || Item->IsDestroyed())
+		if (!Def.bBreakable)
 		{
-			return Refuse(FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Item->GetDisplayName()));
+			return Refuse(FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Def.Name));
 		}
 		Reason = CheckToolAndHands(DCItems::CrowbarId, 1, LOCTEXT("WhatSmash", "Einschlagen"));
 		if (!Reason.IsEmpty())
@@ -812,14 +848,9 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 		}
 		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, DCItems::SmashDifficulty, DCItems::SmashSeconds, CrewName);
 
-	case EDCItemAction::Take:
-		Reason = Inventory->CheckAdd(Item);
-		return Reason.IsEmpty() ? Check : Refuse(Reason);
-
-	case EDCItemAction::Drop:
+	default:
 		return Check;
 	}
-	return Check;
 }
 
 FDCTaskCheck ADCCrewCharacter::CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const
@@ -976,7 +1007,8 @@ FText ADCCrewCharacter::GetActivityText() const
 {
 	switch (Phase)
 	{
-	case ETaskPhase::Idle: return FText::GetEmpty();
+	// Between steps of the plan: what the crew member waits for.
+	case ETaskPhase::Idle: return PlanRunner ? PlanRunner->GetWaitText() : FText::GetEmpty();
 	case ETaskPhase::Walking: return LOCTEXT("Walking", "geht");
 	case ETaskPhase::ToDoor: return LOCTEXT("ToDoor", "geht zur Tür");
 	case ETaskPhase::AtDoor:

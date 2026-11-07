@@ -7,6 +7,8 @@
 
 ADCCameraPawn::ADCCameraPawn()
 {
+	// Look around while the plan is paused.
+	PrimaryActorTick.bTickEvenWhenPaused = true;
 	PrimaryActorTick.bCanEverTick = true;
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
