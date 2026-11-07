@@ -1067,7 +1067,7 @@ void ADCCrewCharacter::UpdateFootsteps(float DeltaSeconds)
 
 void ADCCrewCharacter::UpdateCarriedLook()
 {
-	// Graybox copies of what is carried, so one can tell from above who has the painting.
+	// Copies of what is carried, so one can tell from above who has the painting.
 	const auto Show = [](UStaticMeshComponent* Part, const UDCItem* Item, const FVector& Location, double Yaw)
 	{
 		if (!Item)
@@ -1076,10 +1076,9 @@ void ADCCrewCharacter::UpdateCarriedLook()
 			return;
 		}
 		const FDCItemDef& Def = Item->GetDef();
-		Part->SetStaticMesh(Def.Shape == EDCItemShape::Cylinder ? DCVisuals::Cylinder() : Def.Shape == EDCItemShape::Sphere ? DCVisuals::Sphere() : DCVisuals::Cube());
-		Part->SetRelativeLocationAndRotation(Location, FRotator(0.0, Yaw, 0.0));
-		Part->SetRelativeScale3D(Def.ShapeSize / 100.0);
-		DCVisuals::Paint(Part, Def.Color);
+		// Location is the middle of the item; models have their origin at the bottom.
+		const bool bModel = DCVisuals::SetItemLook(Part, Def);
+		Part->SetRelativeLocationAndRotation(Location - FVector(0.0, 0.0, bModel ? Def.ShapeSize.Z * 0.5 : 0.0), FRotator(0.0, Yaw, 0.0));
 		Part->SetVisibility(true);
 	};
 	const UDCItem* Right = Inventory->GetSlotItem(EDCEquipSlot::RightHand);

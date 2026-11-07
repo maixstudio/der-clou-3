@@ -31,3 +31,6 @@ Tools/SimTests/build/
 # Betriebssystem
 .DS_Store
 Thumbs.db
+
+# Python-Cache (Art-Pipeline)
+__pycache__/

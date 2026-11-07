@@ -147,6 +147,26 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   (Planungsleiste über die volle Breite, Zeitleiste wächst mit). Linie um die Szene in der Modusfarbe
   (bronze Planung, grün läuft, orange Ausprobieren). Info- und Durchsuchen-Fenster oben rechts in der
   Szene neben dem Profil, Meldungen und Dialoge in der Szene. Größen: `UDCFrame::TopHeight` usw.
+- **Modelle für alle Gegenstände (Schritt 10)** – in Blender per Skript modelliert, kein Würfel mehr:
+  - Pipeline in `Art/Items/`: `dc_mesh.py` (Grundformen, Drechseln, Sweeps, Polster, Fasen mit gehärteten
+    Normalen, Box-UVs 1 UV = 1 m), `dc_items.py` (Möbel) + `dc_items_small.py` (Kleidung, Werkzeug, Beute),
+    `dc_textures.py` (kachelbare PBR-Texturen aus FFT-Rauschen: Holz ×3, Stoff, Leder, Metall, Lack, Karton,
+    Papier, Geldschein, Gemälde, Marmor, Bronze; `_BC`, `_N` DirectX, `_ORM`), `dc_materials.py` (eine Tabelle
+    für Blender-Vorschau und Unreal: Textur, Tönung, Kachelung, Rauheit, Metall).
+  - Blender headless: `blender -b --factory-startup -P Art/Items/build_items.py -- [--textures] [--items a,b]
+    [--preview] [--export]` (Vorschau + Kontaktbogen in `Saved/ItemPreviews/`, FBX nach `Art/Items/Export/`).
+    Das Blender-MCP-Addon ist nicht installiert (Installation wurde blockiert) – Skripte reichen.
+  - Unreal (Editor zu): `UnrealEditor-Cmd.exe DerClou3.uproject -run=pythonscript -script="Art/Items/ue_import_items.py"`
+    → `/Game/DerClou/Items/{Textures,Materials,Meshes}`: `M_ItemSurface` (Textur × Tönung, Rauheit, Metall),
+    `M_ItemGlass` (durchsichtig), `MI_Item_<Name>` je Tabelleneintrag, Slots nach Namen, Box-Kollision.
+    Python-Plugin und Editor Scripting Utilities sind dafür im .uproject aktiv.
+  - Konvention: Ursprung unten Mitte, echte cm (Maße = `ShapeSize` im Katalog), Vorderseite Blender −Y =
+    **Unreal +Y**. Gemälde: Leinwand nach −X. Im Level gedreht: Sofa/Klavier 180°, Kleiderschrank −90°,
+    Sessel −140° (`Art/Items/ue_face_room.py`).
+  - Code: `DCVisuals::ItemModel(Id)` lädt `SM_<Id>` (fehlt es, bleibt der farbige Würfel), `SetItemLook` für
+    Pickups und getragene Gegenstände. `/Game/DerClou/Items` steht in `DirectoriesToAlwaysCook`.
+  - Offen: Zustände sichtbar machen (Tresortür/Schublade offen, Vitrine eingeschlagen), Licht/Nachbearbeitung
+    im Level für mehr Atmosphäre, Werte im Editor statt in Python, wenn der User selbst ändern will.
 - **Im Gespräch (noch nicht gebaut): zwei Phasen.** Phase 1 Planung (grob: Wege, Schlösser, Wache,
   Warten/Zeichen; Inhalte von Behältern unbekannt, „Ausräumen“ wird „Durchsuchen“). Phase 2 Einbruch:
   der Plan läuft, bei Funden hält das Spiel an und der Spieler sortiert selbst ein (einstecken,

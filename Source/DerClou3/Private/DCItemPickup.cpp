@@ -170,16 +170,9 @@ void ADCItemPickup::ApplyLook()
 	{
 		return;
 	}
-	switch (Def->Shape)
-	{
-	case EDCItemShape::Box: Mesh->SetStaticMesh(DCVisuals::Cube()); break;
-	case EDCItemShape::Cylinder: Mesh->SetStaticMesh(DCVisuals::Cylinder()); break;
-	case EDCItemShape::Sphere: Mesh->SetStaticMesh(DCVisuals::Sphere()); break;
-	}
-	// Basic shapes are 100 cm with the pivot in the centre; the actor origin is on the floor.
-	Mesh->SetRelativeScale3D(Def->ShapeSize / 100.0);
-	Mesh->SetRelativeLocation(FVector(0.0, 0.0, Def->ShapeSize.Z * 0.5));
-	DCVisuals::Paint(Mesh, Def->Color);
+	// The actor origin is on the floor: models have their origin there too, shapes in the middle.
+	const bool bModel = DCVisuals::SetItemLook(Mesh, *Def);
+	Mesh->SetRelativeLocation(FVector(0.0, 0.0, bModel ? 0.0 : Def->ShapeSize.Z * 0.5));
 
 	// Furniture and other big things are in the way; the crew walks over small ones.
 	const bool bObstacle = Def->IsObstacle();
