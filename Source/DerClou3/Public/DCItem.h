@@ -22,6 +22,20 @@ public:
 	/** New item of the given kind, with its fixed parts; nullptr if the id is unknown. */
 	static UDCItem* Create(FName DefId) { return Create(nullptr, DefId); }
 	static UDCItem* Create(UObject* Outer, FName DefId);
+	/** For the planning simulation: an item in the given state, without contents or fixed parts. */
+	static UDCItem* CreateBare(FName DefId, bool bInOpen, bool bInLocked, bool bInDestroyed, bool bInAttached);
+	/** A copy of this item with everything inside it, in the same state. */
+	UDCItem* Clone() const;
+
+	/**
+	 * While one of these lives, item changes do not notify the windows (the planning simulation
+	 * builds and changes many throwaway items).
+	 */
+	struct DERCLOU3_API FMuteScope
+	{
+		FMuteScope();
+		~FMuteScope();
+	};
 
 	/** Fires whenever any item changes its contents or state (the windows listen to it). */
 	static FSimpleMulticastDelegate& OnAnyChanged();

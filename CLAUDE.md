@@ -4,7 +4,7 @@ Taktisches Einbruchs-Planungsspiel in **Unreal Engine 5.8** (C++), eigenständig
 von „Der Clou!“. **Keine** Namen, Figuren, Texte, Grafiken oder Musik des Originals verwenden – nur
 Genre und Mechaniken. Mit dem User **Deutsch** sprechen.
 
-## Stand (2026-11-06)
+## Stand (2026-11-07)
 
 Das Projekt wurde am 2026-11-05 bewusst auf ein leeres Gerüst zurückgesetzt. Wir bauen **Schritt für
 Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der nächste kommt.
@@ -88,22 +88,48 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     (bei Türen seitlich, damit der Knacker Platz hat), ausführen, Schloss-Fehlschläge bis zu 3× neu.
     „Zurück zur Planung“ / erneutes Abspielen lädt den Raum neu (Plan bleibt, `bPlayAfterLoad`).
   - Radialmenü: zweite Zeile mit Dauer · Erfolg · Einschätzung (Tooltip lang), Unmögliches ausgegraut.
-  - `UDCTimelinePanel` unten (Abspielen/Pause/Tempo 1–4×/Warten +5 s/Schritt zurück/Plan leeren/Direkt/
-    Inventar; Leertaste, Rücktaste), `ADCPlanMarker` = nummerierte Punkte + Linien in der Welt.
   - Test-Beispiel: Vic knackt Schublade, räumt aus, knackt Hintertür; Rosa wartet an der Tür (geplant
     10,2 s), geht durch und zurück, knackt Tresor. Geplant 41 s, gespielt 40 s.
+- **Plan übersichtlich + geplantes Inventar (Schritt 6)**, nach User-Feedback „unübersichtlich, wer was
+  wann macht“ und „aufgehobenes Brecheisen muss ich später einsetzen können“:
+  - Simulation führt pro Figur ein **geplantes Inventar** (Wegwerf-Kopie: `UDCInventoryComponent::CopyFrom`,
+    `UDCItem::Clone/CreateBare`, `UDCItem::FMuteScope` gegen UI-Refresh). Aufheben/Nehmen/Ausräumen legen
+    hinein (gleiche Regeln wie live, Ausräumen nimmt nur, was passt), Ablegen nimmt heraus; Prüfungen
+    (`PlanCheckItem/PlanCheckDoor(…, With)`) und Gehtempo nutzen es. Planungs-Menüs prüfen mit dem
+    Inventar am Ende des Plans der Figur (`GetPlannedInventory`); im Plan schon Mitgenommenes ist ausgegraut.
+  - **Kurz ablegen:** Was in *einer* Hand liegt (nicht das Werkzeug, nicht „groß“), legt die Figur für
+    Knacken/Aufbrechen/Einschlagen kurz ab (+1 s, „legt Brecheisen kurz ab“) – in Planung und live gleich,
+    weil beide die Dauer aus derselben Prüfung nehmen. Große Dinge in beiden Händen: selbst ablegen.
+  - Neuer Plan-Schritt **Ablegen** (`EDCPlanTaskType::Drop`, Knopf „ablegen“ bei „Hände danach“).
+  - Wartet jemand, merkt sich die Simulation **auf wen und welchen Schritt** (`WaitFor`, `WaitForIndex`).
+  - `UDCTimelinePanel` „Plan & Zeitleiste“: links **Ablaufliste** der ausgewählten Figur in Sätzen (Nummer
+    wie am Boden, Uhrzeit, Dauer/Chance, „→ Rechte Hand“, „nimmt Brillantring …“, rot mit Grund wenn es
+    nicht geht, eigene Zeile „wartet 10,2 s – bis Vic mit „Hintertür knacken“ fertig ist“, bei der anderen
+    „→ Rosa wartet darauf“), Knöpfe ↑ ↓ × je Schritt (`MoveTask`, `RemoveTask`), „Hände danach“.
+    Rechts Zeitleiste aller Figuren in einem Canvas: Nummern in den Blöcken, weiße Linie vom Schritt, auf
+    den gewartet wird, zur wartenden Figur, Name anklicken = deren Plan.
+  - **Zeit-Vorschau:** Klick/Ziehen in der Zeitleiste oder Klick auf einen Schritt setzt eine Vorschauzeit:
+    Stecknadeln im Raum zeigen, wo jede Figur dann steht und was sie tut („Rosa: 1. wartet auf Vic“),
+    Zeile darunter fasst es zusammen; Esc oder „Vorschau aus“ beendet sie (`SetPreviewTime`,
+    `GetPositionAt`, `DescribeActivityAt`). Wege am Boden folgen dem NavMesh-Pfad; nur die ausgewählte
+    Figur hat Nummern, die anderen sind klein und dunkel, der gewählte Schritt groß (`EDCMarkerLook`).
+  - Selbsttest `-DCSelfTest=PlanInventory`: Brecheisen aufheben → Schublade aufbrechen → ausräumen,
+    Verschieben/Löschen/Ablegen, Rosa wartet auf Vics Schritt 4, Vorschau, Abspielen (geplant 14,1 s,
+    gespielt 13,5 s). Screenshots `plan_list_vic/rosa/done.png`.
 - Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer (Aufpassen),
   Alarmanlagen (Elektronik), Gegner überwältigen (Kampf), schleichen vs. rennen, zu zweit tragen /
-  Sackkarre, Übergeben zwischen Crew-Mitgliedern, Plan-Schritte verschieben/einfügen, „warten auf
-  Signal“, Lärm-Vorhersage in der Zeitleiste, sich im Schrank verstecken, Fähigkeiten verbessern.
+  Sackkarre, Übergeben zwischen Crew-Mitgliedern, Schritte mitten im Plan einfügen (bisher: anhängen und
+  mit ↑ verschieben), Abgelegtes im Plan wieder aufheben, „warten auf Signal“, Lärm-Vorhersage in der
+  Zeitleiste, sich im Schrank verstecken, Fähigkeiten verbessern.
   Katalog als Data Assets erst, wenn der User Werte selbst im Editor ändern will.
 
 **Noch vom User zu bestätigen:** Kamera drehen per Maus/Q-E, Infofenster-Breite, Tür seitlich schließen,
 Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus),
 Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus,
-Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüft).
+Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüft), ob die neue Ablaufliste
+und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Regel passt.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

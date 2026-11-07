@@ -5,13 +5,24 @@
 
 #include "DCTimelinePanel.generated.h"
 
+class SBox;
 class SVerticalBox;
+struct FDCSchedule;
+struct FGeometry;
+struct FPointerEvent;
 
 /**
- * The timeline at the bottom: one row per crew member with their planned steps as blocks over
- * time (pale = walking, grey = waiting for someone else, strong = working, red = will not
- * happen), a ruler, the playback cursor, and the buttons to play, pause, go back to planning,
- * wait, undo and switch to direct control. Built in Slate.
+ * The planning panel at the bottom, built in Slate.
+ *
+ * Left: the plan of the selected crew member as a list of sentences – number (as on the floor),
+ * time, what happens, how long and how likely, what it changes in what they carry, and who has to
+ * wait for whom ("wartet 10 s – bis Vic mit „Hintertür knacken“ fertig ist"). Steps can be moved
+ * and deleted there; below the title it says what the hands hold once the plan has run.
+ *
+ * Right: the timeline of all crew members (pale = walking, grey = waiting, strong = working,
+ * red = will not happen), with lines from the step someone waits for to the one who waits.
+ * Clicking or dragging in it sets a preview time: pins in the room show where everyone is then
+ * and what they do.
  */
 UCLASS()
 class DERCLOU3_API UDCTimelinePanel : public UUserWidget
@@ -25,11 +36,17 @@ protected:
 
 private:
 	void RebuildRows();
-	/** Changes whenever what the rows show changes (plan, schedule, playback progress). */
+	void RebuildList(const FDCSchedule& Schedule, FName Focus);
+	void RebuildTracks(const FDCSchedule& Schedule, FName Focus);
+	/** Click or drag in the timeline: preview time from x. */
+	void OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale);
+	/** Changes whenever what the rows show changes (plan, schedule, selection, playback progress). */
 	FString MakeSignature() const;
 	float GetScale() const;
 
 	TSharedPtr<SWidget> Root;
-	TSharedPtr<SVerticalBox> Rows;
+	TSharedPtr<SVerticalBox> ListHeader;
+	TSharedPtr<SVerticalBox> ListRows;
+	TSharedPtr<SBox> Tracks;
 	FString Signature;
 };

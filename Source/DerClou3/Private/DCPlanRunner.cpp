@@ -340,6 +340,17 @@ void UDCPlanRunnerComponent::StartExecute()
 		StepTime = LootStepSeconds;
 		LootSkip.Reset();
 		return;
+	case EDCPlanTaskType::Drop:
+		if (UDCItem* Carried = Crew->GetInventory()->FindItem(FName(*Task.ItemPath)))
+		{
+			Crew->DropItem(Carried);
+		}
+		else
+		{
+			Crew->Say(LOCTEXT("NothingToDrop", "hat das nicht dabei"));
+			FinishTask(EDCTaskStatus::Failed);
+		}
+		return;
 	}
 }
 

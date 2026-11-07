@@ -33,6 +33,9 @@ namespace
 	{
 		float Time = 0.f;
 		TFunction<void(FDCWorldSnapshot&)> Apply;
+		/** Whose step brings it about (to tell the waiting ones whom they wait for). */
+		int32 CrewIndex = INDEX_NONE;
+		int32 TaskIndex = INDEX_NONE;
 	};
 
 	struct FCursor
@@ -44,6 +47,9 @@ namespace
 		float Time = 0.f;
 		FVector Location = FVector::ZeroVector;
 		float Speed = 250.f;
+		float BaseSpeed = 250.f;
+		/** What the crew member carries at this point of the plan (a throwaway copy). */
+		UDCInventoryComponent* Inventory = nullptr;
 		bool bFinished = false;
 		bool bBlocked = false;
 		bool bHasPending = false;
@@ -57,9 +63,13 @@ namespace
 		return Def ? Def->Name : FText::FromName(DefId);
 	}
 
-	float WalkSeconds(UWorld* World, const FVector& From, const FVector& To, float Speed)
+	float WalkSeconds(UWorld* World, const FVector& From, const FVector& To, float Speed, TArray<FVector>* OutPath = nullptr)
 	{
 		const double Straight = FVector::Dist2D(From, To);
+		if (OutPath)
+		{
+			*OutPath = { From, To };
+		}
 		if (Straight < 20.0)
 		{
 			return 0.f;
@@ -70,10 +80,72 @@ namespace
 			if (Path->IsValid() && !Path->IsPartial())
 			{
 				Length = Path->GetPathLength();
+				if (OutPath && Path->PathPoints.Num() >= 2)
+				{
+					*OutPath = Path->PathPoints;
+				}
 			}
 		}
 		// A little extra for starting and stopping.
 		return static_cast<float>(Length / FMath::Max(50.f, Speed)) + 0.3f;
+	}
+
+	/** A real item built from the simulation's state of it (with what is still inside), to carry in a planned inventory. */
+	UDCItem* BuildSimItem(const FDCSimPickup& Pickup, int32 Index)
+	{
+		const FDCSimItem& Sim = Pickup.Items[Index];
+		UDCItem* Item = UDCItem::CreateBare(Sim.DefId, Sim.bOpen, Sim.bLocked, Sim.bDestroyed, Sim.bAttached);
+		if (!Item)
+		{
+			return nullptr;
+		}
+		for (const int32 Child : Sim.Children)
+		{
+			if (!Pickup.Items[Child].bTaken)
+			{
+				if (UDCItem* Built = BuildSimItem(Pickup, Child))
+				{
+					Item->AddContent(Built);
+				}
+			}
+		}
+		return Item;
+	}
+
+	/** A point along a polyline, Fraction 0..1 of its length. */
+	FVector AlongPath(const TArray<FVector>& Path, float Fraction)
+	{
+		if (Path.Num() < 2)
+		{
+			return Path.IsEmpty() ? FVector::ZeroVector : Path[0];
+		}
+		double Total = 0.0;
+		for (int32 Index = 1; Index < Path.Num(); ++Index)
+		{
+			Total += FVector::Dist2D(Path[Index - 1], Path[Index]);
+		}
+		double Left = Total * FMath::Clamp(Fraction, 0.f, 1.f);
+		for (int32 Index = 1; Index < Path.Num(); ++Index)
+		{
+			const double Segment = FVector::Dist2D(Path[Index - 1], Path[Index]);
+			if (Left <= Segment && Segment > 0.0)
+			{
+				return FMath::Lerp(Path[Index - 1], Path[Index], Left / Segment);
+			}
+			Left -= Segment;
+		}
+		return Path.Last();
+	}
+
+	/** "Ring, Goldkette" */
+	FText JoinNames(const TArray<FText>& Names)
+	{
+		TArray<FString> Parts;
+		for (const FText& Name : Names)
+		{
+			Parts.Add(Name.ToString());
+		}
+		return FText::FromString(FString::Join(Parts, TEXT(", ")));
 	}
 
 	/** Marks an item and everything inside it as taken. */
@@ -331,6 +403,8 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 		}
 		return Name;
 	}
+	case EDCPlanTaskType::Drop:
+		return FText::Format(LOCTEXT("TaskDrop", "{0} ablegen"), ItemName(FName(*Task.ItemPath)));
 	case EDCPlanTaskType::Item:
 	case EDCPlanTaskType::PickUp:
 	case EDCPlanTaskType::Loot:
@@ -368,9 +442,11 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 	return FText::GetEmpty();
 }
 
-FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) const
+FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TMap<FName, UDCInventoryComponent*>* OutInventories) const
 {
 	UWorld* World = GetWorld();
+	// The planned inventories are throwaway items: the windows need not hear about them.
+	UDCItem::FMuteScope Mute;
 	FDCSchedule Result;
 	FDCWorldSnapshot State = TakeSnapshot();
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(World);
@@ -382,20 +458,29 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 		Out.Crew = It->GetFName();
 		Out.Name = It->GetCrewName();
 		Out.Color = It->GetBodyColor();
+		Out.StartLocation = It->GetActorLocation();
 
 		FCursor& Cursor = Cursors.AddDefaulted_GetRef();
 		Cursor.Crew = *It;
 		Cursor.CrewIndex = Result.Crews.Num() - 1;
 		Cursor.Tasks = Plans ? &Plans->GetTasks(It->GetFName()) : nullptr;
 		Cursor.Location = It->GetActorLocation();
-		Cursor.Speed = It->GetCharacterMovement()->MaxWalkSpeed;
+		Cursor.Inventory = NewObject<UDCInventoryComponent>(GetTransientPackage());
+		Cursor.Inventory->CopyFrom(*It->GetInventory());
+		Cursor.BaseSpeed = It->GetBaseWalkSpeed();
+		Cursor.Speed = Cursor.BaseSpeed * Cursor.Inventory->GetSpeedFactor();
 		Cursor.bFinished = !Cursor.Tasks || Cursor.Tasks->IsEmpty();
 	}
 
 	TArray<FSimEvent> Events;
-	const auto AddEvent = [&Events](float Time, TFunction<void(FDCWorldSnapshot&)> Apply)
+	const auto AddEvent = [&Events](const FCursor& By, float Time, TFunction<void(FDCWorldSnapshot&)> Apply)
 	{
-		Events.Add({ Time, MoveTemp(Apply) });
+		Events.Add({ Time, MoveTemp(Apply), By.CrewIndex, By.Next });
+	};
+	// Heavier load, slower walking.
+	const auto UpdateSpeed = [](FCursor& Cursor)
+	{
+		Cursor.Speed = Cursor.BaseSpeed * Cursor.Inventory->GetSpeedFactor();
 	};
 
 	// Is the condition for the pending step met in the current state? If not, why not.
@@ -495,7 +580,18 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 				return;
 			}
 			const FName DoorName = Task.Target;
-			switch (static_cast<EDCDoorAction>(Task.Action))
+			const EDCDoorAction DoorAction = static_cast<EDCDoorAction>(Task.Action);
+			if (DoorAction != EDCDoorAction::PickLock)
+			{
+				// A free hand for the handle.
+				const FDCTaskCheck Check = Cursor.Crew->PlanCheckDoor(Door, DoorAction, Cursor.Inventory);
+				if (!Check.bPossible)
+				{
+					Block(Check.Reason);
+					return;
+				}
+			}
+			switch (DoorAction)
 			{
 			case EDCDoorAction::PickLock:
 				if (!SimDoor->bLocked)
@@ -504,7 +600,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 					break;
 				}
 				{
-					const FDCTaskCheck Check = Cursor.Crew->PlanCheckDoor(Door, EDCDoorAction::PickLock);
+					const FDCTaskCheck Check = Cursor.Crew->PlanCheckDoor(Door, EDCDoorAction::PickLock, Cursor.Inventory);
 					if (!Check.bPossible)
 					{
 						Block(Check.Reason);
@@ -512,21 +608,22 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 					}
 					UseCheck(Check);
 				}
-				AddEvent(T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bLocked = false; } });
+				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bLocked = false; } });
 				break;
 			case EDCDoorAction::Open:
 				Duration = HandSeconds;
-				AddEvent(T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
 				break;
 			case EDCDoorAction::Close:
 				Duration = HandSeconds;
-				AddEvent(T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = false; } });
+				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = false; } });
 				break;
 			case EDCDoorAction::GoThrough:
 			{
 				const FVector Pass = Door->GetStandPoint(Cursor.Location, true);
-				Duration = HandSeconds + SwingSeconds + WalkSeconds(World, Cursor.Location, Pass, Cursor.Speed);
-				AddEvent(T + HandSeconds, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				Duration = HandSeconds + SwingSeconds + WalkSeconds(World, Cursor.Location, Pass, Cursor.Speed, &Out.WorkPath);
+				Out.WorkPathDelay = HandSeconds + SwingSeconds;
+				AddEvent(Cursor, T + HandSeconds, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
 				Cursor.Location = Pass;
 				Out.EndLocation = Pass;
 				break;
@@ -536,7 +633,6 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 		else if (Task.Type == EDCPlanTaskType::Item || Task.Type == EDCPlanTaskType::PickUp || Task.Type == EDCPlanTaskType::Loot)
 		{
 			FDCSimPickup* SimPickup = State.FindPickup(Task.Target);
-			ADCItemPickup* Pickup = FindPickup(Task.Target);
 			const int32 Index = SimPickup ? FDCWorldSnapshot::FindItem(*SimPickup, Task.Type == EDCPlanTaskType::Item ? Task.ItemPath : FString()) : INDEX_NONE;
 			if (!SimPickup || SimPickup->bGone || Index == INDEX_NONE || SimPickup->Items[Index].bTaken)
 			{
@@ -549,15 +645,18 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 
 			if (Task.Type == EDCPlanTaskType::PickUp || static_cast<EDCItemAction>(Task.Action) == EDCItemAction::Take)
 			{
-				// Whether it fits is judged with what the crew member carries now.
-				const FText Reason = Cursor.Crew->GetInventory()->CheckAdd(ResolveItem(Pickup, Task.Type == EDCPlanTaskType::Item ? Task.ItemPath : FString()));
-				if (!Reason.IsEmpty())
+				// Into the planned inventory: later steps can use it (a crowbar picked up here).
+				FText Reason;
+				UDCItem* Built = BuildSimItem(*SimPickup, Index);
+				if (!Built || !Cursor.Inventory->AddAnywhere(Built, Reason))
 				{
 					Block(Reason);
 					return;
 				}
+				UpdateSpeed(Cursor);
+				Out.Carry = FText::Format(LOCTEXT("CarryTo", "→ {0}"), Cursor.Inventory->DescribeWhere(Built));
 				Duration = TakeSeconds;
-				AddEvent(T + Duration, [PickupName, Index](FDCWorldSnapshot& S) { if (FDCSimPickup* P = S.FindPickup(PickupName)) { TakeSubtree(*P, Index); } });
+				AddEvent(Cursor, T + Duration, [PickupName, Index](FDCWorldSnapshot& S) { if (FDCSimPickup* P = S.FindPickup(PickupName)) { TakeSubtree(*P, Index); } });
 			}
 			else if (Task.Type == EDCPlanTaskType::Loot)
 			{
@@ -565,6 +664,9 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 				FDCSimPickup Scratch = *SimPickup;
 				TArray<int32> Opened;
 				TArray<int32> Taken;
+				TArray<int32> NoRoom;
+				TArray<FText> TakenNames;
+				TArray<FText> NoRoomNames;
 				for (int32 Guard = 0; Guard < 100; ++Guard)
 				{
 					int32 ToOpen = INDEX_NONE;
@@ -572,7 +674,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 					for (int32 Candidate = 0; Candidate < Scratch.Items.Num(); ++Candidate)
 					{
 						const FDCSimItem& Sim = Scratch.Items[Candidate];
-						if (Sim.bTaken || FindBlocker(Scratch, Candidate) != INDEX_NONE)
+						if (Sim.bTaken || NoRoom.Contains(Candidate) || FindBlocker(Scratch, Candidate) != INDEX_NONE)
 						{
 							continue;
 						}
@@ -594,19 +696,40 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 					}
 					else if (ToTake != INDEX_NONE)
 					{
-						TakeSubtree(Scratch, ToTake);
-						Taken.Add(ToTake);
+						// Only what still fits (the same rule as when it is played).
+						FText Reason;
+						UDCItem* Built = BuildSimItem(Scratch, ToTake);
+						if (Built && Cursor.Inventory->AddAnywhere(Built, Reason))
+						{
+							TakeSubtree(Scratch, ToTake);
+							Taken.Add(ToTake);
+							TakenNames.Add(ItemName(Scratch.Items[ToTake].DefId));
+						}
+						else
+						{
+							NoRoom.Add(ToTake);
+							NoRoomNames.Add(ItemName(Scratch.Items[ToTake].DefId));
+						}
 					}
 					else
 					{
 						break;
 					}
 				}
-				const int32 Steps = Opened.Num() + Taken.Num();
+				UpdateSpeed(Cursor);
+				const int32 Steps = Opened.Num() + Taken.Num() + NoRoom.Num();
 				Duration = 0.3f + LootStepSeconds * Steps;
 				Out.Detail = Steps == 0 ? LOCTEXT("LootNothing", "nichts Erreichbares zu holen")
 					: FText::Format(LOCTEXT("LootSteps", "ca. {0} s · {1} Handgriffe"), FText::AsNumber(FMath::RoundToInt(Duration)), FText::AsNumber(Steps));
-				AddEvent(T + Duration, [PickupName, Opened, Taken](FDCWorldSnapshot& S)
+				if (!TakenNames.IsEmpty())
+				{
+					Out.Carry = FText::Format(LOCTEXT("CarryLoot", "nimmt {0}"), JoinNames(TakenNames));
+				}
+				if (!NoRoomNames.IsEmpty())
+				{
+					Out.Detail = FText::Format(LOCTEXT("LootNoRoom", "{0} · kein Platz mehr für: {1}"), Out.Detail, JoinNames(NoRoomNames));
+				}
+				AddEvent(Cursor, T + Duration, [PickupName, Opened, Taken](FDCWorldSnapshot& S)
 				{
 					if (FDCSimPickup* P = S.FindPickup(PickupName))
 					{
@@ -632,13 +755,22 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 				}
 				else if (Action == EDCItemAction::Open || Action == EDCItemAction::Close)
 				{
+					if (Def)
+					{
+						const FDCTaskCheck Check = Cursor.Crew->PlanCheckItem(*Def, Action, Cursor.Inventory);
+						if (!Check.bPossible)
+						{
+							Block(Check.Reason);
+							return;
+						}
+					}
 					Duration = OpenSeconds;
 					const bool bOpen = Action == EDCItemAction::Open;
-					AddEvent(T + Duration, [PickupName, Index, bOpen](FDCWorldSnapshot& S) { if (FDCSimPickup* P = S.FindPickup(PickupName)) { P->Items[Index].bOpen = bOpen; } });
+					AddEvent(Cursor, T + Duration, [PickupName, Index, bOpen](FDCWorldSnapshot& S) { if (FDCSimPickup* P = S.FindPickup(PickupName)) { P->Items[Index].bOpen = bOpen; } });
 				}
 				else if (Def)
 				{
-					const FDCTaskCheck Check = Cursor.Crew->PlanCheckItem(*Def, Action);
+					const FDCTaskCheck Check = Cursor.Crew->PlanCheckItem(*Def, Action, Cursor.Inventory);
 					if (!Check.bPossible)
 					{
 						Block(Check.Reason);
@@ -646,7 +778,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 					}
 					UseCheck(Check);
 					Out.bLoud = Action == EDCItemAction::Force || Action == EDCItemAction::Smash;
-					AddEvent(T + Duration, [PickupName, Index, Action](FDCWorldSnapshot& S)
+					AddEvent(Cursor, T + Duration, [PickupName, Index, Action](FDCWorldSnapshot& S)
 					{
 						if (FDCSimPickup* P = S.FindPickup(PickupName))
 						{
@@ -662,6 +794,20 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 		else if (Task.Type == EDCPlanTaskType::Wait)
 		{
 			Duration = Task.Seconds;
+		}
+		else if (Task.Type == EDCPlanTaskType::Drop)
+		{
+			const FName DropId(*Task.ItemPath);
+			UDCItem* Carried = Cursor.Inventory->FindItem(DropId);
+			if (!Carried)
+			{
+				Block(FText::Format(LOCTEXT("NothingToDrop", "hat dann kein {0} dabei"), ItemName(DropId)));
+				return;
+			}
+			Cursor.Inventory->Remove(Carried);
+			UpdateSpeed(Cursor);
+			Duration = HandSeconds;
+			Out.Carry = FText::Format(LOCTEXT("CarryDrop", "legt {0} auf den Boden"), ItemName(DropId));
 		}
 
 		Out.End = T + Duration;
@@ -697,6 +843,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 			Out.bHasLocation = true;
 			break;
 		case EDCPlanTaskType::Wait:
+		case EDCPlanTaskType::Drop:
 			break;
 		case EDCPlanTaskType::Door:
 			if (const ADCDoor* Door = FindDoor(Task.Target))
@@ -715,7 +862,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 			}
 			break;
 		}
-		Out.Ready = Cursor.Time + WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed);
+		Out.Ready = Cursor.Time + WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed, &Out.Path);
 		Cursor.Location = Spot;
 		Out.EndLocation = Spot;
 		Cursor.Time = Out.Ready;
@@ -732,6 +879,12 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 			{
 				Cursor.bBlocked = false;
 				Cursor.Time = FMath::Max(Cursor.BlockedSince, Event.Time);
+				if (Result.Crews.IsValidIndex(Event.CrewIndex) && Event.CrewIndex != Cursor.CrewIndex)
+				{
+					Cursor.Pending.WaitFor = Result.Crews[Event.CrewIndex].Crew;
+					Cursor.Pending.WaitForName = Result.Crews[Event.CrewIndex].Name;
+					Cursor.Pending.WaitForIndex = Event.TaskIndex;
+				}
 			}
 		}
 	};
@@ -820,29 +973,49 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState) co
 	{
 		*OutFinalState = State;
 	}
+	if (OutInventories)
+	{
+		for (const FCursor& Cursor : Cursors)
+		{
+			OutInventories->Add(Result.Crews[Cursor.CrewIndex].Crew, Cursor.Inventory);
+		}
+	}
 	return Result;
 }
 
 void UDCHeistStateSubsystem::Refresh(bool bMarkers)
 {
-	Schedule = Simulate(&PlannedState);
+	TMap<FName, UDCInventoryComponent*> Inventories;
+	Schedule = Simulate(&PlannedState, &Inventories);
+	PlannedInventories.Reset();
+	for (const TPair<FName, UDCInventoryComponent*>& Entry : Inventories)
+	{
+		PlannedInventories.Add(Entry.Key, Entry.Value);
+	}
 	FString Signature;
 	for (const FDCCrewSchedule& Crew : Schedule.Crews)
 	{
 		for (const FDCScheduledTask& Task : Crew.Tasks)
 		{
-			Signature += FString::Printf(TEXT("%.1f/%.1f/%.1f/%.1f/%d/%s;"), Task.Start, Task.Ready, Task.WorkStart, Task.End, Task.bBlocked ? 1 : 0, *Task.Detail.ToString());
+			Signature += FString::Printf(TEXT("%.1f/%.1f/%.1f/%.1f/%d/%s/%s/%s;"), Task.Start, Task.Ready, Task.WorkStart, Task.End, Task.bBlocked ? 1 : 0,
+				*Task.Detail.ToString(), *Task.WaitReason.ToString(), *Task.Carry.ToString());
 		}
 		Signature += TEXT("|");
 	}
-	if (Signature != ScheduleSignature)
+	const bool bChanged = Signature != ScheduleSignature;
+	if (bChanged)
 	{
 		ScheduleSignature = Signature;
 		++ScheduleVersion;
 	}
-	if (bMarkers)
+	// Also when the plan came back after reloading the room, or walking times changed.
+	if (bMarkers || bChanged)
 	{
 		UpdateMarkers();
+	}
+	else
+	{
+		UpdateGhosts();
 	}
 }
 
@@ -856,12 +1029,14 @@ void UDCHeistStateSubsystem::UpdateMarkers()
 		}
 	}
 	Markers.Reset();
+	UpdateGhosts();
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
 	if (!Plans || Plans->GetMode() != EDCPlanMode::Planning)
 	{
 		return;
 	}
-	// One numbered marker per step with a place, joined by a line, in the crew member's colour.
+	// One marker per step with a place, with the way there on the floor, in the crew member's
+	// colour. Only the plan being edited is numbered; the others stay small and dark.
 	for (const FDCCrewSchedule& Crew : Schedule.Crews)
 	{
 		const ADCCrewCharacter* Member = FindCrew(Crew.Crew);
@@ -869,14 +1044,19 @@ void UDCHeistStateSubsystem::UpdateMarkers()
 		{
 			continue;
 		}
+		const bool bFocus = FocusCrew.IsNone() || FocusCrew == Crew.Crew;
 		const double FloorZ = Member->GetActorLocation().Z - 90.0;
-		FVector Previous = Member->GetActorLocation();
-		Previous.Z = FloorZ;
 		for (const FDCScheduledTask& Task : Crew.Tasks)
 		{
 			if (!Task.bHasLocation)
 			{
 				continue;
+			}
+			TArray<FVector> Route = Task.Path;
+			Route.Append(Task.WorkPath);
+			for (FVector& Point : Route)
+			{
+				Point.Z = FloorZ;
 			}
 			FVector Spot = Task.EndLocation;
 			Spot.Z = FloorZ;
@@ -884,12 +1064,157 @@ void UDCHeistStateSubsystem::UpdateMarkers()
 			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			if (ADCPlanMarker* Marker = GetWorld()->SpawnActor<ADCPlanMarker>(Spot, FRotator::ZeroRotator, Params))
 			{
-				Marker->Init(Crew.Color, Task.Index + 1, Previous, Task.bBlocked);
+				const EDCMarkerLook Look = !bFocus ? EDCMarkerLook::Faint : Task.Index == FocusStep ? EDCMarkerLook::Highlight : EDCMarkerLook::Normal;
+				Marker->Init(Crew.Color, Task.Index + 1, Route, Task.bBlocked, Look);
 				Markers.Add(Marker);
 			}
-			Previous = Spot;
 		}
 	}
+}
+
+void UDCHeistStateSubsystem::UpdateGhosts()
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	const bool bShow = PreviewTime >= 0.f && Plans && Plans->GetMode() == EDCPlanMode::Planning;
+	if (!bShow)
+	{
+		for (const TWeakObjectPtr<ADCPlanMarker>& Ghost : Ghosts)
+		{
+			if (Ghost.IsValid())
+			{
+				Ghost->Destroy();
+			}
+		}
+		Ghosts.Reset();
+		return;
+	}
+	Ghosts.RemoveAll([](const TWeakObjectPtr<ADCPlanMarker>& Ghost) { return !Ghost.IsValid(); });
+	for (int32 Index = 0; Index < Schedule.Crews.Num(); ++Index)
+	{
+		const FDCCrewSchedule& Crew = Schedule.Crews[Index];
+		if (!Ghosts.IsValidIndex(Index))
+		{
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			ADCPlanMarker* Ghost = GetWorld()->SpawnActor<ADCPlanMarker>(Crew.StartLocation, FRotator::ZeroRotator, Params);
+			if (!Ghost)
+			{
+				return;
+			}
+			Ghost->InitGhost(Crew.Color);
+			Ghosts.Add(Ghost);
+		}
+		FVector Floor = GetPositionAt(Crew, PreviewTime);
+		Floor.Z = Crew.StartLocation.Z - 90.0;
+		Ghosts[Index]->SetGhost(Floor, FText::Format(LOCTEXT("GhostLabel", "{0}: {1}"), Crew.Name, DescribeActivityAt(Crew, PreviewTime)));
+	}
+}
+
+void UDCHeistStateSubsystem::SetFocus(FName Crew, int32 Step)
+{
+	if (FocusCrew != Crew || FocusStep != Step)
+	{
+		FocusCrew = Crew;
+		FocusStep = Step;
+		UpdateMarkers();
+	}
+}
+
+void UDCHeistStateSubsystem::SetPreviewTime(float Time)
+{
+	PreviewTime = Time < 0.f ? -1.f : FMath::Min(Time, FMath::Max(Schedule.Duration, 0.f));
+	UpdateGhosts();
+}
+
+const UDCInventoryComponent* UDCHeistStateSubsystem::GetPlannedInventory(FName Crew) const
+{
+	const TObjectPtr<UDCInventoryComponent>* Found = PlannedInventories.Find(Crew);
+	return Found ? Found->Get() : nullptr;
+}
+
+FVector UDCHeistStateSubsystem::GetPositionAt(const FDCCrewSchedule& Crew, float Time)
+{
+	FVector Location = Crew.StartLocation;
+	for (const FDCScheduledTask& Task : Crew.Tasks)
+	{
+		if (Time < Task.Start)
+		{
+			return Location;
+		}
+		if (Time < Task.Ready && Task.Path.Num() >= 2)
+		{
+			return AlongPath(Task.Path, (Time - Task.Start) / FMath::Max(0.01f, Task.Ready - Task.Start));
+		}
+		if (!Task.Path.IsEmpty())
+		{
+			Location = Task.Path.Last();
+		}
+		if (Task.bBlocked)
+		{
+			// Nothing happens after a step that cannot be done.
+			return Location;
+		}
+		if (Time < Task.WorkStart)
+		{
+			return Location;
+		}
+		if (Task.WorkPath.Num() >= 2)
+		{
+			const float WalkStart = Task.WorkStart + Task.WorkPathDelay;
+			if (Time < Task.End)
+			{
+				return Time < WalkStart ? Location : AlongPath(Task.WorkPath, (Time - WalkStart) / FMath::Max(0.01f, Task.End - WalkStart));
+			}
+			Location = Task.WorkPath.Last();
+		}
+		else if (Time < Task.End)
+		{
+			return Location;
+		}
+	}
+	return Location;
+}
+
+int32 UDCHeistStateSubsystem::GetStepAt(const FDCCrewSchedule& Crew, float Time)
+{
+	for (const FDCScheduledTask& Task : Crew.Tasks)
+	{
+		if (Task.bBlocked && Time >= Task.Start)
+		{
+			return Task.Index;
+		}
+		if (Time >= Task.Start && Time < FMath::Max(Task.End, Task.Start + 0.05f))
+		{
+			return Task.Index;
+		}
+	}
+	return INDEX_NONE;
+}
+
+FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, float Time)
+{
+	const int32 Step = GetStepAt(Crew, Time);
+	const FDCScheduledTask* Task = Crew.Tasks.FindByPredicate([Step](const FDCScheduledTask& Entry) { return Entry.Index == Step; });
+	if (!Task)
+	{
+		return Crew.Tasks.IsEmpty() || Time < Crew.Tasks[0].Start ? LOCTEXT("ActivityIdle", "steht") : LOCTEXT("ActivityDone", "fertig");
+	}
+	const FText Number = FText::AsNumber(Task->Index + 1);
+	if (Task->bBlocked && Time >= Task->Ready)
+	{
+		return FText::Format(LOCTEXT("ActivityBlocked", "{0}. {1} – geht nicht"), Number, Task->Label);
+	}
+	if (Time < Task->Ready)
+	{
+		return FText::Format(LOCTEXT("ActivityWalk", "{0}. geht hin: {1}"), Number, Task->Label);
+	}
+	if (Time < Task->WorkStart)
+	{
+		return Task->WaitFor.IsNone()
+			? FText::Format(LOCTEXT("ActivityWait", "{0}. {1}"), Number, Task->WaitReason)
+			: FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName);
+	}
+	return FText::Format(LOCTEXT("ActivityWork", "{0}. {1}"), Number, Task->Label);
 }
 
 void UDCHeistStateSubsystem::StartPlayback()
@@ -900,6 +1225,7 @@ void UDCHeistStateSubsystem::StartPlayback()
 	{
 		return;
 	}
+	PreviewTime = -1.f;
 	Refresh();
 	bWorldUsed = true;
 	PlaybackStart = World->GetTimeSeconds();

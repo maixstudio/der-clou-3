@@ -21,6 +21,68 @@ UDCInventoryComponent::UDCInventoryComponent()
 	Slots.SetNum(SlotCount);
 }
 
+void UDCInventoryComponent::CopyFrom(const UDCInventoryComponent& Other)
+{
+	Strength = Other.Strength;
+	Slots.Init(nullptr, SlotCount);
+	TMap<const UDCItem*, UDCItem*> Copies;
+	for (int32 Index = 0; Index < Other.Slots.Num() && Index < SlotCount; ++Index)
+	{
+		const UDCItem* Item = Other.Slots[Index];
+		if (!Item)
+		{
+			continue;
+		}
+		// A large item in both hands stays one item.
+		UDCItem*& Copy = Copies.FindOrAdd(Item);
+		if (!Copy)
+		{
+			Copy = Item->Clone();
+		}
+		Slots[Index] = Copy;
+	}
+}
+
+UDCItem* UDCInventoryComponent::FindItem(FName DefId) const
+{
+	for (UDCItem* Top : GetTopItems())
+	{
+		if (Top->GetDefId() == DefId)
+		{
+			return Top;
+		}
+		if (UDCItem* Inside = Top->FindInside(DefId))
+		{
+			return Inside;
+		}
+	}
+	return nullptr;
+}
+
+FText UDCInventoryComponent::DescribeWhere(const UDCItem* Item) const
+{
+	if (!Item)
+	{
+		return FText::GetEmpty();
+	}
+	if (const UDCItem* Parent = Item->GetParent())
+	{
+		return FText::Format(LOCTEXT("WhereIn", "in {0}"), Parent->GetDisplayName());
+	}
+	if (Item == GetSlotItem(EDCEquipSlot::LeftHand) && Item == GetSlotItem(EDCEquipSlot::RightHand))
+	{
+		return LOCTEXT("WhereBothHands", "beide Hände");
+	}
+	for (int32 Index = 0; Index < Slots.Num(); ++Index)
+	{
+		if (Slots[Index] == Item)
+		{
+			return DCItems::DescribeSlot(static_cast<EDCEquipSlot>(Index));
+		}
+	}
+	return FText::GetEmpty();
+}
+
 UDCItem* UDCInventoryComponent::GetSlotItem(EDCEquipSlot Slot) const
 {
 	return Slots.IsValidIndex(SlotIndex(Slot)) ? Slots[SlotIndex(Slot)].Get() : nullptr;

@@ -725,17 +725,61 @@ FText ADCCrewCharacter::PerformItemAction(UDCItem* Item, EDCItemAction Action, A
 	return FText::GetEmpty();
 }
 
-FText ADCCrewCharacter::CheckToolAndHands(FName Tool, int32 Hands, const FText& What) const
+namespace
 {
-	if (!Tool.IsNone() && !Inventory->FindReadyTool(Tool))
+	/** Putting something down for a task and picking it up again afterwards. */
+	constexpr float SetAsideSeconds = 1.f;
+
+	/** The task takes a little longer when something has to be put down first. */
+	void AddSetAside(FDCTaskCheck& Check, const FText& Names, int32 Count)
+	{
+		if (!Check.bPossible || Count <= 0)
+		{
+			return;
+		}
+		if (Check.Seconds > 0.f)
+		{
+			Check.Seconds += SetAsideSeconds * Count;
+		}
+		const FText Note = FText::Format(LOCTEXT("SetAsideNote", "legt {0} kurz ab"), Names);
+		Check.SkillNote = Check.SkillNote.IsEmpty() ? Note : FText::Format(LOCTEXT("SetAsideJoin", "{0} · {1}"), Check.SkillNote, Note);
+	}
+}
+
+FText ADCCrewCharacter::CheckToolAndHands(FName Tool, int32 Hands, const FText& What, const UDCInventoryComponent* With,
+	FText* OutSetAside, int32* OutSetAsideCount) const
+{
+	const UDCInventoryComponent* Carried = With ? With : Inventory.Get();
+	if (!Tool.IsNone() && !Carried->FindReadyTool(Tool))
 	{
 		const FDCItemDef* ToolDef = DCItems::Find(Tool);
 		const FText ToolName = ToolDef ? ToolDef->Name : FText::FromName(Tool);
-		return Inventory->HasTool(Tool)
+		return Carried->HasTool(Tool)
 			? FText::Format(LOCTEXT("ToolNotReady", "{0} steckt zu tief im Gepäck – erst in die Hand, Kleidung oder Weste"), ToolName)
 			: FText::Format(LOCTEXT("ToolMissing", "Zum {0} braucht es: {1}"), What, ToolName);
 	}
-	const int32 Free = Inventory->CountFreeHands(Tool);
+	const int32 Free = Carried->CountFreeHands(Tool);
+	if (Free < Hands && OutSetAside && OutSetAsideCount)
+	{
+		// Something held in one hand can be put down for a moment (not a large thing that needs both).
+		TArray<FString> Names;
+		int32 Count = 0;
+		for (const EDCEquipSlot Hand : { EDCEquipSlot::RightHand, EDCEquipSlot::LeftHand })
+		{
+			const UDCItem* Held = Carried->GetSlotItem(Hand);
+			if (Free + Count < Hands && Held && Held->GetDefId() != Tool && Held->GetDef().Size != EDCItemSize::Large)
+			{
+				Names.Add(Held->GetDisplayName().ToString());
+				++Count;
+			}
+		}
+		if (Free + Count >= Hands)
+		{
+			*OutSetAside = FText::FromString(FString::Join(Names, TEXT(" und ")));
+			*OutSetAsideCount = Count;
+			return FText::GetEmpty();
+		}
+	}
 	if (Free < Hands)
 	{
 		return Hands >= 2
@@ -792,7 +836,7 @@ FDCTaskCheck ADCCrewCharacter::CheckItemAction(const UDCItem* Item, EDCItemActio
 	return PlanCheckItem(Def, Action);
 }
 
-FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action) const
+FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action, const UDCInventoryComponent* With) const
 {
 	FDCTaskCheck Check;
 	const auto Refuse = [&Check](const FText& Reason)
@@ -802,14 +846,17 @@ FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemActio
 		return Check;
 	};
 	FText Reason;
+	FText SetAside;
+	int32 SetAsideCount = 0;
+	FDCTaskCheck Result;
 	switch (Action)
 	{
 	case EDCItemAction::Open:
-		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatOpen", "Öffnen"));
+		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatOpen", "Öffnen"), With, &SetAside, &SetAsideCount);
 		return Reason.IsEmpty() ? Check : Refuse(Reason);
 
 	case EDCItemAction::Close:
-		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatClose", "Schließen"));
+		Reason = CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatClose", "Schließen"), With, &SetAside, &SetAsideCount);
 		return Reason.IsEmpty() ? Check : Refuse(Reason);
 
 	case EDCItemAction::PickLock:
@@ -817,36 +864,42 @@ FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemActio
 		{
 			return Refuse(FText::Format(LOCTEXT("NoLock", "{0} hat kein Schloss"), Def.Name));
 		}
-		Reason = CheckToolAndHands(Def.LockTool, 2, LOCTEXT("WhatPick", "Knacken"));
+		Reason = CheckToolAndHands(Def.LockTool, 2, LOCTEXT("WhatPick", "Knacken"), With, &SetAside, &SetAsideCount);
 		if (!Reason.IsEmpty())
 		{
 			return Refuse(Reason);
 		}
-		return DCSkills::Evaluate(Def.LockSkill, Skills.Get(Def.LockSkill), Def.LockDifficulty, Def.LockPickSeconds, CrewName);
+		Result = DCSkills::Evaluate(Def.LockSkill, Skills.Get(Def.LockSkill), Def.LockDifficulty, Def.LockPickSeconds, CrewName);
+		AddSetAside(Result, SetAside, SetAsideCount);
+		return Result;
 
 	case EDCItemAction::Force:
 		if (!Def.bForceable)
 		{
 			return Refuse(FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen – nur knacken"), Def.Name));
 		}
-		Reason = CheckToolAndHands(DCItems::CrowbarId, 2, LOCTEXT("WhatForce", "Aufbrechen"));
+		Reason = CheckToolAndHands(DCItems::CrowbarId, 2, LOCTEXT("WhatForce", "Aufbrechen"), With, &SetAside, &SetAsideCount);
 		if (!Reason.IsEmpty())
 		{
 			return Refuse(Reason);
 		}
-		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, Def.ForceDifficulty, DCItems::ForceSeconds, CrewName);
+		Result = DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, Def.ForceDifficulty, DCItems::ForceSeconds, CrewName);
+		AddSetAside(Result, SetAside, SetAsideCount);
+		return Result;
 
 	case EDCItemAction::Smash:
 		if (!Def.bBreakable)
 		{
 			return Refuse(FText::Format(LOCTEXT("NotBreakable", "{0} lässt sich nicht einschlagen"), Def.Name));
 		}
-		Reason = CheckToolAndHands(DCItems::CrowbarId, 1, LOCTEXT("WhatSmash", "Einschlagen"));
+		Reason = CheckToolAndHands(DCItems::CrowbarId, 1, LOCTEXT("WhatSmash", "Einschlagen"), With, &SetAside, &SetAsideCount);
 		if (!Reason.IsEmpty())
 		{
 			return Refuse(Reason);
 		}
-		return DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, DCItems::SmashDifficulty, DCItems::SmashSeconds, CrewName);
+		Result = DCSkills::Evaluate(EDCSkill::Strength, Skills.Strength, DCItems::SmashDifficulty, DCItems::SmashSeconds, CrewName);
+		AddSetAside(Result, SetAside, SetAsideCount);
+		return Result;
 
 	default:
 		return Check;
@@ -855,15 +908,22 @@ FDCTaskCheck ADCCrewCharacter::PlanCheckItem(const FDCItemDef& Def, EDCItemActio
 
 FDCTaskCheck ADCCrewCharacter::CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const
 {
+	return PlanCheckDoor(Door, Action, nullptr);
+}
+
+FDCTaskCheck ADCCrewCharacter::PlanCheckDoor(const ADCDoor* Door, EDCDoorAction Action, const UDCInventoryComponent* With) const
+{
 	FDCTaskCheck Check;
 	if (!Door)
 	{
 		Check.bPossible = false;
 		return Check;
 	}
+	FText SetAside;
+	int32 SetAsideCount = 0;
 	const FText Reason = Action == EDCDoorAction::PickLock
-		? CheckToolAndHands(DCItems::LockpicksId, 2, LOCTEXT("WhatPick", "Knacken"))
-		: CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatDoor", "Türöffnen"));
+		? CheckToolAndHands(DCItems::LockpicksId, 2, LOCTEXT("WhatPick", "Knacken"), With, &SetAside, &SetAsideCount)
+		: CheckToolAndHands(NAME_None, 1, LOCTEXT("WhatDoor", "Türöffnen"), With, &SetAside, &SetAsideCount);
 	if (!Reason.IsEmpty())
 	{
 		Check.bPossible = false;
@@ -872,7 +932,9 @@ FDCTaskCheck ADCCrewCharacter::CheckDoorAction(const ADCDoor* Door, EDCDoorActio
 	}
 	if (Action == EDCDoorAction::PickLock)
 	{
-		return DCSkills::Evaluate(EDCSkill::Locks, Skills.Locks, Door->GetLockDifficulty(), Door->GetPickLockSeconds(), CrewName);
+		FDCTaskCheck Result = DCSkills::Evaluate(EDCSkill::Locks, Skills.Locks, Door->GetLockDifficulty(), Door->GetPickLockSeconds(), CrewName);
+		AddSetAside(Result, SetAside, SetAsideCount);
+		return Result;
 	}
 	return Check;
 }

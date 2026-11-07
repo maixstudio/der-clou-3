@@ -120,6 +120,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartReloadSelfTest();
 	}
+	else if (SelfTest == TEXT("PlanInventory"))
+	{
+		StartPlanInventorySelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -172,6 +176,15 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	{
 		RadialMenu->Close();
 		return;
+	}
+	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape))
+	{
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		if (Heist && Heist->GetPreviewTime() >= 0.f)
+		{
+			Heist->SetPreviewTime(-1.f);
+			return;
+		}
 	}
 	if (!bMenuOpen && ContainerPanel && ContainerPanel->IsOpen() && WasInputKeyJustPressed(EKeys::Escape))
 	{
@@ -231,6 +244,8 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 		return;
 	}
 	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
+	// Planning: with what the crew member will carry by then.
+	const UDCInventoryComponent* Carried = bPlanning ? UDCHeistStateSubsystem::Get(this)->GetPlannedInventory(Selected->GetFName()) : nullptr;
 	// Planning offers what the door will allow once the plan so far has run.
 	bool bLocked = Door->IsLocked();
 	bool bOpen = Door->IsOpen();
@@ -259,7 +274,7 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 		Task.Type = EDCPlanTaskType::Door;
 		Task.Target = Door->GetFName();
 		Task.Action = static_cast<uint8>(Action);
-		FDCTaskCheck Check = Selected->CheckDoorAction(Door, Action);
+		FDCTaskCheck Check = Selected->PlanCheckDoor(Door, Action, Carried);
 		if (Check.bPossible && bLocked && Action == EDCDoorAction::GoThrough)
 		{
 			// Through a locked door: only planned, waiting for someone to unlock it.
@@ -299,6 +314,9 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
 	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
 	const FDCSimPickup* Planned = bPlanning ? const_cast<FDCWorldSnapshot&>(Heist->GetPlannedState()).FindPickup(Pickup->GetFName()) : nullptr;
+	// Planning: tools and hands as they will be after the crew member's plan so far (a crowbar picked up earlier counts).
+	const UDCInventoryComponent* Carried = bPlanning ? Heist->GetPlannedInventory(Selected->GetFName()) : nullptr;
+	const bool bGoneInPlan = Planned && Planned->bGone;
 	// Locked, smashed, ... as it will be after the plan so far (planning) or as it is now (direct).
 	const auto StateOf = [Planned](const UDCItem* Item, bool& bLocked, bool& bDestroyed)
 	{
@@ -314,9 +332,16 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 			}
 		}
 	};
-	const auto Check = [this, bPlanning](const UDCItem* Item, EDCItemAction Action)
+	const auto Check = [this, bPlanning, Carried, bGoneInPlan](const UDCItem* Item, EDCItemAction Action)
 	{
-		return bPlanning ? Selected->PlanCheckItem(Item->GetDef(), Action) : Selected->CheckItemAction(Item, Action);
+		if (bGoneInPlan)
+		{
+			FDCTaskCheck Gone;
+			Gone.bPossible = false;
+			Gone.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
+			return Gone;
+		}
+		return bPlanning ? Selected->PlanCheckItem(Item->GetDef(), Action, Carried) : Selected->CheckItemAction(Item, Action);
 	};
 	const auto ItemTask = [Pickup](const UDCItem* Item, EDCItemAction Action)
 	{
@@ -368,8 +393,10 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		Task.Type = EDCPlanTaskType::Loot;
 		Task.Target = Pickup->GetFName();
 		FDCTaskCheck LootCheck;
+		LootCheck.bPossible = !bGoneInPlan;
+		LootCheck.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
 		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Ausräumen"), LootCheck, Task);
-		Option.Detail = LOCTEXT("LootDetail", "öffnet, was aufgeht · nimmt alles Wertvolle");
+		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "öffnet, was aufgeht · nimmt alles Wertvolle");
 		Options.Add(Option);
 	}
 	if (Root->GetDef().bMovable)
@@ -378,7 +405,8 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		Task.Type = EDCPlanTaskType::PickUp;
 		Task.Target = Pickup->GetFName();
 		FDCTaskCheck Take;
-		const FText Reason = Selected->GetInventory()->CheckAdd(Root);
+		const FText Reason = bGoneInPlan ? LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)")
+			: (Carried ? Carried : Selected->GetInventory())->CheckAdd(Root);
 		Take.bPossible = Reason.IsEmpty();
 		Take.Reason = Reason;
 		Options.Add(MakeTaskOption(LOCTEXT("PickUp", "Aufheben"), Take, Task));
@@ -462,6 +490,10 @@ void ADCPlayerController::Select(ADCCrewCharacter* Crew)
 	if (InventoryPanel)
 	{
 		InventoryPanel->SetCrew(Selected);
+	}
+	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this))
+	{
+		Heist->SetFocus(Selected ? Selected->GetFName() : NAME_None);
 	}
 }
 
@@ -638,6 +670,60 @@ void ADCPlayerController::RemoveLastStep()
 	if (Selected && GetMode() == EDCPlanMode::Planning)
 	{
 		UDCPlanSubsystem::Get(this)->RemoveLastTask(Selected->GetFName());
+	}
+}
+
+void ADCPlayerController::FocusStep(FName Crew, int32 Index)
+{
+	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	ADCCrewCharacter* Member = Heist ? Heist->FindCrew(Crew) : nullptr;
+	if (!Member)
+	{
+		return;
+	}
+	if (Member != Selected)
+	{
+		Select(Member);
+	}
+	Heist->SetFocus(Crew, Index);
+}
+
+void ADCPlayerController::RemoveStep(int32 Index)
+{
+	if (Selected && GetMode() == EDCPlanMode::Planning)
+	{
+		UDCPlanSubsystem::Get(this)->RemoveTask(Selected->GetFName(), Index);
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
+	}
+}
+
+void ADCPlayerController::MoveStep(int32 Index, int32 Delta)
+{
+	if (Selected && GetMode() == EDCPlanMode::Planning)
+	{
+		const int32 Count = UDCPlanSubsystem::Get(this)->GetTasks(Selected->GetFName()).Num();
+		UDCPlanSubsystem::Get(this)->MoveTask(Selected->GetFName(), Index, Delta);
+		// The moved step stays picked.
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName(), FMath::Clamp(Index + Delta, 0, Count - 1));
+	}
+}
+
+void ADCPlayerController::PlanDrop(FName ItemId)
+{
+	if (Selected && GetMode() == EDCPlanMode::Planning)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Drop;
+		Task.ItemPath = ItemId.ToString();
+		IssueTask(Task);
+	}
+}
+
+void ADCPlayerController::SetPreviewTime(float Time)
+{
+	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this); Heist && GetMode() == EDCPlanMode::Planning)
+	{
+		Heist->SetPreviewTime(Time);
 	}
 }
 
@@ -1455,6 +1541,201 @@ void ADCPlayerController::StartReloadSelfTest()
 			return true;
 		});
 	}
+}
+
+void ADCPlayerController::StartPlanInventorySelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test PlanInventory started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			End = End < 0.0 ? Now + Seconds : End;
+			return Now >= End;
+		};
+	};
+	const auto Screenshot = [this](const TCHAR* Name)
+	{
+		return [this, Name]()
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name), true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), Name);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto Step = [](EDCPlanTaskType Type, FName Target, uint8 Action, const FString& Path = FString())
+	{
+		FDCPlanTask Task;
+		Task.Type = Type;
+		Task.Target = Target;
+		Task.Action = Action;
+		Task.ItemPath = Path;
+		return Task;
+	};
+
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add([this, Expect, CrewNamed, Step]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCItemPickup* Desk = FindPickup(TEXT("desk"));
+		ADCItemPickup* Crowbar = FindPickup(TEXT("crowbar"));
+		ADCItemPickup* Case = FindPickup(TEXT("display_case"));
+		TActorIterator<ADCDoor> DoorIt(GetWorld());
+		const FDCItemDef* Drawer = DCItems::Find(TEXT("desk_drawer"));
+		Expect(Vic && Rosa && Desk && Crowbar && Case && DoorIt && Drawer, TEXT("Vic, Rosa, desk, crowbar, display case and door are there"));
+		if (!Vic || !Rosa || !Desk || !Crowbar || !Case || !DoorIt || !Drawer)
+		{
+			return true;
+		}
+		Select(Vic);
+		const FName V = Vic->GetFName();
+		Heist->Refresh();
+		Expect(!Vic->PlanCheckItem(*Drawer, EDCItemAction::Force, Heist->GetPlannedInventory(V)).bPossible, TEXT("without a crowbar Vic cannot plan to force the drawer"));
+
+		// Pick up the crowbar, force the drawer with it, loot the desk.
+		Plans->AddTask(V, Step(EDCPlanTaskType::PickUp, Crowbar->GetFName(), 0));
+		Plans->AddTask(V, Step(EDCPlanTaskType::Item, Desk->GetFName(), static_cast<uint8>(EDCItemAction::Force), TEXT("desk_drawer")));
+		Plans->AddTask(V, Step(EDCPlanTaskType::Loot, Desk->GetFName(), 0));
+		Heist->Refresh();
+		const UDCInventoryComponent* Planned = Heist->GetPlannedInventory(V);
+		Expect(Planned && Planned->FindReadyTool(DCItems::CrowbarId), TEXT("after the plan Vic has the crowbar at hand"));
+		Expect(Vic->PlanCheckItem(*Drawer, EDCItemAction::Force, Planned).bPossible, TEXT("so the planning menu now offers forcing"));
+		Expect(Vic->GetInventory()->FindItem(DCItems::CrowbarId) == nullptr, TEXT("the real inventory is untouched by planning"));
+		const FDCCrewSchedule* VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && VicPlan->Tasks.Num() == 3, TEXT("three steps planned"));
+		for (int32 Index = 0; VicPlan && Index < VicPlan->Tasks.Num(); ++Index)
+		{
+			const FDCScheduledTask& Task = VicPlan->Tasks[Index];
+			UE_LOG(LogDerClou, Display, TEXT("Plan Vic %d. %s | %s | %s | %s"), Index + 1, *Task.Label.ToString(), *Task.Detail.ToString(), *Task.Carry.ToString(), *Task.WaitReason.ToString());
+			Expect(!Task.bBlocked, FString::Printf(TEXT("Vic step %d can happen"), Index + 1));
+		}
+		Expect(VicPlan && VicPlan->Tasks.Num() == 3 && VicPlan->Tasks[0].Carry.ToString().Contains(TEXT("Hand")), TEXT("the pickup says where the crowbar goes (a hand)"));
+		Expect(VicPlan && VicPlan->Tasks.Num() == 3 && VicPlan->Tasks[2].Carry.ToString().Contains(TEXT("Ring")), TEXT("looting the desk takes the ring"));
+
+		// Forcing before picking up: not possible.
+		Plans->MoveTask(V, 1, -1);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && VicPlan->Tasks[0].bBlocked, FString::Printf(TEXT("moved before the pickup, forcing is blocked: %s"), VicPlan ? *VicPlan->Tasks[0].WaitReason.ToString() : TEXT("-")));
+		Plans->MoveTask(V, 0, 1);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && !VicPlan->Tasks[0].bBlocked && !VicPlan->Tasks[1].bBlocked, TEXT("moved back, everything works again"));
+
+		// Put the crowbar down: then the glass cannot be smashed. Remove both steps again.
+		FDCPlanTask Drop;
+		Drop.Type = EDCPlanTaskType::Drop;
+		Drop.ItemPath = DCItems::CrowbarId.ToString();
+		Plans->AddTask(V, Drop);
+		Plans->AddTask(V, Step(EDCPlanTaskType::Item, Case->GetFName(), static_cast<uint8>(EDCItemAction::Smash)));
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && VicPlan->Tasks.Num() == 5 && !VicPlan->Tasks[3].bBlocked && VicPlan->Tasks[4].bBlocked,
+			FString::Printf(TEXT("after putting it down, smashing is blocked: %s"), VicPlan && VicPlan->Tasks.Num() == 5 ? *VicPlan->Tasks[4].WaitReason.ToString() : TEXT("-")));
+		Plans->RemoveTask(V, 4);
+		Plans->RemoveTask(V, 3);
+		Heist->Refresh();
+		Expect(Plans->GetTasks(V).Num() == 3, TEXT("both steps deleted again"));
+
+		// Rosa waits at the back door until Vic has picked it: the plan knows for whom and which step.
+		Plans->AddTask(V, Step(EDCPlanTaskType::Door, DoorIt->GetFName(), static_cast<uint8>(EDCDoorAction::PickLock)));
+		Plans->AddTask(Rosa->GetFName(), Step(EDCPlanTaskType::Door, DoorIt->GetFName(), static_cast<uint8>(EDCDoorAction::GoThrough)));
+		Heist->Refresh();
+		const FDCCrewSchedule* RosaPlan = Heist->GetSchedule().Find(Rosa->GetFName());
+		Expect(RosaPlan && !RosaPlan->Tasks.IsEmpty() && RosaPlan->Tasks[0].WaitFor == V && RosaPlan->Tasks[0].WaitForIndex == 3,
+			FString::Printf(TEXT("Rosa waits for Vic's step 4 (%s, %d)"), RosaPlan && !RosaPlan->Tasks.IsEmpty() ? *RosaPlan->Tasks[0].WaitFor.ToString() : TEXT("-"),
+				RosaPlan && !RosaPlan->Tasks.IsEmpty() ? RosaPlan->Tasks[0].WaitForIndex + 1 : 0));
+
+		// The time preview: where everyone is while Rosa waits.
+		if (RosaPlan && !RosaPlan->Tasks.IsEmpty())
+		{
+			const float Time = RosaPlan->Tasks[0].Ready + 1.f;
+			FocusStep(V, 1);
+			SetPreviewTime(Time);
+			UE_LOG(LogDerClou, Display, TEXT("Preview %.1f: Vic %s | Rosa %s"), Time,
+				*UDCHeistStateSubsystem::DescribeActivityAt(*Heist->GetSchedule().Find(V), Time).ToString(), *UDCHeistStateSubsystem::DescribeActivityAt(*RosaPlan, Time).ToString());
+			const FVector RosaAt = UDCHeistStateSubsystem::GetPositionAt(*RosaPlan, Time);
+			Expect(FVector::Dist2D(RosaAt, DoorIt->GetActorLocation()) < 200.0, FString::Printf(TEXT("the preview shows Rosa at the door (%.0f cm away)"), FVector::Dist2D(RosaAt, DoorIt->GetActorLocation())));
+			Expect(UDCHeistStateSubsystem::DescribeActivityAt(*RosaPlan, Time).ToString().Contains(TEXT("Vic")), TEXT("... waiting for Vic"));
+		}
+		Plans->SetSpeed(2.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Screenshot(TEXT("plan_list_vic.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		if (ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa")))
+		{
+			FocusStep(Rosa->GetFName(), 0);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("plan_list_rosa.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this]()
+	{
+		SetPreviewTime(-1.f);
+		StartPlayback();
+		return true;
+	});
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 120.0;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("plan_list_done.png")));
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		const UDCItem* Drawer = UDCHeistStateSubsystem::ResolveItem(FindPickup(TEXT("desk")), TEXT("desk_drawer"));
+		TActorIterator<ADCDoor> Door(GetWorld());
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s)"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration);
+		Expect(Heist->IsPlaybackFinished(), TEXT("everyone is through with the plan"));
+		Expect(Drawer && Drawer->IsLockBroken(), TEXT("the drawer was forced with the crowbar picked up in the plan"));
+		Expect(Vic && Vic->GetInventory()->FindReadyTool(DCItems::CrowbarId), TEXT("Vic holds the crowbar"));
+		Expect(Vic && Vic->GetInventory()->HasTool(TEXT("ring")), TEXT("Vic has the ring"));
+		Expect(Door && !Door->IsLocked(), TEXT("back door unlocked"));
+		for (ADCCrewCharacter* Member : { Vic, Rosa })
+		{
+			for (int32 Index = 0; Member && Index < UDCPlanSubsystem::Get(this)->GetTasks(Member->GetFName()).Num(); ++Index)
+			{
+				Expect(Member->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("%s step %d done"), *Member->GetCrewName().ToString(), Index + 1));
+			}
+		}
+		FinishSelfTest(*bPassed);
+		return true;
+	});
 }
 
 void ADCPlayerController::FinishSelfTest(bool bPassed)

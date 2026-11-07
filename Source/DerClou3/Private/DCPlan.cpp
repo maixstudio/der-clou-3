@@ -48,6 +48,29 @@ void UDCPlanSubsystem::RemoveLastTask(FName Crew)
 	}
 }
 
+void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
+{
+	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
+	if (Plan && Plan->Tasks.IsValidIndex(Index))
+	{
+		Plan->Tasks.RemoveAt(Index);
+		OnPlanChanged.Broadcast();
+	}
+}
+
+void UDCPlanSubsystem::MoveTask(FName Crew, int32 Index, int32 Delta)
+{
+	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
+	const int32 Target = Index + Delta;
+	if (Plan && Plan->Tasks.IsValidIndex(Index) && Plan->Tasks.IsValidIndex(Target) && Delta != 0)
+	{
+		const FDCPlanTask Task = Plan->Tasks[Index];
+		Plan->Tasks.RemoveAt(Index);
+		Plan->Tasks.Insert(Task, Target);
+		OnPlanChanged.Broadcast();
+	}
+}
+
 void UDCPlanSubsystem::ClearAll()
 {
 	Plans.Reset();

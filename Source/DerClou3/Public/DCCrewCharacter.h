@@ -66,10 +66,12 @@ public:
 	FDCTaskCheck CheckDoorAction(const ADCDoor* Door, EDCDoorAction Action) const;
 	/**
 	 * For planning: what the action would take on an item of this kind, whatever state it is in
-	 * now (the plan may change it first). Tools and hands are judged by what is carried now.
+	 * now (the plan may change it first). Tools and hands are judged by With – what the crew
+	 * member will carry at that point of the plan (nullptr = what they carry now).
 	 */
-	FDCTaskCheck PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action) const;
-	FDCTaskCheck PlanCheckDoor(const ADCDoor* Door, EDCDoorAction Action) const { return CheckDoorAction(Door, Action); }
+	FDCTaskCheck PlanCheckItem(const FDCItemDef& Def, EDCItemAction Action, const UDCInventoryComponent* With = nullptr) const;
+	FDCTaskCheck PlanCheckDoor(const ADCDoor* Door, EDCDoorAction Action, const UDCInventoryComponent* With = nullptr) const;
+	float GetBaseWalkSpeed() const { return BaseWalkSpeed; }
 
 	/** Plays this crew member's part of the plan. */
 	UDCPlanRunnerComponent* GetPlanRunner() const { return PlanRunner; }
@@ -180,8 +182,12 @@ private:
 	void FinishPickUp();
 	void WalkToPickup(ADCItemPickup* Pickup, bool bSearch);
 	void StartItemWork(UDCItem* Item, EDCItemAction Action, const FDCTaskCheck& Check);
-	/** Tool at hand and enough free hands; empty = fine. */
-	FText CheckToolAndHands(FName Tool, int32 Hands, const FText& What) const;
+	/**
+	 * Tool at hand and enough free hands; empty = fine. Something held in one hand (not the tool)
+	 * is put down for the task and picked up again: OutSetAside names it, OutSetAsideCount counts it.
+	 */
+	FText CheckToolAndHands(FName Tool, int32 Hands, const FText& What, const UDCInventoryComponent* With,
+		FText* OutSetAside = nullptr, int32* OutSetAsideCount = nullptr) const;
 	/** Rolls against the current task's fail chance. */
 	bool RollSuccess() const;
 	void FinishItemWork();

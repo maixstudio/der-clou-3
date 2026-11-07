@@ -10,6 +10,7 @@ class ADCCrewCharacter;
 class ADCDoor;
 class ADCItemPickup;
 class ADCPlanMarker;
+class UDCInventoryComponent;
 class UDCItem;
 
 /** State of one item in the planning simulation (mirrors the real item tree). */
@@ -81,8 +82,19 @@ struct FDCScheduledTask
 	FText Detail;
 	/** Why it waits or is blocked. */
 	FText WaitReason;
+	/** Who finished what this step waited for (NAME_None: nobody else). */
+	FName WaitFor;
+	FText WaitForName;
+	int32 WaitForIndex = INDEX_NONE;
+	/** What it changes in what the crew member carries: "→ rechte Hand", "nimmt Ring, Goldkette". */
+	FText Carry;
 	FVector EndLocation = FVector::ZeroVector;
 	bool bHasLocation = false;
+	/** The way there (Start..Ready). */
+	TArray<FVector> Path;
+	/** Walking while working (through a door), starting WorkPathDelay seconds into the work. */
+	TArray<FVector> WorkPath;
+	float WorkPathDelay = 0.f;
 };
 
 struct FDCCrewSchedule
@@ -92,6 +104,7 @@ struct FDCCrewSchedule
 	FLinearColor Color = FLinearColor::White;
 	TArray<FDCScheduledTask> Tasks;
 	float End = 0.f;
+	FVector StartLocation = FVector::ZeroVector;
 };
 
 struct FDCSchedule
@@ -133,8 +146,11 @@ public:
 	//~ Planning
 	/** The world as it is right now. */
 	FDCWorldSnapshot TakeSnapshot() const;
-	/** Plays all plans through (does not change the world). OutFinalState: the world after the plan. */
-	FDCSchedule Simulate(FDCWorldSnapshot* OutFinalState = nullptr) const;
+	/**
+	 * Plays all plans through (does not change the world). OutFinalState: the world after the
+	 * plan; OutInventories: what each crew member carries then (throwaway copies).
+	 */
+	FDCSchedule Simulate(FDCWorldSnapshot* OutFinalState = nullptr, TMap<FName, UDCInventoryComponent*>* OutInventories = nullptr) const;
 	/** Recomputes the schedule and the planned end state (and the markers in the world). */
 	void Refresh(bool bMarkers = true);
 	const FDCSchedule& GetSchedule() const { return Schedule; }
@@ -142,8 +158,25 @@ public:
 	int32 GetScheduleVersion() const { return ScheduleVersion; }
 	/** The world as it will be once the whole plan has run. */
 	const FDCWorldSnapshot& GetPlannedState() const { return PlannedState; }
+	/** What the crew member will carry once their whole plan has run (nullptr if unknown). */
+	const UDCInventoryComponent* GetPlannedInventory(FName Crew) const;
 	/** Short name of a step: "Hintertür knacken", "Wandtresor ausräumen". */
 	FText DescribeTask(const FDCPlanTask& Task) const;
+
+	/** Where the crew member is at this time of the plan. */
+	static FVector GetPositionAt(const FDCCrewSchedule& Crew, float Time);
+	/** What the crew member does then: "Schritt 2: Hintertür knacken", "wartet auf Vic", "fertig". */
+	static FText DescribeActivityAt(const FDCCrewSchedule& Crew, float Time);
+	/** The step that runs at this time (INDEX_NONE before the first or after the last). */
+	static int32 GetStepAt(const FDCCrewSchedule& Crew, float Time);
+
+	/** Whose plan is being edited (bright, numbered markers) and which step is picked. */
+	void SetFocus(FName Crew, int32 Step = INDEX_NONE);
+	FName GetFocusCrew() const { return FocusCrew; }
+	int32 GetFocusStep() const { return FocusStep; }
+	/** Planning preview: pins show where everyone is at this time of the plan (< 0 = off). */
+	void SetPreviewTime(float Time);
+	float GetPreviewTime() const { return PreviewTime; }
 
 	//~ Playback
 	void StartPlayback();
@@ -159,6 +192,7 @@ public:
 private:
 	void OnPlanChanged();
 	void UpdateMarkers();
+	void UpdateGhosts();
 
 	FDCSchedule Schedule;
 	FString ScheduleSignature;
@@ -168,4 +202,12 @@ private:
 	bool bWorldUsed = false;
 	FDelegateHandle PlanChangedHandle;
 	TArray<TWeakObjectPtr<ADCPlanMarker>> Markers;
+	TArray<TWeakObjectPtr<ADCPlanMarker>> Ghosts;
+
+	UPROPERTY(Transient)
+	TMap<FName, TObjectPtr<UDCInventoryComponent>> PlannedInventories;
+
+	FName FocusCrew;
+	int32 FocusStep = INDEX_NONE;
+	float PreviewTime = -1.f;
 };

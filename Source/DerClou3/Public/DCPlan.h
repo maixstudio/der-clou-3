@@ -20,7 +20,9 @@ enum class EDCPlanTaskType : uint8
 	/** Pick up an item lying in the world (the whole thing). */
 	PickUp,
 	/** Open what can be opened in a container and take everything of value. */
-	Loot
+	Loot,
+	/** Put down something the crew member carries (ItemPath = its item id). */
+	Drop
 };
 
 /** Planning (clicks add steps), playing the plan, or direct control (clicks act at once). */
@@ -53,7 +55,7 @@ struct FDCPlanTask
 	UPROPERTY()
 	FName Target;
 
-	/** Item: path of item ids inside the pickup ("" = the pickup's own item, "desk_drawer", ...). */
+	/** Item: path of item ids inside the pickup ("" = the pickup's own item, "desk_drawer", ...). Drop: the item id. */
 	UPROPERTY()
 	FString ItemPath;
 
@@ -96,6 +98,9 @@ public:
 
 	void AddTask(FName Crew, const FDCPlanTask& Task);
 	void RemoveLastTask(FName Crew);
+	void RemoveTask(FName Crew, int32 Index);
+	/** Moves a step earlier (Delta < 0) or later in the crew member's plan. */
+	void MoveTask(FName Crew, int32 Index, int32 Delta);
 	void ClearAll();
 
 	/** Playback speed (1, 2, 4). */

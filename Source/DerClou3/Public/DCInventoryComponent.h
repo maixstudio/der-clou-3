@@ -32,7 +32,14 @@ public:
 	/** Heaviest single item this person can lift (40 kg at strength 5). */
 	float GetMaxItemMass() const { return 25.f + 3.f * Strength; }
 
+	/** Makes this a copy of another inventory (same items, cloned, in the same places). For planning. */
+	void CopyFrom(const UDCInventoryComponent& Other);
+
 	UDCItem* GetSlotItem(EDCEquipSlot Slot) const;
+	/** The first item of this kind anywhere on the crew member (held, worn or packed). */
+	UDCItem* FindItem(FName DefId) const;
+	/** Where an owned item is: "rechte Hand", "beide Hände", "Kopf", "in Arbeitskleidung". */
+	FText DescribeWhere(const UDCItem* Item) const;
 	/** Worn containers in a fixed order: clothes, vest, backpack. */
 	TArray<UDCItem*> GetContainers() const;
 	/** True if the item is worn, held, or (at any depth) inside something worn or held. */

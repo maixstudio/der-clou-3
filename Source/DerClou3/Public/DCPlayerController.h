@@ -50,6 +50,17 @@ public:
 	void AddWait(float Seconds);
 	void RemoveLastStep();
 	void ClearPlan();
+
+	//~ Plan list
+	/** Selects the crew member and picks one of their steps (INDEX_NONE = none). */
+	void FocusStep(FName Crew, int32 Index);
+	void RemoveStep(int32 Index);
+	/** Moves a step of the selected crew member earlier (-1) or later (+1). */
+	void MoveStep(int32 Index, int32 Delta);
+	/** Planning: the selected crew member puts this down at the end of their plan so far. */
+	void PlanDrop(FName ItemId);
+	/** Pins in the world show where everyone is at this time of the plan (< 0 = off). */
+	void SetPreviewTime(float Time);
 	/** 1x, 2x, 4x. */
 	void CycleSpeed();
 
@@ -80,6 +91,8 @@ private:
 	void StartTimelineSelfTest();
 	/** -DCSelfTest=Reload: play, back to planning (level reset, plan kept), play again via reload. */
 	void StartReloadSelfTest();
+	/** -DCSelfTest=PlanInventory: a crowbar picked up in the plan can be used later in the plan. */
+	void StartPlanInventorySelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */

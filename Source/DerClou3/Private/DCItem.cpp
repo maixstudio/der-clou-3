@@ -27,6 +27,54 @@ UDCItem* UDCItem::Create(UObject* Outer, FName DefId)
 	return Item;
 }
 
+namespace
+{
+	int32 ItemMuteCount = 0;
+}
+
+UDCItem::FMuteScope::FMuteScope()
+{
+	++ItemMuteCount;
+}
+
+UDCItem::FMuteScope::~FMuteScope()
+{
+	--ItemMuteCount;
+}
+
+UDCItem* UDCItem::CreateBare(FName DefId, bool bInOpen, bool bInLocked, bool bInDestroyed, bool bInAttached)
+{
+	if (!DCItems::Find(DefId))
+	{
+		return nullptr;
+	}
+	UDCItem* Item = NewObject<UDCItem>(GetTransientPackage());
+	Item->DefId = DefId;
+	Item->bOpen = bInOpen;
+	Item->bLocked = bInLocked;
+	Item->bDestroyed = bInDestroyed;
+	Item->bAttached = bInAttached;
+	return Item;
+}
+
+UDCItem* UDCItem::Clone() const
+{
+	UDCItem* Copy = NewObject<UDCItem>(GetTransientPackage());
+	Copy->DefId = DefId;
+	Copy->bOpen = bOpen;
+	Copy->bLocked = bLocked;
+	Copy->bLockBroken = bLockBroken;
+	Copy->bAttached = bAttached;
+	Copy->bDestroyed = bDestroyed;
+	for (const UDCItem* Child : Contents)
+	{
+		UDCItem* ChildCopy = Child->Clone();
+		Copy->Contents.Add(ChildCopy);
+		ChildCopy->Parent = Copy;
+	}
+	return Copy;
+}
+
 FSimpleMulticastDelegate& UDCItem::OnAnyChanged()
 {
 	static FSimpleMulticastDelegate Delegate;
@@ -35,6 +83,10 @@ FSimpleMulticastDelegate& UDCItem::OnAnyChanged()
 
 void UDCItem::NotifyChanged()
 {
+	if (ItemMuteCount > 0)
+	{
+		return;
+	}
 	OnAnyChanged().Broadcast();
 }
 
