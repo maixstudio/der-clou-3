@@ -345,3 +345,4 @@ def cardboard_box(it: Item):
 
 # Small items register themselves into BUILDERS.
 import dc_items_small  # noqa: E402,F401
+import dc_items_deco  # noqa: E402,F401

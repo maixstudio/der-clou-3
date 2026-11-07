@@ -129,6 +129,9 @@ def build_materials():
         nmap = nt.nodes.new("ShaderNodeNormalMap")
         nt.links.new(comb.outputs[0], nmap.inputs["Color"])
         nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+        if spec.get("emissive"):
+            bsdf.inputs["Emission Color"].default_value = tint
+            bsdf.inputs["Emission Strength"].default_value = spec["emissive"] * 0.5
         mats[name] = mat
     return mats
 

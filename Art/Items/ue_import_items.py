@@ -100,9 +100,41 @@ def expr(mat, cls, x, y, **props):
     return e
 
 
-def build_surface_master():
-    mat = new_asset("M_ItemSurface", MAT_PATH, unreal.Material, unreal.MaterialFactoryNew())
-    uv = expr(mat, unreal.MaterialExpressionTextureCoordinate, -1400, 0)
+def world_uvs(mat):
+    """UVs from the world position (metres): floors use XY, walls XZ or YZ depending on the normal."""
+    wp = expr(mat, unreal.MaterialExpressionWorldPosition, -2200, 0)
+    floor = expr(mat, unreal.MaterialExpressionComponentMask, -2000, -150, r=True, g=True, b=False, a=False)
+    wall_x = expr(mat, unreal.MaterialExpressionComponentMask, -2000, 0, r=True, g=False, b=True, a=False)
+    wall_y = expr(mat, unreal.MaterialExpressionComponentMask, -2000, 150, r=False, g=True, b=True, a=False)
+    for m in (floor, wall_x, wall_y):
+        mel.connect_material_expressions(wp, "", m, "")
+    normal = expr(mat, unreal.MaterialExpressionVertexNormalWS, -2200, 350)
+    absn = expr(mat, unreal.MaterialExpressionAbs, -2050, 350)
+    mel.connect_material_expressions(normal, "", absn, "")
+    ny = expr(mat, unreal.MaterialExpressionComponentMask, -1900, 300, r=False, g=True, b=False, a=False)
+    nz = expr(mat, unreal.MaterialExpressionComponentMask, -1900, 420, r=False, g=False, b=True, a=False)
+    mel.connect_material_expressions(absn, "", ny, "")
+    mel.connect_material_expressions(absn, "", nz, "")
+    wall = expr(mat, unreal.MaterialExpressionLinearInterpolate, -1800, 80)
+    mel.connect_material_expressions(wall_y, "", wall, "A")
+    mel.connect_material_expressions(wall_x, "", wall, "B")
+    mel.connect_material_expressions(ny, "", wall, "Alpha")
+    uv = expr(mat, unreal.MaterialExpressionLinearInterpolate, -1650, 0)
+    mel.connect_material_expressions(wall, "", uv, "A")
+    mel.connect_material_expressions(floor, "", uv, "B")
+    mel.connect_material_expressions(nz, "", uv, "Alpha")
+    metres = expr(mat, unreal.MaterialExpressionMultiply, -1500, 0, const_b=0.01)
+    mel.connect_material_expressions(uv, "", metres, "A")
+    return metres
+
+
+def build_surface_master(name="M_ItemSurface", world_aligned=False):
+    """Textured PBR surface: base colour x tint, roughness and metallic from ORM, normal map, optional glow.
+
+    world_aligned: UVs from the world position (room floors and walls built from scaled cubes).
+    """
+    mat = new_asset(name, MAT_PATH, unreal.Material, unreal.MaterialFactoryNew())
+    uv = world_uvs(mat) if world_aligned else expr(mat, unreal.MaterialExpressionTextureCoordinate, -1400, 0)
     tiling = expr(mat, unreal.MaterialExpressionScalarParameter, -1400, 150, parameter_name="Tiling", default_value=1.0)
     uvs = expr(mat, unreal.MaterialExpressionMultiply, -1200, 50)
     mel.connect_material_expressions(uv, "", uvs, "A")
@@ -123,6 +155,13 @@ def build_surface_master():
     mel.connect_material_expressions(bc, "RGB", base, "A")
     mel.connect_material_expressions(tint, "", base, "B")
     mel.connect_material_property(base, "", unreal.MaterialProperty.MP_BASE_COLOR)
+
+    # Glow (lamp shades, bulbs): base colour x strength, 0 = off.
+    glow_strength = expr(mat, unreal.MaterialExpressionScalarParameter, -400, -500, parameter_name="EmissiveStrength", default_value=0.0)
+    glow = expr(mat, unreal.MaterialExpressionMultiply, -200, -400)
+    mel.connect_material_expressions(base, "", glow, "A")
+    mel.connect_material_expressions(glow_strength, "", glow, "B")
+    mel.connect_material_property(glow, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
 
     rough_scale = expr(mat, unreal.MaterialExpressionScalarParameter, -600, 80, parameter_name="RoughnessScale", default_value=1.0)
     rough = expr(mat, unreal.MaterialExpressionMultiply, -400, 0)
@@ -166,7 +205,7 @@ def build_glass_master():
     return mat
 
 
-def build_instances(surface, glass):
+def build_instances(surface, glass, room):
     out = {}
     for name, spec in dc_materials.MATERIALS.items():
         mi = new_asset(f"MI_Item_{name}", MAT_PATH, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
@@ -177,7 +216,7 @@ def build_instances(surface, glass):
             mel.set_material_instance_vector_parameter_value(mi, "Tint", color)
             mel.set_material_instance_scalar_parameter_value(mi, "Roughness", spec["rough"])
         else:
-            mel.set_material_instance_parent(mi, surface)
+            mel.set_material_instance_parent(mi, room if spec.get("room") else surface)
             tex = spec["tex"]
             mel.set_material_instance_texture_parameter_value(mi, "BaseColorTex", texture(f"{tex}_BC"))
             mel.set_material_instance_texture_parameter_value(mi, "ORMTex", texture(f"{tex}_ORM"))
@@ -186,6 +225,7 @@ def build_instances(surface, glass):
             mel.set_material_instance_scalar_parameter_value(mi, "Tiling", spec["tiling"])
             mel.set_material_instance_scalar_parameter_value(mi, "RoughnessScale", spec["rough"])
             mel.set_material_instance_scalar_parameter_value(mi, "Metallic", spec["metal"])
+            mel.set_material_instance_scalar_parameter_value(mi, "EmissiveStrength", spec.get("emissive", 0.0))
         lib.save_loaded_asset(mi)
         out[name] = mi
     log(f"{len(out)} material instances")
@@ -242,8 +282,10 @@ def main():
     import_textures()
     surface = build_surface_master()
     glass = build_glass_master()
-    instances = build_instances(surface, glass)
-    import_meshes(instances, only)
+    room = build_surface_master("M_RoomSurface", world_aligned=True)
+    instances = build_instances(surface, glass, room)
+    if os.environ.get("DC_SKIP_MESHES") != "1":  # set to only refresh textures and materials
+        import_meshes(instances, only)
     log("done")
 
 

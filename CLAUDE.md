@@ -165,8 +165,20 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Sessel −140° (`Art/Items/ue_face_room.py`).
   - Code: `DCVisuals::ItemModel(Id)` lädt `SM_<Id>` (fehlt es, bleibt der farbige Würfel), `SetItemLook` für
     Pickups und getragene Gegenstände. `/Game/DerClou/Items` steht in `DirectoriesToAlwaysCook`.
-  - Offen: Zustände sichtbar machen (Tresortür/Schublade offen, Vitrine eingeschlagen), Licht/Nachbearbeitung
-    im Level für mehr Atmosphäre, Werte im Editor statt in Python, wenn der User selbst ändern will.
+  - Offen: Zustände sichtbar machen (Tresortür/Schublade offen, Vitrine eingeschlagen), Werte im Editor statt
+    in Python, wenn der User selbst ändern will.
+- **Nachtlicht im Raum (Schritt 11)**, Lesbarkeit zuerst – `Art/Items/ue_room_look.py` (nach dem Import laufen
+  lassen, baut die Outliner-Ordner „Licht“ und „Deko“ jedes Mal neu; alle Werte oben im Skript):
+  - Kühles Mondlicht (`Mondlicht`, 4,2 lx, steil von oben) füllt den ganzen Raum; warme Inseln (2700 K) kommen
+    aus echten Lampen: Bankerlampe auf dem Schreibtisch (Spot), Stehlampen in Sofa- und Klavierecke. Schirme
+    leuchten selbst (`EmissiveStrength` im Master-Material). Tageslicht-Teile der Vorlage (Wolken, Himmelskuppel)
+    im Spiel aus, Himmelslicht aus fester Cubemap, blau getönt.
+  - `Licht_Nachbearbeitung` (unbegrenzt): feste Belichtung (EV 1,2, pumpt nicht beim Kameraschwenk), Bloom
+    0,35, Vignette, kühle Schatten / warme Lichter, lokale Belichtung, kein Bewegungsunschärfe.
+  - Oberflächen: `M_RoomSurface` projiziert Texturen nach Weltposition (für skalierte Würfel): Holzdielen,
+    Streifentapete, Beton im Hof; weiße Fußleisten (`SM_Deco_skirting`, nach Länge skaliert). Deko ohne
+    Kollision. `DC_SKIP_MESHES=1` beim Import erneuert nur Texturen und Materialien.
+  - Noch offen: vom User mit der Maus/im Editor ansehen; Wandoberkanten zeigen auch Tapete.
   - Texte über Figuren/Stecknadeln laufen durch `DCVisuals::PlainText` (TextRender-Schrift kennt kein
     „ “ – → …).
   - Selbsttest `-DCSelfTest=Signals`: alles über den Warten-Dialog – Rosa knackt den Tresor und gibt

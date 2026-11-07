@@ -41,10 +41,11 @@ def tapered_box(top_x, top_y, bottom_x, bottom_y, h):
     return bm
 
 
-def lathe(profile, segments=32, ridges=None):
+def lathe(profile, segments=32, ridges=None, caps=True):
     """Surface of revolution around Z. profile: [(radius, z), ...] in cm, bottom to top.
 
     ridges: optional (count, depth_cm, first_index, last_index) – knurling on those profile rows.
+    caps: close the first/last ring; False for shells whose profile is a closed loop.
     """
     bm = bmesh.new()
     rings = []
@@ -72,9 +73,9 @@ def lathe(profile, segments=32, ridges=None):
         else:
             for s in range(segments):
                 bm.faces.new((a[s], a[(s + 1) % segments], b[(s + 1) % segments], b[s]))
-    if len(rings[0]) > 1:
+    if caps and len(rings[0]) > 1:
         bm.faces.new(list(reversed(rings[0])))
-    if len(rings[-1]) > 1:
+    if caps and len(rings[-1]) > 1:
         bm.faces.new(rings[-1])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     return bm

@@ -56,6 +56,14 @@ MATERIALS = {
     "Binder_Blue": dict(tex="Paper", tint=(0.22, 0.36, 0.62), tiling=4.0, rough=0.9, metal=0.0),
     "Banknote": dict(tex="Banknote", tint=(1.0, 1.0, 1.0), tiling=1.0, rough=1.0, metal=0.0),
     "Canvas": dict(tex="Painting", tint=(1.0, 1.0, 1.0), tiling=1.0, rough=1.0, metal=0.0),
+    # Room and decoration (room surfaces use M_RoomSurface: world-aligned, tiling per metre)
+    "Floor_Planks": dict(tex="FloorPlanks", tint=(1.0, 1.0, 1.0), tiling=0.5, rough=1.4, metal=0.0, room=True),
+    "Wallpaper": dict(tex="Wallpaper", tint=(1.0, 1.0, 1.0), tiling=1.0, rough=1.0, metal=0.0, room=True),
+    "Ground_Concrete": dict(tex="Concrete", tint=(1.0, 1.0, 1.0), tiling=0.33, rough=1.0, metal=0.0, room=True),
+    "Paint_White": dict(tex="Paint", tint=(0.88, 0.87, 0.83), tiling=2.0, rough=1.5, metal=0.0),
+    "Lampshade_Cream": dict(tex="Fabric", tint=(0.95, 0.86, 0.68), tiling=10.0, rough=1.0, metal=0.0, emissive=1.6),
+    "Glass_Green": dict(tex="Fine", tint=(0.08, 0.42, 0.22), tiling=4.0, rough=0.35, metal=0.0, emissive=0.35),
+    "Bulb": dict(tex="Fine", tint=(1.0, 0.85, 0.6), tiling=1.0, rough=0.3, metal=0.0, emissive=25.0),
     # Transparent / gems
     "Glass": dict(tex=None, tint=(0.85, 0.92, 0.95), tiling=1.0, rough=0.05, metal=0.0, glass=True),
     "Gem": dict(tex="Fine", tint=(0.92, 0.95, 1.0), tiling=10.0, rough=0.15, metal=0.7),

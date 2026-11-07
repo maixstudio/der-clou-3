@@ -267,6 +267,66 @@ def painting(n, seed):
     return np.clip(color, 0, 1), h, rough, np.zeros_like(u), 2.0
 
 
+def floor_planks(n, seed, rows=16):
+    """Oak floor boards along u, staggered joints. Tile = 2 m (16 boards of 12.5 cm)."""
+    rng = np.random.default_rng(seed)
+    u, v = grid(n)
+    wc, wh, wr, _, _ = wood(n, seed + 1, dark=[0.30, 0.19, 0.10], light=[0.56, 0.39, 0.23], rings=26, pore_strength=0.4)
+    row = np.floor(v * rows).astype(int)
+    fv = (v * rows) % 1.0
+    cuts = np.sort(rng.random((rows, 2)), axis=1)
+    c = cuts[row]
+    seg = (u[..., None] >= c).sum(-1) % 2  # the last piece continues across the tile edge
+    pid = row * 2 + seg
+    count = rows * 2
+    tint = 0.82 + 0.32 * rng.random(count)
+    shift = rng.integers(0, n, count)
+    rough_off = (rng.random(count) - 0.5) * 0.12
+    rr = (np.arange(n)[:, None] + shift[pid]) % n
+    cc = np.broadcast_to(np.arange(n)[None, :], (n, n))
+    color = wc[rr, cc] * tint[pid][..., None]
+    h = wh[rr, cc] * 0.6
+    rough = wr[rr, cc] + rough_off[pid] + 0.05
+    du = np.min(np.abs(((u[..., None] - c) + 0.5) % 1.0 - 0.5), axis=-1)
+    gap =np.maximum(smoothstep(0.012, 0.0, np.minimum(fv, 1.0 - fv)), smoothstep(1.6 / n, 0.0, du))
+    bevel = smoothstep(0.05, 0.0, np.minimum(fv, 1.0 - fv))
+    color = color * (1.0 - gap * 0.8)[..., None] * (1.0 - bevel * 0.1)[..., None]
+    h = h - gap * 2.0 - bevel * 0.5
+    rough = np.clip(rough + gap * 0.25, 0.0, 1.0)
+    return np.clip(color, 0, 1), h, rough, np.zeros_like(u), 2.0
+
+
+def wallpaper(n, seed, stripes=20):
+    """Old-town wallpaper: muted vertical stripes (u horizontal, v up). Tile = 1 m."""
+    u, v = grid(n)
+    phase = (u * stripes) % 1.0
+    wide = smoothstep(0.02, 0.06, phase) * (1.0 - smoothstep(0.54, 0.58, phase))
+    pin = smoothstep(0.70, 0.71, phase) * (1.0 - smoothstep(0.73, 0.74, phase))
+    base = np.array([0.66, 0.68, 0.58])
+    stripe = np.array([0.55, 0.60, 0.50])
+    color = mix(base, stripe, wide)
+    color = mix(color, np.array([0.78, 0.74, 0.60]), pin * 0.8)
+    fibres = pnoise(n, seed, beta=1.3, high=n * 0.5)
+    age = pnoise(n, seed + 1, beta=3.0) * 0.5 + 0.5
+    color = color * (0.95 + fibres[..., None] * 0.015) * (0.92 + age[..., None] * 0.08)
+    h = fibres * 0.08 + wide * 0.05
+    rough = np.clip(0.82 + fibres * 0.02, 0, 1)
+    return np.clip(color, 0, 1), h, rough, np.zeros_like(u), 1.0
+
+
+def concrete(n, seed):
+    """Dark courtyard concrete. Tile = 3 m."""
+    blotch = pnoise(n, seed, beta=2.6) * 0.5 + 0.5
+    grain = pnoise(n, seed + 1, beta=0.8, high=n * 0.5)
+    pits = np.clip(pnoise(n, seed + 2, beta=0.5) - 2.0, 0, None)
+    cracks = scratches(n, seed + 3, 25, length=(0.05, 0.3))
+    shade = 0.30 + blotch * 0.08 + grain * 0.012 - pits * 0.08 - cracks * 0.1
+    color = np.array([1.0, 1.0, 0.98]) * shade[..., None]
+    h = grain * 0.3 - pits * 1.5 - cracks * 1.0 + blotch * 0.3
+    rough = np.clip(0.86 + grain * 0.03 - blotch * 0.08, 0, 1)
+    return np.clip(color, 0, 1), h, rough, np.zeros_like(blotch), 1.5
+
+
 def flat(n, value, rough):
     c = np.ones((n, n, 3)) * np.asarray(value)
     return c, np.zeros((n, n)), np.full((n, n), rough), np.ones((n, n)), 1.0
@@ -288,6 +348,10 @@ TEXTURES = {
     "Bronze": (lambda n: bronze(n, 121), 1024),
     "Banknote": (lambda n: banknote(n, 131), 1024),
     "Painting": (lambda n: painting(n, 141), 2048),
+    # Room surfaces
+    "FloorPlanks": (lambda n: floor_planks(n, 151), 2048),
+    "Wallpaper": (lambda n: wallpaper(n, 161), 1024),
+    "Concrete": (lambda n: concrete(n, 171), 1024),
 }
 
 
