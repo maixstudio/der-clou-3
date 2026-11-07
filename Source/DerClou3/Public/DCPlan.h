@@ -157,6 +157,9 @@ public:
 	/** Set before reloading the level: start playing as soon as it is loaded. */
 	bool bPlayAfterLoad = false;
 
+	/** Self-tests: a find during the heist takes everything of value and goes on at once (no player). */
+	bool bAutoDecideFinds = false;
+
 	/** Self-tests that reload the level remember how far they got. */
 	int32 SelfTestStage = 0;
 	bool bSelfTestPassed = true;

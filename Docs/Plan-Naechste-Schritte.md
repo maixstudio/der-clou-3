@@ -47,6 +47,11 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
   `-DCSelfTest=Grid`: Brecheisen passt nicht in die Taschen, aber in den Rucksack; Fußabdruck-Prüfung.
 
 ### 2. „Wohin damit?“ und das Profil in der Planung
+> **User 2026-11-07:** In der Planung wird nur festgelegt, *wer was durchsucht* (Kasten, Tresor) –
+> kein „Wohin“ pro Gegenstand. Im Einbruch (live) informiert das Spiel, was gefunden wurde (wenn
+> überhaupt), und der Spieler entscheidet, wohin es kommt, ob es liegen bleibt oder ob er etwas
+> anderes dalässt. → Schritt 3 vorgezogen; der Dialog „Wohin damit?“ beim Planen entfällt für
+> Durchsuchen (beim Aufheben einzelner Dinge noch offen).
 - Dialog beim Aufheben und Nehmen: Er zeigt das Raster der Figur. Der Vorschlag ist markiert
   (Werkzeug → griffbereit in Hand, Weste oder Taschen; Beute → Rucksack oder Taschen). Der Spieler klickt
   einen anderen Platz an oder bestätigt. „Liegen lassen“ bricht ab.
@@ -59,7 +64,9 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
 - **Hinweis beim Wechsel Ausprobieren → Planen:** „Raum zurückgesetzt – beim Ausprobieren Aufgehobenes
   ist wieder weg“. Das war vermutlich der Grund, warum das Brecheisen im Test des Users „nicht ging“.
 
-### 3. Phase 2: Durchsuchen mit Fund-Pause
+### 3. Phase 2: Durchsuchen mit Fund-Pause – **gebaut 2026-11-07** (CLAUDE.md, Schritt 13)
+- Noch offen daraus: Protokoll im Ergebnis-Bildschirm (bisher Meldung + Log), sichtbare Verschiebung
+  der Zeitleiste, wer auf ein Zeichen wartet, wartet bereits automatisch länger (live).
 - „Ausräumen“ wird **„Durchsuchen“**. In der Planung ist der Inhalt unbekannt (Zeit als Schätzung).
 - Im Einbruch hält das Spiel an, wenn eine Figur durchsucht. Dann öffnen sich das Durchsuchen-Fenster
   mit Raster und daneben das Profil. Der Spieler steckt ein, lässt liegen oder packt um, auch Dinge von

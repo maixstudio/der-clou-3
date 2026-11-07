@@ -46,6 +46,13 @@ public:
 	/** "wartet: Hintertür verschlossen" while waiting, else empty. */
 	const FText& GetWaitText() const { return WaitText; }
 
+	/** Searching found something: the game is paused until the player has decided what to take. */
+	bool IsAwaitingDecision() const { return LootPhase == ELootPhase::Deciding; }
+	/** The player is through with the find; the crew member still stands there for the handling time. */
+	void ResolveFind(float HandlingSeconds);
+	/** Cells searched in a container: its own grid and those of its fixed parts (what a floor plan shows). */
+	static int32 CountSearchCells(const UDCItem* Root);
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 	static constexpr int32 MaxTries = 3;
@@ -68,8 +75,10 @@ private:
 	void StartExecute();
 	/** Called once the crew member is idle again after executing; may retry. */
 	void EvaluateResult();
-	/** One handful while looting; false when nothing is left. */
-	bool LootStep();
+	/** Opens one thing that opens without a key; false when nothing is left to open. */
+	bool LootOpenStep();
+	/** Done searching: everything movable that can be reached now, most valuable first. */
+	TArray<UDCItem*> CollectFinds() const;
 	void FinishTask(EDCTaskStatus Status);
 
 	ADCItemPickup* GetPickup() const;
@@ -85,4 +94,14 @@ private:
 	int32 Tries = 0;
 	FText WaitText;
 	TSet<TWeakObjectPtr<UDCItem>> LootSkip;
+
+	enum class ELootPhase : uint8
+	{
+		Opening,
+		Searching,
+		Deciding,
+		Handling
+	};
+	ELootPhase LootPhase = ELootPhase::Opening;
+	float HoldSeconds = 0.f;
 };

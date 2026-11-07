@@ -141,6 +141,14 @@ namespace DCItems
 	/** Strength needed to smash glass. */
 	constexpr int32 SmashDifficulty = 2;
 
+	/** Searching a container (live and in the plan's estimate): a base plus a bit per cell of its grids. */
+	constexpr float SearchBaseSeconds = 1.f;
+	constexpr float SearchPerCell = 0.05f;
+	inline float SearchSeconds(int32 Cells) { return SearchBaseSeconds + SearchPerCell * Cells; }
+	/** Handling a find while the game is paused costs play time: taking one thing, repacking one. */
+	constexpr float FindTakeSeconds = 0.6f;
+	constexpr float FindRepackSeconds = 1.f;
+
 	/** How far noises carry in open space (cm). */
 	namespace Noise
 	{

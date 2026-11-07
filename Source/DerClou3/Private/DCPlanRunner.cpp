@@ -6,7 +6,9 @@
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCPlayerController.h"
 #include "DerClou3.h"
+#include "Engine/World.h"
 
 #define LOCTEXT_NAMESPACE "DCPlanRunner"
 
@@ -152,14 +154,60 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			}
 			return;
 		case EDCPlanTaskType::Loot:
-			if (Crew->IsBusy() || StepTime < RunnerLootStepSeconds)
+			if (Crew->IsBusy())
 			{
 				return;
 			}
-			StepTime = 0.f;
-			if (!LootStep())
+			switch (LootPhase)
 			{
-				FinishTask(EDCTaskStatus::Done);
+			case ELootPhase::Opening:
+				if (StepTime < RunnerLootStepSeconds)
+				{
+					return;
+				}
+				StepTime = 0.f;
+				if (!LootOpenStep())
+				{
+					LootPhase = ELootPhase::Searching;
+					Crew->Say(LOCTEXT("Searching", "durchsucht"));
+				}
+				return;
+			case ELootPhase::Searching:
+			{
+				ADCItemPickup* Pickup = GetPickup();
+				if (StepTime < DCItems::SearchSeconds(CountSearchCells(Pickup ? Pickup->GetItem() : nullptr)))
+				{
+					return;
+				}
+				const TArray<UDCItem*> Finds = CollectFinds();
+				if (Finds.IsEmpty() || !Pickup)
+				{
+					Crew->Say(LOCTEXT("NothingFound", "nichts gefunden"));
+					UE_LOG(LogDerClou, Display, TEXT("%s searched %s: nothing found"), *Crew->GetCrewName().ToString(), *Current().Target.ToString());
+					FinishTask(EDCTaskStatus::Done);
+					return;
+				}
+				// The player decides; the game stands still meanwhile.
+				LootPhase = ELootPhase::Deciding;
+				ADCPlayerController* Player = Cast<ADCPlayerController>(GetWorld()->GetFirstPlayerController());
+				if (Player)
+				{
+					Player->RequestFindDecision(Crew, Pickup);
+				}
+				else
+				{
+					ResolveFind(0.f);
+				}
+				return;
+			}
+			case ELootPhase::Deciding:
+				return;
+			case ELootPhase::Handling:
+				if (StepTime >= HoldSeconds)
+				{
+					FinishTask(EDCTaskStatus::Done);
+				}
+				return;
 			}
 			return;
 		default:
@@ -367,6 +415,8 @@ void UDCPlanRunnerComponent::StartExecute()
 		// The first handful right away.
 		StepTime = RunnerLootStepSeconds;
 		LootSkip.Reset();
+		LootPhase = ELootPhase::Opening;
+		HoldSeconds = 0.f;
 		return;
 	case EDCPlanTaskType::WaitFor:
 		// The waiting is over once the condition holds; nothing else to do.
@@ -433,7 +483,21 @@ void UDCPlanRunnerComponent::EvaluateResult()
 	FinishTask(EDCTaskStatus::Failed);
 }
 
-bool UDCPlanRunnerComponent::LootStep()
+int32 UDCPlanRunnerComponent::CountSearchCells(const UDCItem* Root)
+{
+	if (!Root)
+	{
+		return 0;
+	}
+	int32 Cells = Root->GetDef().GetCellCount();
+	for (const UDCItem* Part : Root->GetContents())
+	{
+		Cells += Part->IsAttached() ? Part->GetDef().GetCellCount() : 0;
+	}
+	return Cells;
+}
+
+bool UDCPlanRunnerComponent::LootOpenStep()
 {
 	ADCCrewCharacter* Crew = GetCrew();
 	ADCItemPickup* Pickup = GetPickup();
@@ -444,12 +508,11 @@ bool UDCPlanRunnerComponent::LootStep()
 	}
 	TArray<UDCItem*> All;
 	Collect(Root, All);
-	const auto CanReach = [Root](const UDCItem* Item) { return Item == Root || (Item->GetParent() && Item->GetParent()->IsReachable()); };
-
-	// Open whatever can be opened without a key first: it may hide more.
+	// Open whatever can be opened without a key: it may hide more.
 	for (UDCItem* Item : All)
 	{
-		if (!LootSkip.Contains(Item) && Item->GetDef().bOpenable && !Item->IsOpen() && !Item->IsLocked() && CanReach(Item))
+		const bool bReachable = Item == Root || (Item->GetParent() && Item->GetParent()->IsReachable());
+		if (!LootSkip.Contains(Item) && Item->GetDef().bOpenable && !Item->IsOpen() && !Item->IsLocked() && bReachable)
 		{
 			const FText Reason = Crew->PerformItemAction(Item, EDCItemAction::Open, Item == Root ? Pickup : nullptr);
 			if (!Reason.IsEmpty())
@@ -459,28 +522,40 @@ bool UDCPlanRunnerComponent::LootStep()
 			return true;
 		}
 	}
-	// Then take the most valuable thing within reach.
-	UDCItem* Best = nullptr;
+	return false;
+}
+
+TArray<UDCItem*> UDCPlanRunnerComponent::CollectFinds() const
+{
+	TArray<UDCItem*> Finds;
+	ADCItemPickup* Pickup = GetPickup();
+	UDCItem* Root = Pickup ? Pickup->GetItem() : nullptr;
+	if (!Root)
+	{
+		return Finds;
+	}
+	TArray<UDCItem*> All;
+	Collect(Root, All);
 	for (UDCItem* Item : All)
 	{
-		const FDCItemDef& Def = Item->GetDef();
-		if (Item != Root && !Item->IsAttached() && Def.bMovable && Def.Value > 0 && CanReach(Item) && !LootSkip.Contains(Item)
-			&& (!Best || Def.Value > Best->GetDef().Value))
+		if (Item != Root && !Item->IsAttached() && Item->GetDef().bMovable && Item->GetParent() && Item->GetParent()->IsReachable())
 		{
-			Best = Item;
+			Finds.Add(Item);
 		}
 	}
-	if (!Best)
+	Finds.Sort([](const UDCItem& A, const UDCItem& B) { return A.GetDef().Value > B.GetDef().Value; });
+	return Finds;
+}
+
+void UDCPlanRunnerComponent::ResolveFind(float HandlingSeconds)
+{
+	if (LootPhase != ELootPhase::Deciding)
 	{
-		return false;
+		return;
 	}
-	const FText Reason = Crew->PerformItemAction(Best, EDCItemAction::Take);
-	if (!Reason.IsEmpty())
-	{
-		LootSkip.Add(Best);
-		Crew->Say(Reason);
-	}
-	return true;
+	LootPhase = ELootPhase::Handling;
+	HoldSeconds = HandlingSeconds;
+	StepTime = 0.f;
 }
 
 void UDCPlanRunnerComponent::FinishTask(EDCTaskStatus Status)

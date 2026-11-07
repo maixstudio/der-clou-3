@@ -439,7 +439,7 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 		}
 		if (Task.Type == EDCPlanTaskType::Loot)
 		{
-			return FText::Format(LOCTEXT("Loot", "{0} ausräumen"), Name);
+			return FText::Format(LOCTEXT("Loot", "{0} durchsuchen"), Name);
 		}
 		switch (static_cast<EDCItemAction>(Task.Action))
 		{
@@ -732,75 +732,43 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			}
 			else if (Task.Type == EDCPlanTaskType::Loot)
 			{
-				// Open what can be opened, take what is worth something – on a scratch copy.
+				// Open what can be opened (on a scratch copy). What lies inside is not known while planning:
+				// the player decides during the heist, so nothing goes into the planned inventory here.
 				FDCSimPickup Scratch = *SimPickup;
 				TArray<int32> Opened;
-				TArray<int32> Taken;
-				TArray<int32> NoRoom;
-				TArray<FText> TakenNames;
-				TArray<FText> NoRoomNames;
 				for (int32 Guard = 0; Guard < 100; ++Guard)
 				{
 					int32 ToOpen = INDEX_NONE;
-					int32 ToTake = INDEX_NONE;
-					for (int32 Candidate = 0; Candidate < Scratch.Items.Num(); ++Candidate)
+					for (int32 Candidate = 0; Candidate < Scratch.Items.Num() && ToOpen == INDEX_NONE; ++Candidate)
 					{
 						const FDCSimItem& Sim = Scratch.Items[Candidate];
-						if (Sim.bTaken || NoRoom.Contains(Candidate) || FindBlocker(Scratch, Candidate) != INDEX_NONE)
-						{
-							continue;
-						}
-						if (Sim.bOpenable && !Sim.IsOpen() && !Sim.bLocked)
+						if (!Sim.bTaken && FindBlocker(Scratch, Candidate) == INDEX_NONE && Sim.bOpenable && !Sim.IsOpen() && !Sim.bLocked)
 						{
 							ToOpen = Candidate;
-							break;
-						}
-						if (Candidate != 0 && Sim.Value > 0 && !Sim.bAttached && Sim.bMovable
-							&& (ToTake == INDEX_NONE || Sim.Value > Scratch.Items[ToTake].Value))
-						{
-							ToTake = Candidate;
 						}
 					}
-					if (ToOpen != INDEX_NONE)
-					{
-						Scratch.Items[ToOpen].bOpen = true;
-						Opened.Add(ToOpen);
-					}
-					else if (ToTake != INDEX_NONE)
-					{
-						// Only what still fits (the same rule as when it is played).
-						FText Reason;
-						UDCItem* Built = BuildSimItem(Scratch, ToTake);
-						if (Built && Cursor.Inventory->AddAnywhere(Built, Reason))
-						{
-							TakeSubtree(Scratch, ToTake);
-							Taken.Add(ToTake);
-							TakenNames.Add(ItemName(Scratch.Items[ToTake].DefId));
-						}
-						else
-						{
-							NoRoom.Add(ToTake);
-							NoRoomNames.Add(ItemName(Scratch.Items[ToTake].DefId));
-						}
-					}
-					else
+					if (ToOpen == INDEX_NONE)
 					{
 						break;
 					}
+					Scratch.Items[ToOpen].bOpen = true;
+					Opened.Add(ToOpen);
 				}
-				UpdateSpeed(Cursor);
-				const int32 Steps = Opened.Num() + Taken.Num() + NoRoom.Num();
-				Duration = 0.3f + SimLootStepSeconds * Steps;
-				Out.Detail = Steps == 0 ? LOCTEXT("LootNothing", "nichts Erreichbares zu holen")
-					: FText::Format(LOCTEXT("LootSteps", "ca. {0} s · {1} Handgriffe"), FText::AsNumber(FMath::RoundToInt(Duration)), FText::AsNumber(Steps));
-				if (!TakenNames.IsEmpty())
+				// Searching takes longer the bigger the grids (the container and its drawers: a floor plan shows those).
+				int32 Cells = 0;
+				for (int32 Part = 0; Part < SimPickup->Items.Num(); ++Part)
 				{
-					Out.Carry = FText::Format(LOCTEXT("CarryLoot", "nimmt {0}"), JoinNames(TakenNames));
+					const FDCSimItem& Sim = SimPickup->Items[Part];
+					if (Part == 0 || (Sim.Parent == 0 && Sim.bAttached))
+					{
+						const FDCItemDef* PartDef = DCItems::Find(Sim.DefId);
+						Cells += PartDef ? PartDef->GetCellCount() : 0;
+					}
 				}
-				if (!NoRoomNames.IsEmpty())
-				{
-					Out.Detail = FText::Format(LOCTEXT("LootNoRoom", "{0} · kein Platz mehr für: {1}"), Out.Detail, JoinNames(NoRoomNames));
-				}
+				const TArray<int32> Taken;
+				Duration = 0.3f + SimLootStepSeconds * Opened.Num() + DCItems::SearchSeconds(Cells);
+				Out.Detail = FText::Format(LOCTEXT("SearchEstimate", "ca. {0} s · Inhalt unbekannt"), FText::AsNumber(FMath::RoundToInt(Duration)));
+				Out.Carry = LOCTEXT("SearchDecide", "was gefunden wird, entscheidest du im Einbruch");
 				AddEvent(Cursor, T + Duration, [PickupName, Opened, Taken](FDCWorldSnapshot& S)
 				{
 					if (FDCSimPickup* P = S.FindPickup(PickupName))

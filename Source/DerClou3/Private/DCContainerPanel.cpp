@@ -21,6 +21,25 @@ namespace
 	constexpr float ContainerWidth = 430.f;
 	/** The window closes once the crew member is this far from the edge of the container. */
 	constexpr float ReachDistance = 150.f;
+
+	void CollectTree(UDCItem* Item, TArray<UDCItem*>& Out)
+	{
+		Out.Add(Item);
+		for (UDCItem* Child : Item->GetContents())
+		{
+			CollectTree(Child, Out);
+		}
+	}
+
+	FText JoinItemNames(const TArray<const UDCItem*>& Items)
+	{
+		TArray<FString> Names;
+		for (const UDCItem* Item : Items)
+		{
+			Names.Add(Item->GetDisplayName().ToString());
+		}
+		return Names.IsEmpty() ? FText::FromString(TEXT("\u2013")) : FText::FromString(FString::Join(Names, TEXT(", ")));
+	}
 }
 
 void UDCContainerPanel::NativeConstruct()
@@ -64,7 +83,13 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 	Context->GetSelected = [WeakThis]() { return WeakThis.IsValid() ? WeakThis->Selected.Get() : nullptr; };
 	Context->GetActions = [WeakThis](UDCItem* Item)
 	{
-		return DefaultActions(Item, true, false);
+		TArray<EDCItemAction> Actions = DefaultActions(Item, true, false);
+		// While the game is paused for a find, only quick handling: nothing that takes a while.
+		if (WeakThis.IsValid() && WeakThis->IsFindMode())
+		{
+			Actions.RemoveAll([](EDCItemAction Action) { return Action != EDCItemAction::Take && Action != EDCItemAction::Open && Action != EDCItemAction::Close; });
+		}
+		return Actions;
 	};
 	Context->CheckAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
 	{
@@ -105,7 +130,12 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 								.Text_Lambda([WeakThis]()
 								{
 									const ADCItemPickup* Container = WeakThis.IsValid() ? WeakThis->Pickup.Get() : nullptr;
-									return Container ? FText::Format(LOCTEXT("Title", "Durchsuchen – {0}"), Container->GetInteractableName()) : FText::GetEmpty();
+									if (!Container)
+									{
+										return FText::GetEmpty();
+									}
+									return WeakThis->IsFindMode() ? FText::Format(LOCTEXT("FindTitle", "Fund – {0}"), Container->GetInteractableName())
+										: FText::Format(LOCTEXT("Title", "Durchsuchen – {0}"), Container->GetInteractableName());
 								})
 								.Font(Font(15, true))
 								.ColorAndOpacity(TitleColor)
@@ -114,6 +144,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 							[
 								SNew(SButton)
 								.IsFocusable(false)
+								.Visibility_Lambda([WeakThis]() { return WeakThis.IsValid() && WeakThis->IsFindMode() ? EVisibility::Collapsed : EVisibility::Visible; })
 								.ToolTipText(LOCTEXT("CloseTip", "Schließen"))
 								.OnClicked_Lambda([WeakThis]()
 								{
@@ -134,10 +165,20 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 							.Text_Lambda([WeakThis]()
 							{
 								const ADCItemPickup* Container = WeakThis.IsValid() ? WeakThis->Pickup.Get() : nullptr;
-								return Container ? Container->GetInteractableKind() : FText::GetEmpty();
+								if (!Container)
+								{
+									return FText::GetEmpty();
+								}
+								if (WeakThis->IsFindMode())
+								{
+									const ADCCrewCharacter* Member = WeakThis->Crew.Get();
+									return FText::Format(LOCTEXT("FindSubtitle", "{0} hat gefunden: {1}"), Member ? Member->GetCrewName() : FText::GetEmpty(), WeakThis->DescribeFound());
+								}
+								return Container->GetInteractableKind();
 							})
-							.Font(Font(11))
-							.ColorAndOpacity(MutedColor)
+							.AutoWrapText(true)
+							.Font_Lambda([WeakThis]() { return Font(WeakThis.IsValid() && WeakThis->IsFindMode() ? 12 : 11, WeakThis.IsValid() && WeakThis->IsFindMode()); })
+							.ColorAndOpacity_Lambda([WeakThis]() { return FSlateColor(WeakThis.IsValid() && WeakThis->IsFindMode() ? LootColor : MutedColor); })
 						]
 						+ SVerticalBox::Slot().MaxHeight(560.f)
 						[
@@ -158,7 +199,20 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 						[
-							MakeMuted(LOCTEXT("Hint", "Anklicken = Knöpfe · ins Profil ziehen oder „nehmen“ · Dinge aus dem Profil hierher ziehen = verstecken"), 10)
+							SNew(STextBlock)
+							.Text_Lambda([WeakThis]()
+							{
+								return WeakThis.IsValid() && WeakThis->IsFindMode()
+									? LOCTEXT("FindHint", "Das Spiel wartet. Ins Profil ziehen oder „nehmen“ = mitnehmen · drin lassen = liegen lassen · Eigenes hierher ziehen = dalassen · jeder Handgriff kostet Spielzeit (nehmen 0,6 s, umpacken 1 s)")
+									: LOCTEXT("Hint", "Anklicken = Knöpfe · ins Profil ziehen oder „nehmen“ · Dinge aus dem Profil hierher ziehen = verstecken");
+							})
+							.Font(Font(10))
+							.ColorAndOpacity(MutedColor)
+							.AutoWrapText(true)
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
+						[
+							MakeFindBar()
 						]
 					])
 			]
@@ -191,6 +245,213 @@ void UDCContainerPanel::Close()
 {
 	Pickup.Reset();
 	Crew.Reset();
+	bFindMode = false;
+	OnContinue = nullptr;
+}
+
+void UDCContainerPanel::OpenFind(ADCCrewCharacter* InCrew, ADCItemPickup* InPickup, TFunction<void()> InOnContinue)
+{
+	Open(InCrew, InPickup);
+	bFindMode = true;
+	OnContinue = MoveTemp(InOnContinue);
+	HandlingSeconds = 0.f;
+	HandlingCount = 0;
+	Found.Reset();
+	StartTree.Reset();
+	Selected.Reset();
+	UDCItem* Box = InPickup ? InPickup->GetItem() : nullptr;
+	if (!Box)
+	{
+		return;
+	}
+	TArray<UDCItem*> All;
+	CollectTree(Box, All);
+	TArray<UDCItem*> Takeable;
+	for (UDCItem* Item : All)
+	{
+		StartTree.Add(Item);
+		if (Item != Box && !Item->IsAttached() && Item->GetDef().bMovable && Item->GetParent() && Item->GetParent()->IsReachable())
+		{
+			Takeable.Add(Item);
+		}
+	}
+	Takeable.Sort([](const UDCItem& A, const UDCItem& B) { return A.GetDef().Value > B.GetDef().Value; });
+	for (UDCItem* Item : Takeable)
+	{
+		Found.Add(Item);
+	}
+}
+
+bool UDCContainerPanel::Owns(const UDCItem* Item) const
+{
+	const ADCCrewCharacter* Member = Crew.Get();
+	return Member && Item && Member->GetInventory()->Owns(Item);
+}
+
+void UDCContainerPanel::AddHandling(float Seconds)
+{
+	if (!bFindMode)
+	{
+		return;
+	}
+	HandlingSeconds += Seconds;
+	++HandlingCount;
+}
+
+void UDCContainerPanel::TakeAllValuable()
+{
+	ADCCrewCharacter* Member = Crew.Get();
+	ADCItemPickup* Container = Pickup.Get();
+	UDCItem* Box = Container ? Container->GetItem() : nullptr;
+	if (!Member || !Box)
+	{
+		return;
+	}
+	TArray<const UDCItem*> NoRoom;
+	for (const TWeakObjectPtr<UDCItem>& Weak : Found)
+	{
+		UDCItem* Item = Weak.Get();
+		// Still in the container and not already taken along with something else.
+		if (!Item || Item->GetDef().Value <= 0 || Owns(Item) || !Item->IsInside(Box))
+		{
+			continue;
+		}
+		const FText Reason = Member->PerformItemAction(Item, EDCItemAction::Take);
+		if (Reason.IsEmpty())
+		{
+			AddHandling(DCItems::FindTakeSeconds);
+		}
+		else
+		{
+			NoRoom.Add(Item);
+		}
+	}
+	if (!NoRoom.IsEmpty())
+	{
+		ShowMessage(FText::Format(LOCTEXT("NoRoomLeft", "Kein Platz mehr für: {0}"), JoinItemNames(NoRoom)));
+	}
+}
+
+void UDCContainerPanel::ContinueFind()
+{
+	// The callback closes this window, which clears OnContinue: keep it alive while it runs.
+	TFunction<void()> Callback = MoveTemp(OnContinue);
+	OnContinue = nullptr;
+	if (Callback)
+	{
+		Callback();
+	}
+}
+
+FText UDCContainerPanel::DescribeFound() const
+{
+	TArray<const UDCItem*> Items;
+	for (const TWeakObjectPtr<UDCItem>& Weak : Found)
+	{
+		if (const UDCItem* Item = Weak.Get())
+		{
+			Items.Add(Item);
+		}
+	}
+	return JoinItemNames(Items);
+}
+
+FText UDCContainerPanel::DescribeFindResult() const
+{
+	TArray<const UDCItem*> Taken;
+	TArray<const UDCItem*> Left;
+	for (const TWeakObjectPtr<UDCItem>& Weak : Found)
+	{
+		if (const UDCItem* Item = Weak.Get())
+		{
+			(Owns(Item) ? Taken : Left).Add(Item);
+		}
+	}
+	TArray<const UDCItem*> Deposited;
+	ADCItemPickup* Container = Pickup.Get();
+	if (UDCItem* Box = Container ? Container->GetItem() : nullptr)
+	{
+		TArray<UDCItem*> All;
+		CollectTree(Box, All);
+		for (const UDCItem* Item : All)
+		{
+			if (!StartTree.Contains(Item))
+			{
+				Deposited.Add(Item);
+			}
+		}
+	}
+	FText Result = FText::Format(LOCTEXT("FindResult", "mitgenommen: {0} · liegen gelassen: {1}"), JoinItemNames(Taken), JoinItemNames(Left));
+	if (!Deposited.IsEmpty())
+	{
+		Result = FText::Format(LOCTEXT("FindResultLeft", "{0} · dagelassen: {1}"), Result, JoinItemNames(Deposited));
+	}
+	return Result;
+}
+
+TSharedRef<SWidget> UDCContainerPanel::MakeFindBar()
+{
+	using namespace DCItemWidgets;
+	TWeakObjectPtr<UDCContainerPanel> WeakThis = this;
+	return SNew(SVerticalBox)
+		.Visibility_Lambda([WeakThis]() { return WeakThis.IsValid() && WeakThis->IsFindMode() ? EVisibility::Visible : EVisibility::Collapsed; })
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)
+		[
+			SNew(STextBlock)
+			.Text_Lambda([WeakThis]()
+			{
+				if (!WeakThis.IsValid())
+				{
+					return FText::GetEmpty();
+				}
+				const FString Seconds = FString::Printf(TEXT("%.1f"), WeakThis->HandlingSeconds).Replace(TEXT("."), TEXT(","));
+				return FText::Format(LOCTEXT("Handling", "{0} Handgriffe \u00b7 kosten {1} s Spielzeit"), FText::AsNumber(WeakThis->HandlingCount), FText::FromString(Seconds));
+			})
+			.Font(Font(11))
+			.ColorAndOpacity(MutedColor)
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.f)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(6.f, 0.f, 0.f, 0.f)
+		[
+			SNew(SButton)
+			.IsFocusable(false)
+			.ToolTipText(LOCTEXT("TakeAllTip", "Nimmt alles mit Wert, das noch Platz hat – das Wertvollste zuerst"))
+			.ContentPadding(FMargin(8.f, 3.f))
+			.OnClicked_Lambda([WeakThis]()
+			{
+				if (WeakThis.IsValid())
+				{
+					WeakThis->TakeAllValuable();
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Text(LOCTEXT("TakeAll", "Alles Wertvolle nehmen")).Font(Font(11))
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(6.f, 0.f, 0.f, 0.f)
+		[
+			SNew(SButton)
+			.IsFocusable(false)
+			.ButtonStyle(&PrimaryButtonStyle())
+			.ToolTipText(LOCTEXT("ContinueTip", "Entscheidung fertig – der Einbruch geht weiter (Enter)"))
+			.ContentPadding(FMargin(14.f, 4.f))
+			.OnClicked_Lambda([WeakThis]()
+			{
+				if (WeakThis.IsValid())
+				{
+					WeakThis->ContinueFind();
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Text(LOCTEXT("Continue", "Weiter")).Font(Font(12, true)).ColorAndOpacity(DarkTextColor)
+			]
+		]
+		];
 }
 
 void UDCContainerPanel::ShowMessage(const FText& Text)
@@ -213,7 +474,17 @@ void UDCContainerPanel::MoveInto(UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 		return;
 	}
 	FText Reason;
-	if (!Member->GetInventory()->MoveInto(Item, Into, Reason, Cell))
+	const bool bWasOwned = Owns(Item);
+	const FIntPoint OldCell = Item->GetGridPos();
+	const UDCItem* OldParent = Item->GetParent();
+	if (Member->GetInventory()->MoveInto(Item, Into, Reason, Cell))
+	{
+		if (Item->GetParent() != OldParent || Item->GetGridPos() != OldCell)
+		{
+			AddHandling(!bWasOwned && Owns(Item) ? DCItems::FindTakeSeconds : DCItems::FindRepackSeconds);
+		}
+	}
+	else
 	{
 		ShowMessage(Reason);
 	}
@@ -232,6 +503,10 @@ void UDCContainerPanel::DoAction(UDCItem* Item, EDCItemAction Action)
 	{
 		ShowMessage(Reason);
 	}
+	else if (Action == EDCItemAction::Take || Action == EDCItemAction::Open || Action == EDCItemAction::Close)
+	{
+		AddHandling(DCItems::FindTakeSeconds);
+	}
 }
 
 void UDCContainerPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
@@ -241,8 +516,8 @@ void UDCContainerPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 
 	// Only while the crew member stands next to it (and it still exists).
 	const ADCCrewCharacter* Member = Crew.Get();
-	const ADCItemPickup* Container = Pickup.Get();
-	if (Pickup.IsValid() && (!Member || !Container || Container->IsActorBeingDestroyed()
+	ADCItemPickup* Container = Pickup.Get();
+	if (Pickup.IsValid() && !bFindMode && (!Member || !Container || Container->IsActorBeingDestroyed()
 		|| FVector::Dist2D(Member->GetActorLocation(), Container->GetActorLocation()) > Container->GetFootprintRadius() + ReachDistance))
 	{
 		Close();

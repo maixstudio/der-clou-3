@@ -255,10 +255,17 @@ void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem*
 		return;
 	}
 	FText Reason;
+	const bool bWasOwned = Inventory->Owns(Item);
+	const FIntPoint OldCell = Item->GetGridPos();
+	const UDCItem* OldParent = Item->GetParent();
 	const bool bMoved = Container ? Inventory->MoveInto(Item, Container, Reason, Cell) : Inventory->MoveToSlot(Item, EquipSlot, Reason);
 	if (!bMoved)
 	{
 		ShowMessage(Reason);
+	}
+	else if (HandlingHook && (Item->GetParent() != OldParent || Item->GetGridPos() != OldCell || bWasOwned != Inventory->Owns(Item) || !Container))
+	{
+		HandlingHook(bWasOwned, Inventory->Owns(Item));
 	}
 }
 
@@ -266,7 +273,12 @@ void UDCInventoryPanel::DropToFloor(UDCItem* Item)
 {
 	if (ADCCrewCharacter* Member = Crew.Get())
 	{
+		const bool bWasOwned = Member->GetInventory()->Owns(Item);
 		Member->DropItem(Item);
+		if (HandlingHook && bWasOwned)
+		{
+			HandlingHook(true, false);
+		}
 	}
 }
 

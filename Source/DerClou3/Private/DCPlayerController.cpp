@@ -155,6 +155,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartGridSelfTest();
 	}
+	else if (SelfTest == TEXT("Find"))
+	{
+		StartFindSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -178,6 +182,15 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (!SelfTestSteps.IsEmpty() && SelfTestSteps[0]())
 	{
 		SelfTestSteps.RemoveAt(0);
+	}
+	// While a find waits for a decision: Enter = "Weiter".
+	if (ContainerPanel && ContainerPanel->IsFindMode())
+	{
+		if (WasInputKeyJustPressed(EKeys::Enter))
+		{
+			ContainerPanel->ContinueFind();
+		}
+		return;
 	}
 	// While the wait dialog asks, only its keys count.
 	if (WaitDialog && WaitDialog->IsOpen())
@@ -438,7 +451,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 			Options.Add(MakeTaskOption(Label(LOCTEXT("SmashVerb", "einschlagen")), Check(Item, EDCItemAction::Smash), ItemTask(Item, EDCItemAction::Smash)));
 		}
 	}
-	// Loot: open what opens, take what is worth something.
+	// Search: open what opens; what is found is decided during the heist.
 	if (Root->IsContainer() || !Root->GetContents().IsEmpty())
 	{
 		FDCPlanTask Task;
@@ -447,8 +460,8 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		FDCTaskCheck LootCheck;
 		LootCheck.bPossible = !bGoneInPlan;
 		LootCheck.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
-		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Ausräumen"), LootCheck, Task);
-		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "öffnet, was aufgeht · nimmt alles Wertvolle");
+		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, Task);
+		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "öffnet, was aufgeht · was gefunden wird, entscheidest du im Einbruch");
 		Options.Add(Option);
 	}
 	if (Root->GetDef().bMovable)
@@ -664,8 +677,94 @@ void ADCPlayerController::StartPlayback()
 	Heist->StartPlayback();
 }
 
+void ADCPlayerController::RequestFindDecision(ADCCrewCharacter* Crew, ADCItemPickup* Pickup)
+{
+	FindQueue.Add({ Crew, Pickup });
+	if (!IsDecidingFind())
+	{
+		StartNextFind();
+	}
+}
+
+void ADCPlayerController::StartNextFind()
+{
+	while (!FindQueue.IsEmpty())
+	{
+		const FFindRequest Next = FindQueue[0];
+		FindQueue.RemoveAt(0);
+		ADCCrewCharacter* Crew = Next.Crew.Get();
+		ADCItemPickup* Pickup = Next.Pickup.Get();
+		if (!Crew || !Pickup || !ContainerPanel)
+		{
+			if (Crew)
+			{
+				Crew->GetPlanRunner()->ResolveFind(0.f);
+			}
+			continue;
+		}
+		FindCrew = Crew;
+		UGameplayStatics::SetGamePaused(this, true);
+		Select(Crew);
+		TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+		ContainerPanel->OpenFind(Crew, Pickup, [WeakThis]()
+		{
+			if (WeakThis.IsValid())
+			{
+				WeakThis->FinishFind();
+			}
+		});
+		if (InventoryPanel)
+		{
+			InventoryPanel->Show();
+			InventoryPanel->HandlingHook = [WeakThis](bool bWasOwned, bool bNowOwned)
+			{
+				if (WeakThis.IsValid() && WeakThis->ContainerPanel)
+				{
+					WeakThis->ContainerPanel->AddHandling(!bWasOwned && bNowOwned ? DCItems::FindTakeSeconds : DCItems::FindRepackSeconds);
+				}
+			};
+		}
+		ShowToast(FText::Format(LOCTEXT("FindToast", "{0} hat in {1} etwas gefunden – das Spiel wartet auf dich"), Crew->GetCrewName(), Pickup->GetInteractableName()));
+		UE_LOG(LogDerClou, Display, TEXT("%s found in %s: %s"), *Crew->GetCrewName().ToString(), *Pickup->GetName(), *ContainerPanel->DescribeFound().ToString());
+		if (UDCPlanSubsystem::Get(this)->bAutoDecideFinds)
+		{
+			ContainerPanel->TakeAllValuable();
+			ContainerPanel->ContinueFind();
+		}
+		return;
+	}
+}
+
+void ADCPlayerController::FinishFind()
+{
+	ADCCrewCharacter* Crew = FindCrew.Get();
+	const float Hold = ContainerPanel ? ContainerPanel->GetHandlingSeconds() : 0.f;
+	const FText Result = ContainerPanel ? ContainerPanel->DescribeFindResult() : FText::GetEmpty();
+	if (ContainerPanel)
+	{
+		ContainerPanel->Close();
+	}
+	if (InventoryPanel)
+	{
+		InventoryPanel->HandlingHook = nullptr;
+	}
+	FindCrew.Reset();
+	UGameplayStatics::SetGamePaused(this, false);
+	if (Crew)
+	{
+		Crew->GetPlanRunner()->ResolveFind(Hold);
+		ShowToast(FText::Format(LOCTEXT("FindDone", "{0}: {1}"), Crew->GetCrewName(), Result));
+		UE_LOG(LogDerClou, Display, TEXT("%s decided (%.1f s handling): %s"), *Crew->GetCrewName().ToString(), Hold, *Result.ToString());
+	}
+	StartNextFind();
+}
+
 void ADCPlayerController::TogglePause()
 {
+	if (IsDecidingFind())
+	{
+		return;
+	}
 	if (GetMode() == EDCPlanMode::Playing)
 	{
 		UGameplayStatics::SetGamePaused(this, !UGameplayStatics::IsGamePaused(this));
@@ -1420,6 +1519,7 @@ void ADCPlayerController::StartNoiseSelfTest()
 void ADCPlayerController::StartTimelineSelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test Timeline started"));
+	UDCPlanSubsystem::Get(this)->bAutoDecideFinds = true;
 	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
 	const auto Expect = [bPassed](bool bCondition, const FString& What)
 	{
@@ -1714,6 +1814,7 @@ void ADCPlayerController::StartReloadSelfTest()
 void ADCPlayerController::StartPlanInventorySelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test PlanInventory started"));
+	UDCPlanSubsystem::Get(this)->bAutoDecideFinds = true;
 	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
 	const auto Expect = [bPassed](bool bCondition, const FString& What)
 	{
@@ -1801,7 +1902,7 @@ void ADCPlayerController::StartPlanInventorySelfTest()
 			Expect(!Task.bBlocked, FString::Printf(TEXT("Vic step %d can happen"), Index + 1));
 		}
 		Expect(VicPlan && VicPlan->Tasks.Num() == 3 && VicPlan->Tasks[0].Carry.ToString().Contains(TEXT("Hand")), TEXT("the pickup says where the crowbar goes (a hand)"));
-		Expect(VicPlan && VicPlan->Tasks.Num() == 3 && VicPlan->Tasks[2].Carry.ToString().Contains(TEXT("Ring")), TEXT("looting the desk takes the ring"));
+		Expect(VicPlan && VicPlan->Tasks.Num() == 3 && VicPlan->Tasks[2].Detail.ToString().Contains(TEXT("unbekannt")), TEXT("searching the desk: contents unknown while planning"));
 
 		// Forcing before picking up: not possible.
 		Plans->MoveTask(V, 1, -1);
@@ -1909,6 +2010,7 @@ void ADCPlayerController::StartPlanInventorySelfTest()
 void ADCPlayerController::StartSignalSelfTest()
 {
 	UE_LOG(LogDerClou, Display, TEXT("Self-test Signals started"));
+	UDCPlanSubsystem::Get(this)->bAutoDecideFinds = true;
 	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
 	const auto Expect = [bPassed](bool bCondition, const FString& What)
 	{
@@ -2380,6 +2482,173 @@ void ADCPlayerController::StartGridSelfTest()
 	SelfTestSteps.Add(Wait(0.5f));
 	SelfTestSteps.Add([this, bPassed]()
 	{
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartFindSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Find started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			// Real time: the game stands still while a find waits.
+			const double Now = FPlatformTime::Seconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const TSharedRef<double> PlannedSearch = MakeShared<double>(0.0);
+
+	SelfTestSteps.Add(Wait(1.f));
+	// The plan: Rosa cracks the safe and searches it. Nothing about the contents is known yet.
+	SelfTestSteps.Add([this, Expect, CrewNamed, PlannedSearch]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->bAutoDecideFinds = false;
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		Expect(Rosa && Safe, TEXT("Rosa and the safe are in the level"));
+		if (!Rosa || !Safe)
+		{
+			return true;
+		}
+		FDCPlanTask Crack;
+		Crack.Type = EDCPlanTaskType::Item;
+		Crack.Target = Safe->GetFName();
+		Crack.Action = static_cast<uint8>(EDCItemAction::PickLock);
+		FDCPlanTask Search;
+		Search.Type = EDCPlanTaskType::Loot;
+		Search.Target = Safe->GetFName();
+		Plans->AddTask(Rosa->GetFName(), Crack);
+		Plans->AddTask(Rosa->GetFName(), Search);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Heist->Refresh();
+		const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Rosa->GetFName());
+		const bool bTwo = Plan && Plan->Tasks.Num() == 2;
+		if (bTwo)
+		{
+			const FDCScheduledTask& Step = Plan->Tasks[1];
+			*PlannedSearch = Step.End - Step.WorkStart;
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: planned search '%s' – %s / %s (%.1f s)"), *Step.Label.ToString(), *Step.Detail.ToString(), *Step.Carry.ToString(), *PlannedSearch);
+		}
+		Expect(bTwo && Plan->Tasks[1].Detail.ToString().Contains(TEXT("unbekannt")), TEXT("the plan does not know what is inside"));
+		Expect(bTwo && !Plan->Tasks[1].bBlocked, TEXT("searching the safe can happen"));
+		const UDCInventoryComponent* PlannedInventory = Heist->GetPlannedInventory(Rosa->GetFName());
+		Expect(PlannedInventory && !PlannedInventory->HasTool(TEXT("watch")), TEXT("nothing from the safe in the planned inventory"));
+		Select(Rosa);
+		Plans->SetSpeed(2.f);
+		StartPlayback();
+		return true;
+	});
+	// The heist: wait until Rosa has found something and the game stands still.
+	SelfTestSteps.Add([this, Expect, Started = -1.0]() mutable
+	{
+		const double Now = FPlatformTime::Seconds();
+		Started = Started < 0.0 ? Now : Started;
+		const bool bFind = ContainerPanel && ContainerPanel->IsFindMode();
+		if (bFind || Now - Started > 90.0)
+		{
+			Expect(bFind, TEXT("searching during the heist opens the find window"));
+			Expect(IsPlaybackPaused(), TEXT("the game is paused while the player decides"));
+			Expect(bFind && ContainerPanel->DescribeFound().ToString().Contains(TEXT("Armbanduhr")), FString::Printf(TEXT("found: %s"), bFind ? *ContainerPanel->DescribeFound().ToString() : TEXT("-")));
+			return true;
+		}
+		return false;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("find_pause.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	// The player's decision: take the necklace, leave the watch, leave the torch behind in the safe.
+	SelfTestSteps.Add([this, Expect, CrewNamed]()
+	{
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		UDCItem* Root = Safe ? Safe->GetItem() : nullptr;
+		UDCItem* Necklace = Root ? Root->FindInside(TEXT("necklace")) : nullptr;
+		UDCItem* Torch = Rosa ? Rosa->GetInventory()->FindItem(TEXT("flashlight")) : nullptr;
+		if (!Rosa || !Root || !ContainerPanel)
+		{
+			Expect(false, TEXT("Rosa, safe and window are there"));
+			return true;
+		}
+		ContainerPanel->DoAction(Necklace, EDCItemAction::Take);
+		Expect(Necklace && Rosa->GetInventory()->Owns(Necklace), TEXT("necklace taken while paused"));
+		// The torch from her pockets into the safe, as a drop on the safe's grid does.
+		if (InventoryPanel && Torch)
+		{
+			InventoryPanel->MoveItem(Torch, EDCEquipSlot::None, Root);
+		}
+		Expect(Torch && Torch->GetParent() == Root, TEXT("torch left in the safe"));
+		const float Handling = ContainerPanel->GetHandlingSeconds();
+		Expect(FMath::IsNearlyEqual(Handling, DCItems::FindTakeSeconds + DCItems::FindRepackSeconds), FString::Printf(TEXT("two handlings cost %.1f s"), Handling));
+		Expect(IsPlaybackPaused(), TEXT("still paused while deciding"));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.6f));
+	SelfTestSteps.Add(Shot(TEXT("find_decided.png")));
+	SelfTestSteps.Add(Wait(0.4f));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		const FText Result = ContainerPanel->DescribeFindResult();
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: result '%s'"), *Result.ToString());
+		const FString Text = Result.ToString();
+		Expect(Text.Contains(TEXT("mitgenommen: Goldkette")) && Text.Contains(TEXT("Armbanduhr")) && Text.Contains(TEXT("dagelassen: Taschenlampe")), TEXT("the result names what was taken, left and left behind"));
+		ContainerPanel->ContinueFind();
+		Expect(!IsPlaybackPaused() && !ContainerPanel->IsOpen(), TEXT("Weiter: window closed, the heist goes on"));
+		return true;
+	});
+	// Rosa still stands there for the handling time, then the plan is done.
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = FPlatformTime::Seconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 30.0;
+	});
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s)"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration);
+		Expect(Heist->IsPlaybackFinished(), TEXT("Rosa is through with the plan"));
+		Expect(Heist->GetPlaybackTime() >= Heist->GetSchedule().Duration + 1.f, TEXT("the handling made the heist longer than planned"));
+		Expect(Rosa && Rosa->GetInventory()->HasTool(TEXT("necklace")) && !Rosa->GetInventory()->HasTool(TEXT("watch")), TEXT("Rosa has the necklace, not the watch"));
+		Expect(Rosa && Rosa->GetPlanRunner()->GetStatus(1) == EDCTaskStatus::Done, TEXT("the search step is done"));
 		FinishSelfTest(*bPassed);
 		return true;
 	});

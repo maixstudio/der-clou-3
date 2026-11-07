@@ -92,6 +92,11 @@ public:
 	/** 1x, 2x, 4x. */
 	void CycleSpeed();
 
+	//~ Finds during the heist
+	/** A crew member found something while searching: pause the game and let the player decide (one find at a time). */
+	void RequestFindDecision(ADCCrewCharacter* Crew, ADCItemPickup* Pickup);
+	bool IsDecidingFind() const { return FindCrew.IsValid(); }
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -127,6 +132,10 @@ private:
 	void StartGridSelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
+	void StartNextFind();
+	void FinishFind();
+	/** -DCSelfTest=Find: Rosa cracks and searches the safe during the heist; the game stops, she takes one thing, leaves one, drops her torch there. */
+	void StartFindSelfTest();
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 
@@ -171,4 +180,12 @@ private:
 	FDelegateHandle ContainerReachedHandle;
 
 	TWeakObjectPtr<ADCItemPickup> HoveredPickup;
+
+	struct FFindRequest
+	{
+		TWeakObjectPtr<ADCCrewCharacter> Crew;
+		TWeakObjectPtr<ADCItemPickup> Pickup;
+	};
+	TArray<FFindRequest> FindQueue;
+	TWeakObjectPtr<ADCCrewCharacter> FindCrew;
 };

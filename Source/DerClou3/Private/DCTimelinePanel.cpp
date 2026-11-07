@@ -266,6 +266,10 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										PanelButton(WeakThis, TAttribute<FText>::CreateLambda([WeakThis]()
 										{
 											const ADCPlayerController* Controller = GetController(WeakThis.Get());
+											if (Controller && Controller->IsDecidingFind())
+											{
+												return LOCTEXT("FindOpen", "Fund offen");
+											}
 											return Controller && Controller->IsPlaybackPaused() ? LOCTEXT("Resume", "Weiter") : LOCTEXT("Pause", "Pause");
 										}), LOCTEXT("PauseTip", "Anhalten / weiter (Leertaste)"), [](ADCPlayerController* C) { C->TogglePause(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
 									]

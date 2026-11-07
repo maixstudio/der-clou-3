@@ -205,6 +205,23 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=Grid` (Regeln, Fußabdrücke, Kopie, Aufheben in den Rucksack, Verschieben,
     Schrank/Schreibtisch; Screenshots `grid_profile/wardrobe/desk.png`).
   - Noch nicht: Drehen (R), Geld als Menge, „Wohin damit?“ (Schritt 2), Drag & Drop mit echter Maus ungetestet.
+- **Durchsuchen mit Fund-Pause (Schritt 13 = Schritt 3 aus dem Plan, vorgezogen auf Wunsch des Users):**
+  - Planung: Radialmenü „Durchsuchen“ (`EDCPlanTaskType::Loot`, Label „… durchsuchen“) legt nur fest, *wer*
+    *was* durchsucht. Die Simulation öffnet, was ohne Schlüssel aufgeht, nimmt aber **nichts** ins geplante
+    Inventar; Dauer = 0,3 + 0,8 s je Öffnen + `DCItems::SearchSeconds(Zellen)` (1 s + 0,05 s je Feld des
+    Möbels und seiner Schubladen). Anzeige „ca. 3 s · Inhalt unbekannt“.
+  - Einbruch: `UDCPlanRunnerComponent` Phasen Öffnen → Suchen → Entscheiden → Handgriffe. Nichts da →
+    „nichts gefunden“, weiter ohne Pause. Sonst `ADCPlayerController::RequestFindDecision` (Warteschlange,
+    ein Fund nach dem anderen): Spiel pausiert, Figur ausgewählt, `UDCContainerPanel::OpenFind` – „Fund –
+    Wandtresor“, „Rosa hat gefunden: …“, Raster neben dem Profil; nur schnelle Knöpfe (nehmen/öffnen/
+    schließen), Ziehen in beide Richtungen, „Alles Wertvolle nehmen“, „Weiter“ (Enter). Jeder Handgriff
+    kostet Spielzeit (nehmen 0,6 s, umpacken/dalassen 1 s; Profil meldet über `HandlingHook`); danach
+    steht die Figur so lange dort (`ResolveFind`). Ergebnis als Meldung + Log („mitgenommen: … ·
+    liegen gelassen: … · dagelassen: …“). Leertaste/Pause-Knopf („Fund offen“) wirken währenddessen nicht.
+  - Selbsttests mit Abspielen setzen `UDCPlanSubsystem::bAutoDecideFinds` (nimmt alles Wertvolle, weiter).
+    Neuer Test `-DCSelfTest=Find` (Screenshots `find_pause.png`, `find_decided.png`).
+  - Offen: „Knacken und durchsuchen“ als ein Menüeintrag (User gefragt), Protokoll im Ergebnis-Bildschirm,
+    Zeitleiste zeigt die Verschiebung durch Handgriffe noch nicht vorab.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -225,7 +242,7 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

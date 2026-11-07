@@ -36,6 +36,9 @@ public:
 	/** What a drop does (also used by the self-test): into a slot, or into a container if given (on that cell or anywhere). */
 	void MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container, FIntPoint Cell = DCItems::AnyCell);
 	void SelectItem(UDCItem* Item);
+
+	/** Set while the player decides about a find: every move here costs play time (owned before, owned after). */
+	TFunction<void(bool bWasOwned, bool bNowOwned)> HandlingHook;
 	void DropToFloor(UDCItem* Item);
 
 protected:
