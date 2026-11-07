@@ -161,7 +161,8 @@ void ADCNoiseListener::UpdateLabels()
 	}
 	Symbol->SetText(Mark);
 	Symbol->SetTextRenderColor(Color);
-	Label->SetText(FText::Format(LOCTEXT("Label", "{0} – Misstrauen {1} %"), DisplayName, FText::AsNumber(FMath::RoundToInt(Suspicion))));
+	// The number is in the status at the top of the screen; in the room only who it is.
+	Label->SetText(DCVisuals::PlainText(DisplayName));
 }
 
 FText ADCNoiseListener::GetInteractableKind() const

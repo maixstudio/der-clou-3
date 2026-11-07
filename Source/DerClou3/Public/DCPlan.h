@@ -25,7 +25,7 @@ enum class EDCPlanTaskType : uint8
 	Drop,
 	/** Wait until another crew member (Target) has done one step (Ref) – or their whole plan (Ref unset). */
 	WaitFor,
-	/** Give a signal (Action = its number) that others can wait for. */
+	/** Give a signal (Action = its number, Target = who it is for) that others wait for. */
 	Signal
 };
 
@@ -76,6 +76,30 @@ struct FDCPlanTask
 	uint8 Action = 0;
 };
 
+/** What a crew member waits for, as chosen in the wait dialog. */
+struct FDCWaitChoice
+{
+	enum class EKind : uint8
+	{
+		/** A fixed number of seconds. */
+		Seconds,
+		/** Until Crew has done their step Step (they then give a signal). */
+		AfterStep,
+		/** Until Crew is done with their whole plan. */
+		AllDone
+	};
+
+	EKind Kind = EKind::Seconds;
+	float Seconds = 5.f;
+	FName Crew;
+	int32 Step = INDEX_NONE;
+
+	bool operator==(const FDCWaitChoice& Other) const
+	{
+		return Kind == Other.Kind && (Kind == EKind::Seconds ? Seconds == Other.Seconds : Crew == Other.Crew && (Kind == EKind::AllDone || Step == Other.Step));
+	}
+};
+
 USTRUCT()
 struct FDCCrewPlan
 {
@@ -108,8 +132,15 @@ public:
 	/** Steps of one crew member (empty if none). */
 	const TArray<FDCPlanTask>& GetTasks(FName Crew) const;
 
-	void AddTask(FName Crew, const FDCPlanTask& Task);
+	/** Appends a step; returns its id. */
+	FGuid AddTask(FName Crew, const FDCPlanTask& Task);
+	/** Puts a step at Index (clamped) in the crew member's plan; returns its id. */
+	FGuid InsertTask(FName Crew, int32 Index, const FDCPlanTask& Task);
 	void RemoveLastTask(FName Crew);
+	/**
+	 * Removes a step. A wait and the signal it waits for belong together: removing a signal also
+	 * removes the waits for it, removing the last wait for a signal also removes the signal.
+	 */
 	void RemoveTask(FName Crew, int32 Index);
 	/** The step with this id, in whose plan and where (nullptr if it is gone). */
 	const FDCPlanTask* FindTask(const FGuid& Id, FName* OutCrew = nullptr, int32* OutIndex = nullptr) const;

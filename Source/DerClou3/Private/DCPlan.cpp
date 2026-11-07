@@ -26,7 +26,12 @@ const TArray<FDCPlanTask>& UDCPlanSubsystem::GetTasks(FName Crew) const
 	return Plan ? Plan->Tasks : None;
 }
 
-void UDCPlanSubsystem::AddTask(FName Crew, const FDCPlanTask& Task)
+FGuid UDCPlanSubsystem::AddTask(FName Crew, const FDCPlanTask& Task)
+{
+	return InsertTask(Crew, TNumericLimits<int32>::Max(), Task);
+}
+
+FGuid UDCPlanSubsystem::InsertTask(FName Crew, int32 Index, const FDCPlanTask& Task)
 {
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
 	if (!Plan)
@@ -34,12 +39,14 @@ void UDCPlanSubsystem::AddTask(FName Crew, const FDCPlanTask& Task)
 		Plan = &Plans.AddDefaulted_GetRef();
 		Plan->Crew = Crew;
 	}
-	FDCPlanTask& Added = Plan->Tasks.Add_GetRef(Task);
+	FDCPlanTask Added = Task;
 	if (!Added.Id.IsValid())
 	{
 		Added.Id = FGuid::NewGuid();
 	}
+	Plan->Tasks.Insert(Added, FMath::Clamp(Index, 0, Plan->Tasks.Num()));
 	OnPlanChanged.Broadcast();
+	return Added.Id;
 }
 
 const FDCPlanTask* UDCPlanSubsystem::FindTask(const FGuid& Id, FName* OutCrew, int32* OutIndex) const
@@ -98,11 +105,38 @@ void UDCPlanSubsystem::RemoveLastTask(FName Crew)
 void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 {
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
-	if (Plan && Plan->Tasks.IsValidIndex(Index))
+	if (!Plan || !Plan->Tasks.IsValidIndex(Index))
 	{
-		Plan->Tasks.RemoveAt(Index);
-		OnPlanChanged.Broadcast();
+		return;
 	}
+	const FDCPlanTask Removed = Plan->Tasks[Index];
+	Plan->Tasks.RemoveAt(Index);
+	const auto WaitsFor = [this](const FGuid& Id)
+	{
+		int32 Count = 0;
+		for (const FDCCrewPlan& Entry : Plans)
+		{
+			Count += Entry.Tasks.FilterByPredicate([&Id](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Id; }).Num();
+		}
+		return Count;
+	};
+	if (Removed.Type == EDCPlanTaskType::Signal)
+	{
+		// Nobody can wait for a signal that is not given.
+		for (FDCCrewPlan& Entry : Plans)
+		{
+			Entry.Tasks.RemoveAll([&Removed](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Removed.Id; });
+		}
+	}
+	else if (Removed.Type == EDCPlanTaskType::WaitFor && Removed.Ref.IsValid() && WaitsFor(Removed.Ref) == 0)
+	{
+		// A signal nobody waits for any more goes too.
+		for (FDCCrewPlan& Entry : Plans)
+		{
+			Entry.Tasks.RemoveAll([&Removed](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::Signal && Task.Id == Removed.Ref; });
+		}
+	}
+	OnPlanChanged.Broadcast();
 }
 
 void UDCPlanSubsystem::MoveTask(FName Crew, int32 Index, int32 Delta)

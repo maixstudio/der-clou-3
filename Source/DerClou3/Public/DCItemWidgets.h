@@ -39,6 +39,12 @@ namespace DCItemWidgets
 	DERCLOU3_API extern const FLinearColor PanelColor;
 	DERCLOU3_API extern const FLinearColor ZoneColor;
 	DERCLOU3_API extern const FLinearColor MessageColor;
+	/** Waiting for each other, signals, the links between them. */
+	DERCLOU3_API extern const FLinearColor CoordinationColor;
+	/** Text on light (focus-coloured) surfaces. */
+	DERCLOU3_API extern const FLinearColor DarkTextColor;
+	/** The one main action of an area: filled in the focus colour (use DarkTextColor for its text). */
+	DERCLOU3_API const FButtonStyle& PrimaryButtonStyle();
 
 	DERCLOU3_API TSharedRef<SWidget> MakeMuted(const FText& Text, int32 Size = 11);
 

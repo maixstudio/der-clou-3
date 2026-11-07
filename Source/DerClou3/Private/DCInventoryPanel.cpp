@@ -1,5 +1,7 @@
 #include "DCInventoryPanel.h"
 
+#include "DCCrewBar.h"
+
 #include "DCCrewCharacter.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
@@ -76,7 +78,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 	// The button to open it sits in the timeline.
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(20.f)
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(UDCCrewBar::Width + 8.f, 12.f, 20.f, 20.f))
 		[
 			SNew(SBox)
 			.WidthOverride(InventoryWidth)
@@ -100,7 +102,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 								.Text_Lambda([WeakThis]()
 								{
 									const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
-									return Member ? FText::Format(LOCTEXT("Title", "Inventar – {0}"), Member->GetCrewName()) : LOCTEXT("TitleNobody", "Inventar");
+									return Member ? FText::Format(LOCTEXT("Title", "Profil – {0}"), Member->GetCrewName()) : LOCTEXT("TitleNobody", "Profil");
 								})
 								.Font(Font(15, true))
 								.ColorAndOpacity(TitleColor)

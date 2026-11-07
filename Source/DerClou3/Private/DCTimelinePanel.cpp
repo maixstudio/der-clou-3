@@ -23,9 +23,13 @@
 namespace
 {
 	constexpr float ListWidth = 440.f;
-	constexpr float ListHeight = 150.f;
+	constexpr float ListHeight = 160.f;
 	constexpr float NameWidth = 64.f;
 	constexpr float TrackWidth = 640.f;
+	/** The bar keeps this width in every mode, so nothing jumps. */
+	constexpr float PanelWidth = ListWidth + 14.f + NameWidth + TrackWidth + 28.f;
+	/** Messages appear this far above the bottom edge, just over the bar. */
+	constexpr float ToastBottom = 318.f;
 	constexpr float RulerHeight = 16.f;
 	constexpr float RowHeight = 24.f;
 	constexpr float RowPitch = 30.f;
@@ -36,10 +40,11 @@ namespace
 	const FLinearColor StepBlockedTextColor(1.f, 0.42f, 0.35f);
 	const FLinearColor DoneColor(0.35f, 0.78f, 0.4f);
 	const FLinearColor HighlightRowColor(1.f, 1.f, 1.f, 0.09f);
+	const FLinearColor PickedRowColor(1.f, 0.85f, 0.25f, 0.14f);
 	const FLinearColor SelectedTrackColor(0.11f, 0.115f, 0.145f);
-	const FLinearColor DarkText(0.05f, 0.05f, 0.06f);
-	const FLinearColor SignalColor(1.f, 0.92f, 0.35f);
-	const FLinearColor PickTrackColor(0.26f, 0.23f, 0.08f);
+	const FLinearColor InactiveSegmentColor(0.14f, 0.15f, 0.19f);
+	/** Frame around the bar while trying things out (clicks act at once). */
+	const FLinearColor DirectFrameColor(1.f, 0.5f, 0.1f);
 
 	FText FormatTime(float Seconds)
 	{
@@ -47,9 +52,10 @@ namespace
 		return FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
 	}
 
+	/** Durations in whole seconds ("19"). */
 	FText FormatSeconds(float Seconds)
 	{
-		return FText::FromString(FString::Printf(TEXT("%.1f"), Seconds).Replace(TEXT("."), TEXT(",")));
+		return FText::AsNumber(FMath::Max(0, FMath::RoundToInt(Seconds)));
 	}
 
 	ADCPlayerController* GetController(const UUserWidget* Widget)
@@ -68,12 +74,21 @@ namespace
 		return FLinearColor(Color.R * Factor, Color.G * Factor, Color.B * Factor, Alpha);
 	}
 
-	/** A small flat button that calls the controller. */
+	enum class EPanelButton : uint8
+	{
+		Normal,
+		/** The one main action: filled in the focus colour. */
+		Primary,
+		/** Destroys something: red text. */
+		Danger
+	};
+
+	/** A flat button that calls the controller. */
 	TSharedRef<SWidget> PanelButton(TWeakObjectPtr<UDCTimelinePanel> Panel, const TAttribute<FText>& Label, const FText& Tip,
-		TFunction<void(ADCPlayerController*)> OnClick, int32 FontSize = 11, const FMargin& Padding = FMargin(8.f, 2.f))
+		TFunction<void(ADCPlayerController*)> OnClick, int32 FontSize = 12, const FMargin& Padding = FMargin(10.f, 3.f), EPanelButton Kind = EPanelButton::Normal)
 	{
 		using namespace DCItemWidgets;
-		return SNew(SButton)
+		TSharedRef<SButton> Button = SNew(SButton)
 			.IsFocusable(false)
 			.ToolTipText(Tip)
 			.ContentPadding(Padding)
@@ -86,8 +101,16 @@ namespace
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Text(Label).Font(Font(FontSize, true))
+				SNew(STextBlock)
+				.Text(Label)
+				.Font(Font(FontSize, true))
+				.ColorAndOpacity(Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : TextColor)
 			];
+		if (Kind == EPanelButton::Primary)
+		{
+			Button->SetButtonStyle(&PrimaryButtonStyle());
+		}
+		return Button;
 	}
 }
 
@@ -102,190 +125,109 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 	{
 		return TAttribute<EVisibility>::CreateLambda([Mode, Modes]() { return Modes.Contains(Mode()) ? EVisibility::Visible : EVisibility::Collapsed; });
 	};
-	const auto HeaderButton = [WeakThis, ShowIn](TArray<EDCPlanMode> Modes, const TAttribute<FText>& Label, const FText& Tip, TFunction<void(ADCPlayerController*)> OnClick)
-	{
-		return SNew(SBox).Visibility(ShowIn(Modes))[PanelButton(WeakThis, Label, Tip, MoveTemp(OnClick))];
-	};
 	const auto PreviewOn = [WeakThis]()
 	{
 		const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
 		return Heist && Heist->GetPreviewTime() >= 0.f && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning;
 	};
+	// One half of the mode switch "Planen | Ausprobieren": filled while that mode is on.
+	const auto Segment = [WeakThis, Mode](const FText& Label, const FText& Tip, EDCPlanMode Own, TFunction<void(ADCPlayerController*)> OnClick)
+	{
+		return SNew(SBorder)
+			.BorderImage(Brush())
+			.Padding(FMargin(12.f, 4.f))
+			.Cursor(EMouseCursor::Hand)
+			.ToolTipText(Tip)
+			.BorderBackgroundColor_Lambda([Mode, Own]() -> FSlateColor { return Mode() == Own ? TitleColor : InactiveSegmentColor; })
+			.OnMouseButtonDown_Lambda([WeakThis, OnClick](const FGeometry&, const FPointerEvent&)
+			{
+				if (ADCPlayerController* Controller = GetController(WeakThis.Get()))
+				{
+					OnClick(Controller);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock)
+				.Text(Label)
+				.Font(Font(12, true))
+				.ColorAndOpacity_Lambda([Mode, Own]() -> FSlateColor { return Mode() == Own ? DarkTextColor : TextColor; })
+			];
+	};
 
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
+		// Short messages ("Vic, Schritt 3: Schublade knacken", "Geht nicht: …") just above the bar.
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, ToastBottom))
+		[
+			SNew(SBorder)
+			.BorderImage(Brush())
+			.Padding(FMargin(16.f, 7.f))
+			.Visibility_Lambda([WeakThis]()
+			{
+				const ADCPlayerController* Controller = GetController(WeakThis.Get());
+				bool bProblem = false;
+				return Controller && !Controller->GetToast(bProblem).IsEmpty() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			})
+			.BorderBackgroundColor_Lambda([WeakThis]() -> FSlateColor
+			{
+				const ADCPlayerController* Controller = GetController(WeakThis.Get());
+				bool bProblem = false;
+				if (Controller)
+				{
+					Controller->GetToast(bProblem);
+				}
+				return bProblem ? FLinearColor(0.45f, 0.06f, 0.04f, 0.95f) : FLinearColor(0.03f, 0.035f, 0.05f, 0.95f);
+			})
+			[
+				SNew(STextBlock)
+				.Font(Font(13, true))
+				.ColorAndOpacity(TextColor)
+				.Text_Lambda([WeakThis]()
+				{
+					const ADCPlayerController* Controller = GetController(WeakThis.Get());
+					bool bProblem = false;
+					return Controller ? Controller->GetToast(bProblem) : FText::GetEmpty();
+				})
+			]
+		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.f)
 		[
-			MakeSwallowZone(
-				SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor(PanelColor)
-				.Padding(FMargin(12.f, 8.f))
-				.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
-				[
-					SNew(SVerticalBox)
-					// Title and buttons.
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)
+			SNew(SBox)
+			.WidthOverride(PanelWidth)
+			[
+				MakeSwallowZone(
+					// Orange frame while trying things out: clicks act at once there.
+					SNew(SBorder)
+					.BorderImage(Brush())
+					.Padding(FMargin(2.f))
+					.BorderBackgroundColor_Lambda([Mode]() -> FSlateColor { return Mode() == EDCPlanMode::Direct ? DirectFrameColor : PanelColor; })
+					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 12.f, 0.f)
-						[
-							SNew(STextBlock).Text(LOCTEXT("Title", "Plan & Zeitleiste")).Font(Font(14, true)).ColorAndOpacity(TitleColor)
-						]
-						+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("Play", "Abspielen"), LOCTEXT("PlayTip", "Plan abspielen (Leertaste)"), [](ADCPlayerController* C) { C->StartPlayback(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Playing }, TAttribute<FText>::CreateLambda([WeakThis]()
-							{
-								const ADCPlayerController* Controller = GetController(WeakThis.Get());
-								return Controller && Controller->IsPlaybackPaused() ? LOCTEXT("Resume", "Weiter") : LOCTEXT("Pause", "Pause");
-							}), LOCTEXT("PauseTip", "Anhalten / weiter (Leertaste)"), [](ADCPlayerController* C) { C->TogglePause(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Playing, EDCPlanMode::Direct }, LOCTEXT("Back", "Zurück zur Planung"), LOCTEXT("BackTip", "Raum zurücksetzen, Plan bleibt erhalten"), [](ADCPlayerController* C) { C->ReturnToPlanning(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning, EDCPlanMode::Playing }, TAttribute<FText>::CreateLambda([WeakThis]()
-							{
-								const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
-								return FText::Format(LOCTEXT("Speed", "Tempo {0}×"), FText::AsNumber(Plans ? FMath::RoundToInt(Plans->GetSpeed()) : 1));
-							}), LOCTEXT("SpeedTip", "Abspieltempo 1×, 2×, 4×"), [](ADCPlayerController* C) { C->CycleSpeed(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("Wait", "Warten +5 s"), LOCTEXT("WaitTip", "Die ausgewählte Figur wartet 5 Sekunden"), [](ADCPlayerController* C) { C->AddWait(5.f); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("WaitForButton", "Warten auf …"),
-								LOCTEXT("WaitForTip", "Die ausgewählte Figur wartet, bis eine andere einen Schritt erledigt oder ein Signal gibt – danach in der Zeitleiste auf diesen Schritt klicken (oder auf den Namen / die Figur: bis sie ganz fertig ist)"),
-								[](ADCPlayerController* C) { C->StartPickWait(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("SignalButton", "Signal geben"),
-								LOCTEXT("SignalTip", "Die ausgewählte Figur gibt ein Signal; andere können mit „Warten auf …“ darauf warten"),
-								[](ADCPlayerController* C) { C->AddSignal(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("Clear", "Plan leeren"), LOCTEXT("ClearTip", "Alle Schritte aller Figuren löschen"), [](ADCPlayerController* C) { C->ClearPlan(); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("DirectMode", "Direkt steuern"), LOCTEXT("DirectTip", "Ohne Plan ausprobieren (Raum wird später zurückgesetzt)"), [](ADCPlayerController* C) { C->SetDirectMode(true); })
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
-						[
-							PanelButton(WeakThis, LOCTEXT("Inventory", "Inventar (I)"), LOCTEXT("InventoryTip", "Inventar der ausgewählten Figur"), [](ADCPlayerController* C) { C->ToggleInventory(); })
-						]
-					]
-					// Left the plan as a list, right the timeline.
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth()
-						[
-							SNew(SBox)
-							.WidthOverride(ListWidth)
-							[
-								SNew(SVerticalBox)
-								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)
-								[
-									SAssignNew(ListHeader, SVerticalBox)
-								]
-								+ SVerticalBox::Slot().AutoHeight()
-								[
-									SNew(SBox)
-									.HeightOverride(ListHeight)
-									[
-										SNew(SBorder)
-										.BorderImage(Brush())
-										.BorderBackgroundColor(ZoneColor)
-										.Padding(2.f)
-										[
-											SNew(SScrollBox)
-											+ SScrollBox::Slot()
-											[
-												SAssignNew(ListRows, SVerticalBox)
-											]
-										]
-									]
-								]
-							]
-						]
-						+ SHorizontalBox::Slot().AutoWidth().Padding(14.f, 0.f, 0.f, 0.f)
+						SNew(SBorder)
+						.BorderImage(Brush())
+						.BorderBackgroundColor(PanelColor)
+						.Padding(FMargin(12.f, 8.f))
 						[
 							SNew(SVerticalBox)
-							+ SVerticalBox::Slot().AutoHeight()
-							[
-								SAssignNew(Tracks, SBox).WidthOverride(NameWidth + TrackWidth)
-							]
-							// Choosing what to wait for.
-							+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
-							[
-								SNew(SBox)
-								.WidthOverride(TrackWidth)
-								.Visibility_Lambda([WeakThis]()
-								{
-									const ADCPlayerController* Controller = GetController(WeakThis.Get());
-									return Controller && Controller->IsPickingWait() ? EVisibility::Visible : EVisibility::Collapsed;
-								})
-								[
-									SNew(STextBlock)
-									.Font(Font(11, true))
-									.ColorAndOpacity(SignalColor)
-									.AutoWrapText(true)
-									.Text_Lambda([WeakThis]()
-									{
-										const ADCPlayerController* Controller = GetController(WeakThis.Get());
-										const ADCCrewCharacter* Crew = Controller ? Controller->GetSelectedCrew() : nullptr;
-										return FText::Format(LOCTEXT("PickPrompt", "Worauf soll {0} warten? Klick auf einen Schritt oder ein Signal einer anderen Figur – auf ihren Namen oder sie selbst im Raum: bis sie ganz fertig ist. Esc = abbrechen"),
-											Crew ? Crew->GetCrewName() : FText::GetEmpty());
-									})
-								]
-							]
-							// What everyone does at the preview time.
-							+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
-							[
-								SNew(SBox)
-								.WidthOverride(TrackWidth)
-								[
-									SNew(STextBlock)
-									.Font(Font(10, true))
-									.ColorAndOpacity(TitleColor)
-									.AutoWrapText(true)
-									.Visibility_Lambda([PreviewOn]() { return PreviewOn() ? EVisibility::Visible : EVisibility::Collapsed; })
-									.Text_Lambda([WeakThis]()
-									{
-										const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-										if (!Heist)
-										{
-											return FText::GetEmpty();
-										}
-										const float Time = Heist->GetPreviewTime();
-										TArray<FString> Parts;
-										for (const FDCCrewSchedule& Crew : Heist->GetSchedule().Crews)
-										{
-											Parts.Add(FString::Printf(TEXT("%s: %s"), *Crew.Name.ToString(), *UDCHeistStateSubsystem::DescribeActivityAt(Crew, Time).ToString()));
-										}
-										return FText::Format(LOCTEXT("PreviewLine", "Bei {0} – {1}"), FormatTime(Time), FText::FromString(FString::Join(Parts, TEXT("  ·  "))));
-									})
-								]
-							]
-							+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
+							// Mode, state, the main action, the rest small.
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
 							[
 								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+								[
+									Segment(LOCTEXT("ModePlan", "Planen"), LOCTEXT("ModePlanTip", "Schritte planen; Klicks hängen Schritte an den Plan der gewählten Figur"), EDCPlanMode::Planning,
+										[](ADCPlayerController* C) { C->ReturnToPlanningIfNeeded(); })
+								]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.f, 0.f, 0.f, 0.f)
+								[
+									Segment(LOCTEXT("ModeTry", "Ausprobieren"), LOCTEXT("ModeTryTip", "Ohne Plan ausprobieren: Klicks wirken sofort (der Raum wird beim Abspielen zurückgesetzt)"), EDCPlanMode::Direct,
+										[](ADCPlayerController* C) { C->SetDirectMode(true); })
+								]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
 								[
 									SNew(STextBlock)
-									.Font(Font(11, true))
+									.Font(Font(12, true))
 									.ColorAndOpacity(TextColor)
 									.Text_Lambda([WeakThis]()
 									{
@@ -294,49 +236,193 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										switch (GetPlanMode(WeakThis.Get()))
 										{
 										case EDCPlanMode::Planning:
-											return FText::Format(LOCTEXT("Planning", "Planung · der ganze Plan dauert {0}"), FormatTime(Duration));
+											return FText::Format(LOCTEXT("Planning", "Plan dauert {0}"), FormatTime(Duration));
 										case EDCPlanMode::Playing:
 											return State && State->IsPlaybackFinished()
-												? FText::Format(LOCTEXT("Finished", "Plan abgespielt ({0})"), FormatTime(State->GetPlaybackTime()))
-												: FText::Format(LOCTEXT("Playing", "läuft {0} / geplant {1}"), FormatTime(State ? State->GetPlaybackTime() : 0.f), FormatTime(Duration));
+												? FText::Format(LOCTEXT("Finished", "abgespielt in {0}"), FormatTime(State->GetPlaybackTime()))
+												: FText::Format(LOCTEXT("Playing", "Plan läuft: {0} von {1}"), FormatTime(State ? State->GetPlaybackTime() : 0.f), FormatTime(Duration));
 										case EDCPlanMode::Direct:
-											return LOCTEXT("Direct", "Direkt steuern (zum Ausprobieren)");
+											return LOCTEXT("Direct", "Klicks wirken sofort");
 										}
 										return FText::GetEmpty();
 									})
 								]
-								+ SHorizontalBox::Slot().AutoWidth()
+								+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
 								[
-									SNew(SBox)
-									.Visibility_Lambda([PreviewOn]() { return PreviewOn() ? EVisibility::Visible : EVisibility::Collapsed; })
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning }))
 									[
-										PanelButton(WeakThis, LOCTEXT("PreviewOff", "Vorschau aus"), LOCTEXT("PreviewOffTip", "Die Stecknadeln im Raum ausblenden (Esc)"),
-											[](ADCPlayerController* C) { C->SetPreviewTime(-1.f); }, 10, FMargin(6.f, 1.f))
+										PanelButton(WeakThis, LOCTEXT("Play", "Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
+											[](ADCPlayerController* C) { C->StartPlayback(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+								[
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Playing }))
+									[
+										PanelButton(WeakThis, TAttribute<FText>::CreateLambda([WeakThis]()
+										{
+											const ADCPlayerController* Controller = GetController(WeakThis.Get());
+											return Controller && Controller->IsPlaybackPaused() ? LOCTEXT("Resume", "Weiter") : LOCTEXT("Pause", "Pause");
+										}), LOCTEXT("PauseTip", "Anhalten / weiter (Leertaste)"), [](ADCPlayerController* C) { C->TogglePause(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+								[
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Playing }))
+									[
+										PanelButton(WeakThis, LOCTEXT("Back", "Zurück zur Planung"), LOCTEXT("BackTip", "Raum zurücksetzen, der Plan bleibt"), [](ADCPlayerController* C) { C->ReturnToPlanning(); })
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+								[
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning, EDCPlanMode::Playing }))
+									[
+										PanelButton(WeakThis, TAttribute<FText>::CreateLambda([WeakThis]()
+										{
+											const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+											return FText::Format(LOCTEXT("Speed", "Tempo {0}×"), FText::AsNumber(Plans ? FMath::RoundToInt(Plans->GetSpeed()) : 1));
+										}), LOCTEXT("SpeedTip", "Abspieltempo 1×, 2×, 4×"), [](ADCPlayerController* C) { C->CycleSpeed(); })
+									]
+								]
+								// Deleting everything asks once more: a second click within a few seconds.
+								+ SHorizontalBox::Slot().AutoWidth().Padding(16.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning }))
+									[
+										PanelButton(WeakThis, TAttribute<FText>::CreateLambda([WeakThis]()
+										{
+											return WeakThis.IsValid() && WeakThis->IsClearArmed() ? LOCTEXT("ClearSure", "Wirklich alles löschen?") : LOCTEXT("Clear", "Plan leeren");
+										}), LOCTEXT("ClearTip", "Alle Schritte aller Figuren löschen (zweimal klicken)"), [WeakThis](ADCPlayerController* C)
+										{
+											if (WeakThis.IsValid() && WeakThis->IsClearArmed())
+											{
+												WeakThis->ClearArmedUntil = 0.0;
+												C->ClearPlan();
+											}
+											else if (WeakThis.IsValid())
+											{
+												WeakThis->ClearArmedUntil = FPlatformTime::Seconds() + 4.0;
+											}
+										}, 12, FMargin(10.f, 3.f), EPanelButton::Danger)
 									]
 								]
 							]
+							// Left the plan of the selected crew member, right the timeline of all.
+							+ SVerticalBox::Slot().AutoHeight()
+							[
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().AutoWidth()
+								[
+									SNew(SBox)
+									.WidthOverride(ListWidth)
+									[
+										SNew(SVerticalBox)
+										+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)
+										[
+											SAssignNew(ListHeader, SVerticalBox)
+										]
+										+ SVerticalBox::Slot().AutoHeight()
+										[
+											SNew(SBox)
+											.HeightOverride(ListHeight)
+											[
+												SNew(SBorder)
+												.BorderImage(Brush())
+												.BorderBackgroundColor(ZoneColor)
+												.Padding(2.f)
+												[
+													SNew(SScrollBox)
+													+ SScrollBox::Slot()
+													[
+														SAssignNew(ListRows, SVerticalBox)
+													]
+												]
+											]
+										]
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(14.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SVerticalBox)
+									+ SVerticalBox::Slot().AutoHeight()
+									[
+										SAssignNew(Tracks, SBox).WidthOverride(NameWidth + TrackWidth)
+									]
+									// What everyone does at the preview time.
+									+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 6.f, 0.f, 0.f)
+									[
+										SNew(SBox)
+										.WidthOverride(TrackWidth)
+										[
+											SNew(STextBlock)
+											.Font(Font(12, true))
+											.ColorAndOpacity(TitleColor)
+											.AutoWrapText(true)
+											.Visibility_Lambda([PreviewOn]() { return PreviewOn() ? EVisibility::Visible : EVisibility::Collapsed; })
+											.Text_Lambda([WeakThis]()
+											{
+												const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+												if (!Heist)
+												{
+													return FText::GetEmpty();
+												}
+												const float Time = Heist->GetPreviewTime();
+												TArray<FString> Parts;
+												for (const FDCCrewSchedule& Crew : Heist->GetSchedule().Crews)
+												{
+													Parts.Add(FString::Printf(TEXT("%s: %s"), *Crew.Name.ToString(), *UDCHeistStateSubsystem::DescribeActivityAt(Crew, Time).ToString()));
+												}
+												return FText::Format(LOCTEXT("PreviewLine", "Bei {0} – {1}"), FormatTime(Time), FText::FromString(FString::Join(Parts, TEXT("  ·  "))));
+											})
+										]
+									]
+									+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
+									[
+										SNew(SHorizontalBox)
+										+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+										[
+											SNew(STextBlock)
+											.Font(Font(11))
+											.ColorAndOpacity(MutedColor)
+											.AutoWrapText(true)
+											.Visibility_Lambda([PreviewOn, Mode]() { return !PreviewOn() && Mode() == EDCPlanMode::Planning ? EVisibility::Visible : EVisibility::Collapsed; })
+											.Text(LOCTEXT("PreviewHint", "In die Zeitleiste klicken: zeigt im Raum, wo alle zu diesem Zeitpunkt sind."))
+										]
+										+ SHorizontalBox::Slot().AutoWidth()
+										[
+											SNew(SBox)
+											.Visibility_Lambda([PreviewOn]() { return PreviewOn() ? EVisibility::Visible : EVisibility::Collapsed; })
+											[
+												PanelButton(WeakThis, LOCTEXT("PreviewOff", "Vorschau aus"), LOCTEXT("PreviewOffTip", "Die Stecknadeln im Raum ausblenden (Esc)"),
+													[](ADCPlayerController* C) { C->SetPreviewTime(-1.f); }, 11, FMargin(8.f, 1.f))
+											]
+										]
+									]
+								]
+							]
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
+							[
+								SNew(STextBlock)
+								.Font(Font(11))
+								.ColorAndOpacity(MutedColor)
+								.Text_Lambda([Mode]()
+								{
+									switch (Mode())
+									{
+									case EDCPlanMode::Planning:
+										return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = nächster Schritt · Karte links, Taste 1–9 oder Figur anklicken = andere Figur · Leertaste = abspielen");
+									case EDCPlanMode::Playing:
+										return LOCTEXT("HintPlaying", "grau = wartet auf etwas, das jemand anderes erst erledigt · Leertaste = Pause");
+									case EDCPlanMode::Direct:
+										return LOCTEXT("HintDirect", "Klicks wirken sofort · „Planen“ setzt den Raum zurück");
+									}
+									return FText::GetEmpty();
+								})
+							]
 						]
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)
-					[
-						SNew(STextBlock)
-						.Font(Font(10))
-						.ColorAndOpacity(MutedColor)
-						.Text_Lambda([Mode]()
-						{
-							switch (Mode())
-							{
-							case EDCPlanMode::Planning:
-								return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = Schritt anhängen · Figur anklicken = ihren Plan bearbeiten · Klick in die Zeitleiste = sehen, wo alle dann sind · „Warten auf …“ / „Signal geben“ = aufeinander abstimmen · Leertaste = abspielen");
-							case EDCPlanMode::Playing:
-								return LOCTEXT("HintPlaying", "grau = wartet auf etwas, das jemand anderes erst erledigt · Leertaste = Pause");
-							case EDCPlanMode::Direct:
-								return LOCTEXT("HintDirect", "Klicks wirken sofort · „Zurück zur Planung“ setzt den Raum zurück");
-							}
-							return FText::GetEmpty();
-						})
-					]
-				])
+					])
+			]
 		];
 	Signature.Reset();
 	return Root.ToSharedRef();
@@ -367,8 +453,8 @@ FString UDCTimelinePanel::MakeSignature() const
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
 	const ADCPlayerController* Controller = GetController(this);
 	const ADCCrewCharacter* Selected = Controller ? Controller->GetSelectedCrew() : nullptr;
-	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
-		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE, Controller && Controller->IsPickingWait() ? 1 : 0);
+	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
+		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE);
 	if (!State)
 	{
 		return Result;
@@ -433,32 +519,41 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 	const FDCCrewSchedule* Crew = Schedule.Find(Focus);
 	if (!State || !Crew)
 	{
-		ListHeader->AddSlot().AutoHeight()[MakeMuted(LOCTEXT("NoCrew", "Figur anklicken, um ihren Plan zu sehen"))];
+		ListHeader->AddSlot().AutoHeight()[MakeMuted(LOCTEXT("NoCrew", "Links eine Figur wählen, um ihren Plan zu sehen"), 12)];
 		return;
 	}
-	const EDCPlanMode Mode = GetPlanMode(this);
-	const bool bPlanning = Mode == EDCPlanMode::Planning;
+	const bool bPlanning = GetPlanMode(this) == EDCPlanMode::Planning;
 	const bool bPlaying = State->IsPlaying();
 	const ADCCrewCharacter* Member = State->FindCrew(Focus);
 	const UDCPlanRunnerComponent* Runner = Member ? Member->GetPlanRunner() : nullptr;
 	TWeakObjectPtr<UDCTimelinePanel> WeakThis = this;
 
-	// Title: whose plan, how many steps, done when.
+	// Whose plan, how long – and "Warten …" right here, for this crew member.
 	ListHeader->AddSlot().AutoHeight()
 	[
 		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom)
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
-			SNew(STextBlock).Text(FText::Format(LOCTEXT("PlanOf", "Plan von {0}"), Crew->Name)).Font(Font(13, true)).ColorAndOpacity(Crew->Color)
+			SNew(STextBlock).Text(FText::Format(LOCTEXT("PlanOf", "Plan von {0}"), Crew->Name)).Font(Font(14, true)).ColorAndOpacity(Crew->Color)
 		]
-		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Bottom).Padding(8.f, 0.f, 0.f, 1.f)
+		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(10.f, 0.f, 0.f, 0.f)
 		[
 			SNew(STextBlock)
 			.Text(Crew->Tasks.IsEmpty() ? LOCTEXT("NoSteps", "noch leer")
-				: FText::Format(Crew->Tasks.Num() == 1 ? LOCTEXT("PlanSummaryOne", "1 Schritt · fertig nach {1}") : LOCTEXT("PlanSummary", "{0} Schritte · fertig nach {1}"),
+				: FText::Format(Crew->Tasks.Num() == 1 ? LOCTEXT("PlanSummaryOne", "1 Schritt · fertig {1}") : LOCTEXT("PlanSummary", "{0} Schritte · fertig {1}"),
 					FText::AsNumber(Crew->Tasks.Num()), FormatTime(Crew->End)))
-			.Font(Font(10))
+			.Font(Font(12))
 			.ColorAndOpacity(MutedColor)
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(SBox)
+			.Visibility(bPlanning ? EVisibility::Visible : EVisibility::Collapsed)
+			[
+				PanelButton(WeakThis, LOCTEXT("WaitDialogButton", "Warten …"),
+					FText::Format(LOCTEXT("WaitDialogTip", "{0} warten lassen: eine feste Zeit, bis eine andere Figur einen Schritt erledigt hat, oder bis sie fertig ist"), Crew->Name),
+					[](ADCPlayerController* C) { C->OpenWaitDialog(); }, 12, FMargin(10.f, 2.f))
+			]
 		]
 	];
 
@@ -468,7 +563,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		TSharedRef<SHorizontalBox> Hands = SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
 			[
-				SNew(STextBlock).Text(LOCTEXT("HandsAfter", "Hände danach:")).Font(Font(10)).ColorAndOpacity(MutedColor)
+				SNew(STextBlock).Text(LOCTEXT("HandsAfter", "Hände danach:")).Font(Font(12)).ColorAndOpacity(MutedColor)
 			];
 		const UDCItem* Right = Carried->GetSlotItem(EDCEquipSlot::RightHand);
 		const UDCItem* Left = Carried->GetSlotItem(EDCEquipSlot::LeftHand);
@@ -478,7 +573,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			[
 				SNew(STextBlock)
 				.Text(FText::Format(LOCTEXT("HandItem", "{0} {1}"), Which, Item ? Item->GetDisplayName() : LOCTEXT("HandFree", "frei")))
-				.Font(Font(10, Item != nullptr))
+				.Font(Font(12, Item != nullptr))
 				.ColorAndOpacity(Item ? TextColor : MutedColor)
 			];
 			if (Item && bPlanning)
@@ -488,7 +583,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				[
 					PanelButton(WeakThis, LOCTEXT("DropButton", "ablegen"),
 						FText::Format(LOCTEXT("DropTip", "Als nächsten Schritt: {0} auf den Boden legen (macht die Hand frei)"), Item->GetDisplayName()),
-						[ItemId](ADCPlayerController* C) { C->PlanDrop(ItemId); }, 9, FMargin(5.f, 0.f))
+						[ItemId](ADCPlayerController* C) { C->PlanDrop(ItemId); }, 11, FMargin(6.f, 0.f))
 				];
 			}
 			else
@@ -505,15 +600,14 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			AddHand(LOCTEXT("RightHand", "rechts:"), Right);
 			AddHand(LOCTEXT("LeftHand", "links:"), Left);
 		}
-		ListHeader->AddSlot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)[Hands];
+		ListHeader->AddSlot().AutoHeight().Padding(0.f, 3.f, 0.f, 0.f)[Hands];
 	}
 
 	if (Crew->Tasks.IsEmpty())
 	{
-		ListRows->AddSlot().AutoHeight().Padding(6.f, 6.f)
+		ListRows->AddSlot().AutoHeight().Padding(8.f, 8.f)
 		[
-			MakeMuted(bPlanning ? LOCTEXT("EmptyPlan", "Noch keine Schritte. Ein Klick auf Boden, Tür oder Gegenstand hängt den ersten an.")
-				: LOCTEXT("EmptyPlanPlaying", "Kein Plan."), 10)
+			MakeMuted(bPlanning ? LOCTEXT("EmptyPlan", "Noch keine Schritte. Boden, Tür oder Gegenstand anklicken.") : LOCTEXT("EmptyPlanPlaying", "Kein Plan."), 12)
 		];
 		return;
 	}
@@ -521,38 +615,43 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 	for (const FDCScheduledTask& Task : Crew->Tasks)
 	{
 		const int32 Index = Task.Index;
+		const bool bPicked = State->GetFocusCrew() == Focus && State->GetFocusStep() == Index;
+		const bool bCoordination = Task.Type == EDCPlanTaskType::WaitFor || Task.Type == EDCPlanTaskType::Signal;
 
-		// Waiting for someone else: its own line, saying for whom and what.
+		// Waiting for someone else without being asked to: one compact line.
 		const float Waited = Task.WorkStart - Task.Ready;
-		if (!Task.bBlocked && Waited > 0.25f && Task.Type != EDCPlanTaskType::WaitFor)
+		if (!Task.bBlocked && Waited > 0.5f && Task.Type != EDCPlanTaskType::WaitFor)
 		{
-			FText WaitText;
-			if (!Task.WaitFor.IsNone())
-			{
-				const FDCCrewSchedule* Other = Schedule.Find(Task.WaitFor);
-				const FDCScheduledTask* Theirs = Other ? Other->Tasks.FindByPredicate([&Task](const FDCScheduledTask& Entry) { return Entry.Index == Task.WaitForIndex; }) : nullptr;
-				WaitText = FText::Format(LOCTEXT("WaitsFor", "wartet {0} s – bis {1} mit „{2}“ fertig ist ({1}s Schritt {3})"),
-					FormatSeconds(Waited), Task.WaitForName, Theirs ? Theirs->Label : FText::GetEmpty(), FText::AsNumber(Task.WaitForIndex + 1));
-			}
-			else
-			{
-				WaitText = FText::Format(LOCTEXT("WaitsPlain", "wartet {0} s – {1}"), FormatSeconds(Waited), Task.WaitReason);
-			}
+			const FText WaitText = Task.WaitFor.IsNone()
+				? FText::Format(LOCTEXT("WaitsPlain", "wartet {0} s – {1}"), FormatSeconds(Waited), Task.WaitReason)
+				: FText::Format(LOCTEXT("WaitsFor", "wartet {0} s, bis {1} Schritt {2} erledigt hat"), FormatSeconds(Waited), Task.WaitForName, FText::AsNumber(Task.WaitForIndex + 1));
 			ListRows->AddSlot().AutoHeight().Padding(30.f, 1.f, 4.f, 1.f)
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
 				[
-					SNew(SBox).WidthOverride(34.f)[SNew(STextBlock).Text(FormatTime(Task.Ready)).Font(Font(9)).ColorAndOpacity(MutedColor)]
+					SNew(SBox).WidthOverride(38.f)[SNew(STextBlock).Text(FormatTime(Task.Ready)).Font(Font(11)).ColorAndOpacity(MutedColor)]
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f)
 				[
-					SNew(STextBlock).Text(WaitText).Font(Font(10)).ColorAndOpacity(WaitTextColor).AutoWrapText(true)
+					SNew(STextBlock).Text(WaitText).Font(Font(11)).ColorAndOpacity(Task.WaitFor.IsNone() ? WaitTextColor : CoordinationColor).AutoWrapText(true)
 				]
 			];
 		}
 
-		// The step itself.
+		// Who waits for this step.
+		TArray<FString> Waiting;
+		for (const FDCCrewSchedule& Other : Schedule.Crews)
+		{
+			for (const FDCScheduledTask& Theirs : Other.Tasks)
+			{
+				if (Theirs.WaitFor == Focus && Theirs.WaitForIndex == Index && Other.Crew != Focus)
+				{
+					Waiting.AddUnique(Other.Name.ToString());
+				}
+			}
+		}
+
 		const EDCTaskStatus Status = bPlaying && Runner ? Runner->GetStatus(Index) : EDCTaskStatus::Planned;
 		FLinearColor Badge = Crew->Color;
 		if (Task.bBlocked || Status == EDCTaskStatus::Failed)
@@ -568,98 +667,108 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			Badge = FLinearColor::White;
 		}
 
+		// On the right of the line: what matters most about the step.
+		FText Info;
+		FLinearColor InfoColor = MutedColor;
+		const float WorkSeconds = Task.End - Task.WorkStart;
+		if (Task.bBlocked)
+		{
+			Info = LOCTEXT("InfoBlocked", "geht nicht");
+			InfoColor = StepBlockedTextColor;
+		}
+		else if (!Waiting.IsEmpty())
+		{
+			Info = FText::Format(LOCTEXT("InfoWaiting", "→ {0} wartet"), FText::FromString(FString::Join(Waiting, TEXT(", "))));
+			InfoColor = CoordinationColor;
+		}
+		else if (Task.Type == EDCPlanTaskType::WaitFor)
+		{
+			Info = Waited > 0.5f ? FText::Format(LOCTEXT("InfoWaited", "wartet {0} s"), FormatSeconds(Waited)) : LOCTEXT("InfoNoWait", "kein Warten");
+			InfoColor = CoordinationColor;
+		}
+		else if (Task.bHasChance)
+		{
+			Info = FText::Format(LOCTEXT("InfoChance", "{0} s · {1} %"), FormatSeconds(WorkSeconds), FText::AsNumber(FMath::RoundToInt((1.f - Task.FailChance) * 100.f)));
+		}
+		else if (WorkSeconds >= 0.5f)
+		{
+			Info = FText::Format(LOCTEXT("InfoSeconds", "{0} s"), FormatSeconds(WorkSeconds));
+		}
+
+		TArray<FString> TipLines = { Task.Label.ToString() };
+		for (const FText& Line : { Task.Detail, Task.Carry, Task.bBlocked ? Task.WaitReason : FText::GetEmpty() })
+		{
+			if (!Line.IsEmpty())
+			{
+				TipLines.Add(Line.ToString());
+			}
+		}
+		const FText Tip = FText::FromString(FString::Join(TipLines, TEXT("\n")));
+
 		TSharedRef<SVerticalBox> Lines = SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Text(Task.Label).Font(Font(11, true)).AutoWrapText(true)
-				.ColorAndOpacity(Task.bBlocked ? StepBlockedTextColor : Task.Type == EDCPlanTaskType::Signal ? SignalColor : TextColor)
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(Task.Label)
+					.Font(Font(12, true))
+					.ColorAndOpacity(Task.bBlocked ? StepBlockedTextColor : bCoordination ? CoordinationColor : TextColor)
+					.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+					.ToolTipText(Tip)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.f, 0.f, 2.f, 0.f)
+				[
+					SNew(STextBlock).Text(Info).Font(Font(11, InfoColor != MutedColor)).ColorAndOpacity(InfoColor)
+				]
 			];
-		if (!Task.bBlocked && !Task.Detail.IsEmpty())
-		{
-			Lines->AddSlot().AutoHeight()
-			[
-				SNew(STextBlock).Text(Task.Detail).Font(Font(9)).ColorAndOpacity(MutedColor).AutoWrapText(true)
-			];
-		}
 		if (Task.bBlocked)
 		{
 			Lines->AddSlot().AutoHeight()
 			[
-				SNew(STextBlock).Text(FText::Format(LOCTEXT("BlockedLine", "geht nicht: {0}"), Task.WaitReason)).Font(Font(10)).ColorAndOpacity(StepBlockedTextColor).AutoWrapText(true)
+				SNew(STextBlock).Text(Task.WaitReason).Font(Font(11)).ColorAndOpacity(StepBlockedTextColor).AutoWrapText(true)
 			];
 		}
-		if (!Task.Carry.IsEmpty() && !Task.bBlocked)
+		// The picked step shows everything about it, and the buttons to move or delete it.
+		if (bPicked)
 		{
-			Lines->AddSlot().AutoHeight()
-			[
-				SNew(STextBlock).Text(Task.Carry).Font(Font(10)).ColorAndOpacity(LootColor).AutoWrapText(true)
-			];
-		}
-		// Who waits for this step.
-		for (const FDCCrewSchedule& Other : Schedule.Crews)
-		{
-			for (const FDCScheduledTask& Theirs : Other.Tasks)
+			for (const TPair<FText, FLinearColor>& Line : TArray<TPair<FText, FLinearColor>>{ { Task.Detail, MutedColor }, { Task.Carry, LootColor } })
 			{
-				if (Theirs.WaitFor == Focus && Theirs.WaitForIndex == Index && Other.Crew != Focus)
+				if (!Line.Key.IsEmpty())
 				{
-					Lines->AddSlot().AutoHeight()
+					Lines->AddSlot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)
 					[
-						SNew(STextBlock)
-						.Text(FText::Format(LOCTEXT("Dependent", "→ {0} wartet darauf ({1} s, dort Schritt {2})"), Other.Name, FormatSeconds(Theirs.WorkStart - Theirs.Ready), FText::AsNumber(Theirs.Index + 1)))
-						.Font(Font(10, true))
-						.AutoWrapText(true)
-						.ColorAndOpacity(Other.Color)
+						SNew(STextBlock).Text(Line.Key).Font(Font(11)).ColorAndOpacity(Line.Value).AutoWrapText(true)
 					];
 				}
 			}
-		}
-
-		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 1.f, 6.f, 0.f)
-			[
-				SNew(SBox).WidthOverride(22.f).HeightOverride(18.f)
-				[
-					SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Badge).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(0.f)
-					[
-						SNew(STextBlock).Text(FText::AsNumber(Index + 1)).Font(Font(10, true)).ColorAndOpacity(DarkText)
-					]
-				]
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 2.f, 6.f, 0.f)
-			[
-				SNew(SBox).WidthOverride(34.f)[SNew(STextBlock).Text(FormatTime(Task.bBlocked || Task.Type == EDCPlanTaskType::WaitFor ? Task.Ready : Task.WorkStart)).Font(Font(10)).ColorAndOpacity(MutedColor)]
-			]
-			+ SHorizontalBox::Slot().FillWidth(1.f)
-			[
-				Lines
-			];
-		if (bPlanning)
-		{
-			const int32 Count = Crew->Tasks.Num();
-			const auto SmallButton = [WeakThis](const FText& Label, const FText& Tip, bool bEnabled, TFunction<void(ADCPlayerController*)> OnClick)
+			if (bPlanning)
 			{
-				return SNew(SBox)
-					.IsEnabled(bEnabled)
+				const int32 Count = Crew->Tasks.Num();
+				const auto RowButton = [WeakThis](const FText& Label, const FText& ButtonTip, bool bEnabled, TFunction<void(ADCPlayerController*)> OnClick, EPanelButton Kind)
+				{
+					return SNew(SBox).IsEnabled(bEnabled)[PanelButton(WeakThis, Label, ButtonTip, MoveTemp(OnClick), 11, FMargin(8.f, 1.f), Kind)];
+				};
+				Lines->AddSlot().AutoHeight().Padding(0.f, 4.f, 0.f, 2.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 4.f, 0.f)
 					[
-						PanelButton(WeakThis, Label, Tip, MoveTemp(OnClick), 10, FMargin(5.f, 0.f))
-					];
-			};
-			Row->AddSlot().AutoWidth().VAlign(VAlign_Top).Padding(4.f, 0.f, 0.f, 0.f)
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().AutoWidth().Padding(1.f, 0.f)
-				[
-					SmallButton(LOCTEXT("Up", "↑"), LOCTEXT("UpTip", "Schritt früher machen"), Index > 0, [Index](ADCPlayerController* C) { C->MoveStep(Index, -1); })
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(1.f, 0.f)
-				[
-					SmallButton(LOCTEXT("Down", "↓"), LOCTEXT("DownTip", "Schritt später machen"), Index < Count - 1, [Index](ADCPlayerController* C) { C->MoveStep(Index, 1); })
-				]
-				+ SHorizontalBox::Slot().AutoWidth().Padding(1.f, 0.f)
-				[
-					SmallButton(LOCTEXT("Delete", "×"), LOCTEXT("DeleteTip", "Schritt löschen"), true, [Index](ADCPlayerController* C) { C->RemoveStep(Index); })
-				]
-			];
+						RowButton(LOCTEXT("Up", "↑ früher"), LOCTEXT("UpTip", "Schritt eins nach vorn"), Index > 0, [Index](ADCPlayerController* C) { C->MoveStep(Index, -1); }, EPanelButton::Normal)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 4.f, 0.f)
+					[
+						RowButton(LOCTEXT("Down", "↓ später"), LOCTEXT("DownTip", "Schritt eins nach hinten"), Index < Count - 1, [Index](ADCPlayerController* C) { C->MoveStep(Index, 1); }, EPanelButton::Normal)
+					]
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						RowButton(LOCTEXT("Delete", "× löschen"),
+							bCoordination ? LOCTEXT("DeleteLinkedTip", "Schritt löschen – Warten und Zeichen gehören zusammen und gehen gemeinsam") : LOCTEXT("DeleteTip", "Schritt löschen"),
+							true, [Index](ADCPlayerController* C) { C->RemoveStep(Index); }, EPanelButton::Danger)
+					]
+				];
+			}
 		}
 
 		const float StepTime = Task.WorkStart;
@@ -667,39 +776,67 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		[
 			SNew(SBorder)
 			.BorderImage(Brush())
-			.Padding(FMargin(4.f, 2.f))
-			.BorderBackgroundColor_Lambda([WeakThis, Focus, Index]() -> FSlateColor
+			.Padding(FMargin(4.f, 3.f))
+			.Cursor(EMouseCursor::Hand)
+			.BorderBackgroundColor_Lambda([WeakThis, Focus, Index, bPicked]() -> FSlateColor
 			{
-				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-				if (!Heist)
+				if (bPicked)
 				{
-					return FLinearColor::Transparent;
+					return PickedRowColor;
 				}
-				bool bHighlight = Heist->GetFocusCrew() == Focus && Heist->GetFocusStep() == Index;
-				if (!bHighlight && Heist->GetPreviewTime() >= 0.f)
+				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+				if (Heist && Heist->GetPreviewTime() >= 0.f)
 				{
 					const FDCCrewSchedule* Own = Heist->GetSchedule().Find(Focus);
-					bHighlight = Own && UDCHeistStateSubsystem::GetStepAt(*Own, Heist->GetPreviewTime()) == Index;
+					if (Own && UDCHeistStateSubsystem::GetStepAt(*Own, Heist->GetPreviewTime()) == Index)
+					{
+						return HighlightRowColor;
+					}
 				}
-				return bHighlight ? HighlightRowColor : FLinearColor::Transparent;
+				return FLinearColor::Transparent;
 			})
-			.OnMouseButtonDown_Lambda([WeakThis, Focus, Index, StepTime](const FGeometry&, const FPointerEvent&)
+			// Click picks the step (details and buttons open), a second click closes it again.
+			.OnMouseButtonDown_Lambda([WeakThis, Focus, Index, StepTime, bPicked](const FGeometry&, const FPointerEvent&)
 			{
 				if (ADCPlayerController* Controller = GetController(WeakThis.Get()))
 				{
-					Controller->FocusStep(Focus, Index);
-					Controller->SetPreviewTime(StepTime);
+					Controller->FocusStep(Focus, bPicked ? INDEX_NONE : Index);
+					if (!bPicked)
+					{
+						Controller->SetPreviewTime(StepTime);
+					}
 				}
 				return FReply::Handled();
 			})
 			[
-				Row
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 1.f, 6.f, 0.f)
+				[
+					SNew(SBox).WidthOverride(24.f).HeightOverride(20.f)
+					[
+						SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Badge).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(0.f)
+						[
+							SNew(STextBlock).Text(FText::AsNumber(Index + 1)).Font(Font(11, true)).ColorAndOpacity(DarkTextColor)
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 2.f, 6.f, 0.f)
+				[
+					SNew(SBox).WidthOverride(38.f)
+					[
+						SNew(STextBlock).Text(FormatTime(Task.bBlocked || Task.Type == EDCPlanTaskType::WaitFor ? Task.Ready : Task.WorkStart)).Font(Font(11)).ColorAndOpacity(MutedColor)
+					]
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f)
+				[
+					Lines
+				]
 			]
 		];
 	}
 }
 
-void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale, bool bPress)
+void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale, bool /*bPress*/)
 {
 	ADCPlayerController* Controller = GetController(this);
 	if (!Controller)
@@ -708,18 +845,6 @@ void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEve
 	}
 	const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
-	if (Controller->IsPickingWait())
-	{
-		// Choosing what to wait for: the row's step at that time; on the name or after the end = until done.
-		const int32 Row = FMath::FloorToInt((Local.Y - RulerHeight) / RowPitch);
-		if (bPress && State && State->GetSchedule().Crews.IsValidIndex(Row))
-		{
-			const FDCCrewSchedule& Crew = State->GetSchedule().Crews[Row];
-			const int32 Step = Local.X < NameWidth ? INDEX_NONE : UDCHeistStateSubsystem::GetStepAt(Crew, static_cast<float>(Local.X - NameWidth) / Scale);
-			Controller->PickWaitTarget(Crew.Crew, Step);
-		}
-		return;
-	}
 	if (Local.X < NameWidth)
 	{
 		// On a name: that crew member's plan.
@@ -740,8 +865,6 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 	const float Scale = GetScale();
 	const float VisibleSeconds = TrackWidth / Scale;
 	const bool bPlaying = State && State->IsPlaying();
-	const ADCPlayerController* PickController = GetController(this);
-	const bool bPicking = PickController && PickController->IsPickingWait();
 	const float Height = RulerHeight + Schedule.Crews.Num() * RowPitch;
 	TWeakObjectPtr<UDCTimelinePanel> WeakThis = this;
 	TSharedRef<SCanvas> Canvas = SNew(SCanvas);
@@ -784,7 +907,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		{
 			Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale + 3.0, 0.0)).Size(FVector2D(40.0, 14.0))
 			[
-				SNew(STextBlock).Text(FormatTime(static_cast<float>(Second))).Font(Font(9)).ColorAndOpacity(MutedColor).Visibility(EVisibility::HitTestInvisible)
+				SNew(STextBlock).Text(FormatTime(static_cast<float>(Second))).Font(Font(10)).ColorAndOpacity(MutedColor).Visibility(EVisibility::HitTestInvisible)
 			];
 		}
 	}
@@ -804,14 +927,13 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			[
 				SNew(STextBlock)
 				.Text(bSelectedRow ? FText::Format(LOCTEXT("SelectedName", "> {0}"), Crew.Name) : Crew.Name)
-				.Font(Font(bSelectedRow ? 12 : 11, true))
+				.Font(Font(bSelectedRow ? 13 : 12, true))
 				.ColorAndOpacity(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.75f))
 			]
 		];
-		const bool bPickable = bPicking && !bSelectedRow;
 		Canvas->AddSlot().Position(FVector2D(NameWidth, Top)).Size(FVector2D(TrackWidth, RowHeight))
 		[
-			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bPickable ? PickTrackColor : bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
+			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
 		];
 
 		for (const FDCScheduledTask& Task : Crew.Tasks)
@@ -871,15 +993,8 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 					{
 						if (ADCPlayerController* Controller = GetController(WeakThis.Get()))
 						{
-							if (Controller->IsPickingWait())
-							{
-								Controller->PickWaitTarget(CrewName, TaskIndex);
-							}
-							else
-							{
-								Controller->FocusStep(CrewName, TaskIndex);
-								Controller->SetPreviewTime(StepTime);
-							}
+							Controller->FocusStep(CrewName, TaskIndex);
+							Controller->SetPreviewTime(StepTime);
 						}
 						return FReply::Handled();
 					})
@@ -891,7 +1006,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 						.VAlign(VAlign_Center)
 						.Clipping(EWidgetClipping::ClipToBounds)
 						[
-							SNew(STextBlock).Text(Width >= 12.f ? Text : FText::GetEmpty()).Font(Font(9, true)).ColorAndOpacity(DarkText)
+							SNew(STextBlock).Text(Width >= 12.f ? Text : FText::GetEmpty()).Font(Font(10, true)).ColorAndOpacity(DarkTextColor)
 						]
 					]
 				];
@@ -908,7 +1023,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			AddBlock(Task.Start, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
 			AddBlock(Task.Ready, Task.WorkStart, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
 			const bool bSignal = Task.Type == EDCPlanTaskType::Signal;
-			const FLinearColor Work = bSignal ? FLinearColor(SignalColor.R, SignalColor.G, SignalColor.B, Fade)
+			const FLinearColor Work = bSignal ? FLinearColor(CoordinationColor.R, CoordinationColor.G, CoordinationColor.B, Fade)
 				: Task.bLoud ? FLinearColor(1.f, 0.35f, 0.15f, Fade) : FLinearColor(Base.R, Base.G, Base.B, Fade);
 			const float WorkWidth = (FMath::Max(Task.End, Task.WorkStart + (bSignal ? 1.2f : 0.4f)) - Task.WorkStart) * Scale;
 			const FText WorkText = WorkWidth >= 80.f ? FText::Format(LOCTEXT("WorkLabel", "{0} {1}"), Number, Task.Label) : Number;
@@ -936,12 +1051,12 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			const FLinearColor Color = Schedule.Crews[Source].Color;
 			Canvas->AddSlot().Position(FVector2D(X, From)).Size(FVector2D(3.0, To - From))
 			[
-				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(FLinearColor::White).Visibility(EVisibility::HitTestInvisible)
+				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(CoordinationColor).Visibility(EVisibility::HitTestInvisible)
 			];
 			const float DotY = RowTop(Source) + RowHeight * 0.5f - 5.f;
 			Canvas->AddSlot().Position(FVector2D(X - 4.0, DotY)).Size(FVector2D(10.0, 10.0))
 			[
-				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(FLinearColor::White).Padding(2.f).Visibility(EVisibility::HitTestInvisible)
+				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(CoordinationColor).Padding(2.f).Visibility(EVisibility::HitTestInvisible)
 				[
 					SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Color)
 				]

@@ -23,6 +23,8 @@ namespace DCItemWidgets
 	const FLinearColor PanelColor(0.03f, 0.035f, 0.05f, 0.92f);
 	const FLinearColor ZoneColor(0.07f, 0.075f, 0.095f);
 	const FLinearColor MessageColor(1.f, 0.45f, 0.35f);
+	const FLinearColor CoordinationColor(0.35f, 0.85f, 1.f);
+	const FLinearColor DarkTextColor(0.05f, 0.05f, 0.06f);
 	const FLinearColor TileColor(0.14f, 0.15f, 0.19f);
 	const FLinearColor AcceptColor(0.12f, 0.32f, 0.14f);
 	const FLinearColor RejectColor(0.38f, 0.1f, 0.08f);
@@ -46,6 +48,18 @@ namespace DCItemWidgets
 			.SetBackgroundImage(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.5f)))
 			.SetFillImage(FSlateColorBrush(FLinearColor::White))
 			.SetMarqueeImage(FSlateColorBrush(FLinearColor::White));
+		return Style;
+	}
+
+	const FButtonStyle& PrimaryButtonStyle()
+	{
+		static const FButtonStyle Style = FButtonStyle()
+			.SetNormal(FSlateColorBrush(FLinearColor(1.f, 0.85f, 0.25f)))
+			.SetHovered(FSlateColorBrush(FLinearColor(1.f, 0.92f, 0.5f)))
+			.SetPressed(FSlateColorBrush(FLinearColor(0.85f, 0.68f, 0.12f)))
+			.SetDisabled(FSlateColorBrush(FLinearColor(0.25f, 0.25f, 0.27f)))
+			.SetNormalPadding(FMargin(0.f))
+			.SetPressedPadding(FMargin(0.f));
 		return Style;
 	}
 

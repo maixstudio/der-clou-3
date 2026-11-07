@@ -30,6 +30,11 @@ ADCCameraPawn::ADCCameraPawn()
 	Camera->SetFieldOfView(50.f);
 }
 
+void ADCCameraPawn::FocusOn(const FVector& Location)
+{
+	FocusTarget = Location;
+}
+
 void ADCCameraPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -50,6 +55,16 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 		const FVector Direction = (Yaw.RotateVector(FVector::ForwardVector) * Pan.X + Yaw.RotateVector(FVector::RightVector) * Pan.Y).GetSafeNormal();
 		const float Scale = SpringArm->TargetArmLength / StartDistance;
 		AddActorWorldOffset(Direction * PanSpeed * Scale * DeltaSeconds);
+		FocusTarget.Reset();
+	}
+	if (FocusTarget.IsSet())
+	{
+		const FVector Target(FocusTarget->X, FocusTarget->Y, GetActorLocation().Z);
+		SetActorLocation(FMath::VInterpTo(GetActorLocation(), Target, DeltaSeconds, 6.f));
+		if (FVector::Dist2D(GetActorLocation(), Target) < 5.0)
+		{
+			FocusTarget.Reset();
+		}
 	}
 
 	const float Rotate = (PC->IsInputKeyDown(EKeys::E) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::Q) ? 1.f : 0.f);

@@ -5,6 +5,9 @@
 #include "DCPlan.h"
 #include "DCPlanRunner.h"
 #include "DCTimelinePanel.h"
+#include "DCCameraPawn.h"
+#include "DCCrewBar.h"
+#include "DCWaitDialog.h"
 #include "Kismet/GameplayStatics.h"
 #include "DCContainerPanel.h"
 #include "DCCrewCharacter.h"
@@ -85,6 +88,18 @@ void ADCPlayerController::BeginPlay()
 		TimelinePanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		TimelinePanel->AddToViewport(8);
 	}
+	CrewBar = CreateWidget<UDCCrewBar>(this, UDCCrewBar::StaticClass());
+	if (CrewBar)
+	{
+		CrewBar->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		CrewBar->AddToViewport(6);
+	}
+	WaitDialog = CreateWidget<UDCWaitDialog>(this, UDCWaitDialog::StaticClass());
+	if (WaitDialog)
+	{
+		WaitDialog->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+		WaitDialog->AddToViewport(20);
+	}
 	ContainerPanel = CreateWidget<UDCContainerPanel>(this, UDCContainerPanel::StaticClass());
 	if (ContainerPanel)
 	{
@@ -152,9 +167,35 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	{
 		SelfTestSteps.RemoveAt(0);
 	}
+	// While the wait dialog asks, only its keys count.
+	if (WaitDialog && WaitDialog->IsOpen())
+	{
+		if (WasInputKeyJustPressed(EKeys::Escape) || GetMode() != EDCPlanMode::Planning)
+		{
+			WaitDialog->Close();
+		}
+		else if (WasInputKeyJustPressed(EKeys::Enter))
+		{
+			WaitDialog->Confirm();
+		}
+		return;
+	}
 	if (InventoryPanel && WasInputKeyJustPressed(EKeys::I))
 	{
 		InventoryPanel->Toggle();
+	}
+	// 1 to 9: the crew members, in the order of the cards on the left.
+	{
+		static const FKey Digits[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
+		int32 Number = 0;
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It && Number < 9; ++It, ++Number)
+		{
+			if (WasInputKeyJustPressed(Digits[Number]))
+			{
+				SelectFromBar(*It);
+				break;
+			}
+		}
 	}
 	// Planning: keep the timeline up to date (walking times change with what is carried).
 	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this); Heist && GetMode() == EDCPlanMode::Planning)
@@ -179,11 +220,6 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (bMenuOpen && (WasInputKeyJustPressed(EKeys::RightMouseButton) || WasInputKeyJustPressed(EKeys::Escape)))
 	{
 		RadialMenu->Close();
-		return;
-	}
-	if (!bMenuOpen && bPickingWait && WasInputKeyJustPressed(EKeys::Escape))
-	{
-		CancelPickWait();
 		return;
 	}
 	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape))
@@ -471,7 +507,7 @@ FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FD
 		}
 		if (!bPossible)
 		{
-			WeakCrew->Say(Reason);
+			WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Reason), true);
 			return;
 		}
 		WeakThis->IssueTask(Task);
@@ -511,20 +547,6 @@ void ADCPlayerController::HandleClick()
 	FHitResult Hit;
 	if (!GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 	{
-		return;
-	}
-	// Choosing what to wait for: another crew member in the room = until they are done.
-	if (bPickingWait)
-	{
-		ADCCrewCharacter* Other = Cast<ADCCrewCharacter>(Hit.GetActor());
-		if (Other && Other != Selected)
-		{
-			PickWaitTarget(Other->GetFName(), INDEX_NONE);
-		}
-		else
-		{
-			CancelPickWait();
-		}
 		return;
 	}
 	if (ADCCrewCharacter* Crew = Cast<ADCCrewCharacter>(Hit.GetActor()))
@@ -596,8 +618,13 @@ void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
 	switch (GetMode())
 	{
 	case EDCPlanMode::Planning:
-		UDCPlanSubsystem::Get(this)->AddTask(Selected->GetFName(), Task);
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->AddTask(Selected->GetFName(), Task);
+		ShowToast(FText::Format(LOCTEXT("StepAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(),
+			FText::AsNumber(Plans->GetTasks(Selected->GetFName()).Num()), UDCHeistStateSubsystem::Get(this)->DescribeTask(Task)));
 		return;
+	}
 	case EDCPlanMode::Direct:
 		// Direct control: a plan of one step, started right away.
 		Selected->GetPlanRunner()->Start({ Task });
@@ -651,6 +678,14 @@ void ADCPlayerController::ReturnToPlanning()
 		Plans->SetMode(EDCPlanMode::Planning);
 	}
 	ReloadLevel();
+}
+
+void ADCPlayerController::ReturnToPlanningIfNeeded()
+{
+	if (GetMode() != EDCPlanMode::Planning)
+	{
+		ReturnToPlanning();
+	}
 }
 
 void ADCPlayerController::ReloadLevel()
@@ -742,52 +777,106 @@ void ADCPlayerController::PlanDrop(FName ItemId)
 	}
 }
 
-void ADCPlayerController::AddSignal()
+void ADCPlayerController::OpenWaitDialog()
 {
-	if (Selected && GetMode() == EDCPlanMode::Planning)
+	if (Selected && WaitDialog && GetMode() == EDCPlanMode::Planning)
 	{
-		FDCPlanTask Task;
-		Task.Type = EDCPlanTaskType::Signal;
-		Task.Action = static_cast<uint8>(FMath::Clamp(UDCPlanSubsystem::Get(this)->GetNextSignalNumber(), 1, 255));
-		IssueTask(Task);
+		if (RadialMenu)
+		{
+			RadialMenu->Close();
+		}
+		WaitDialog->Open(Selected);
 	}
 }
 
-void ADCPlayerController::StartPickWait()
+void ADCPlayerController::ApplyWaitChoice(const FDCWaitChoice& Choice)
 {
-	bPickingWait = Selected && GetMode() == EDCPlanMode::Planning;
-	if (RadialMenu)
-	{
-		RadialMenu->Close();
-	}
-}
-
-void ADCPlayerController::CancelPickWait()
-{
-	bPickingWait = false;
-}
-
-void ADCPlayerController::PickWaitTarget(FName Crew, int32 Index)
-{
-	bPickingWait = false;
-	if (!Selected || GetMode() != EDCPlanMode::Planning)
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Selected || !Plans || GetMode() != EDCPlanMode::Planning)
 	{
 		return;
 	}
-	if (Crew == Selected->GetFName())
+	const FName Own = Selected->GetFName();
+	FDCPlanTask Wait;
+	switch (Choice.Kind)
 	{
-		Selected->Say(LOCTEXT("WaitSelf", "auf sich selbst warten geht nicht"));
+	case FDCWaitChoice::EKind::Seconds:
+		Wait.Type = EDCPlanTaskType::Wait;
+		Wait.Seconds = Choice.Seconds;
+		break;
+	case FDCWaitChoice::EKind::AllDone:
+		Wait.Type = EDCPlanTaskType::WaitFor;
+		Wait.Target = Choice.Crew;
+		break;
+	case FDCWaitChoice::EKind::AfterStep:
+	{
+		const TArray<FDCPlanTask>& Theirs = Plans->GetTasks(Choice.Crew);
+		if (Choice.Crew == Own || !Theirs.IsValidIndex(Choice.Step))
+		{
+			return;
+		}
+		// The other one gives a signal right after that step; a signal already there is shared.
+		FGuid Signal;
+		if (Theirs.IsValidIndex(Choice.Step + 1) && Theirs[Choice.Step + 1].Type == EDCPlanTaskType::Signal)
+		{
+			Signal = Theirs[Choice.Step + 1].Id;
+		}
+		else
+		{
+			FDCPlanTask Give;
+			Give.Type = EDCPlanTaskType::Signal;
+			Give.Target = Own;
+			Give.Action = static_cast<uint8>(FMath::Clamp(Plans->GetNextSignalNumber(), 1, 255));
+			Signal = Plans->InsertTask(Choice.Crew, Choice.Step + 1, Give);
+		}
+		Wait.Type = EDCPlanTaskType::WaitFor;
+		Wait.Target = Choice.Crew;
+		Wait.Ref = Signal;
+		break;
+	}
+	}
+	Plans->AddTask(Own, Wait);
+	ShowToast(FText::Format(LOCTEXT("WaitAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(), FText::AsNumber(Plans->GetTasks(Own).Num()),
+		UDCHeistStateSubsystem::Get(this)->DescribeTask(Wait)));
+}
+
+void ADCPlayerController::ShowToast(const FText& Text, bool bProblem)
+{
+	ToastText = Text;
+	ToastTime = FPlatformTime::Seconds();
+	bToastProblem = bProblem;
+}
+
+FText ADCPlayerController::GetToast(bool& bOutProblem) const
+{
+	bOutProblem = bToastProblem;
+	return FPlatformTime::Seconds() - ToastTime < 3.5 ? ToastText : FText::GetEmpty();
+}
+
+void ADCPlayerController::SelectFromBar(ADCCrewCharacter* Crew)
+{
+	if (!Crew)
+	{
 		return;
 	}
-	FDCPlanTask Task;
-	Task.Type = EDCPlanTaskType::WaitFor;
-	Task.Target = Crew;
-	const TArray<FDCPlanTask>& Theirs = UDCPlanSubsystem::Get(this)->GetTasks(Crew);
-	if (Theirs.IsValidIndex(Index))
+	Select(Crew);
+	if (ADCCameraPawn* Camera = Cast<ADCCameraPawn>(GetPawn()))
 	{
-		Task.Ref = Theirs[Index].Id;
+		Camera->FocusOn(Crew->GetActorLocation());
 	}
-	IssueTask(Task);
+}
+
+void ADCPlayerController::OpenProfile(ADCCrewCharacter* Crew)
+{
+	if (!Crew)
+	{
+		return;
+	}
+	Select(Crew);
+	if (InventoryPanel)
+	{
+		InventoryPanel->Show();
+	}
 }
 
 void ADCPlayerController::SetPreviewTime(float Time)
@@ -803,6 +892,7 @@ void ADCPlayerController::ClearPlan()
 	if (GetMode() == EDCPlanMode::Planning)
 	{
 		UDCPlanSubsystem::Get(this)->ClearAll();
+		ShowToast(LOCTEXT("PlanCleared", "Alle Pläne gelöscht"));
 	}
 }
 
@@ -1893,15 +1983,24 @@ void ADCPlayerController::StartSignalSelfTest()
 		Expect(VicPlan && VicPlan->Tasks.Num() == 1 && !VicPlan->Tasks[0].bBlocked && VicPlan->Tasks[0].WaitFor == R,
 			TEXT("Rosa cracks, Vic loots: Vic waits for Rosa by himself"));
 
-		// Now explicitly: Rosa gives signal 1 after cracking, Vic waits for it before he walks over.
+		// Now with the dialog: "Worauf soll Vic warten?" – until Rosa has cracked the safe.
 		Plans->RemoveTask(V, 0);
-		Select(Rosa);
-		AddSignal();
 		Select(Vic);
-		StartPickWait();
-		Expect(IsPickingWait(), TEXT("\"Warten auf\" waits for a click"));
-		PickWaitTarget(R, 1);
-		Expect(!IsPickingWait(), TEXT("... and is done after it"));
+		const auto ChooseInDialog = [this, Expect](FDCWaitChoice::EKind Kind, FName Crew, int32 Step, float Seconds)
+		{
+			OpenWaitDialog();
+			Expect(WaitDialog && WaitDialog->IsOpen() && !WaitDialog->HasChoice(), TEXT("the wait dialog opens with nothing chosen"));
+			FDCWaitChoice Choice;
+			Choice.Kind = Kind;
+			Choice.Crew = Crew;
+			Choice.Step = Step;
+			Choice.Seconds = Seconds;
+			WaitDialog->Choose(Choice);
+			UE_LOG(LogDerClou, Display, TEXT("Dialog says: %s"), *WaitDialog->DescribeChoice().ToString().Replace(TEXT("\n"), TEXT(" | ")));
+			const bool bConfirmed = WaitDialog->Confirm();
+			Expect(bConfirmed && !WaitDialog->IsOpen(), TEXT("... confirmed and closed"));
+		};
+		ChooseInDialog(FDCWaitChoice::EKind::AfterStep, R, 0, 0.f);
 		IssueTask(Loot);
 		Heist->Refresh();
 		VicPlan = Heist->GetSchedule().Find(V);
@@ -1909,35 +2008,46 @@ void ADCPlayerController::StartSignalSelfTest()
 		LogPlan(RosaPlan);
 		LogPlan(VicPlan);
 		const bool bShapes = VicPlan && RosaPlan && VicPlan->Tasks.Num() == 2 && RosaPlan->Tasks.Num() == 2;
-		Expect(bShapes && RosaPlan->Tasks[1].Type == EDCPlanTaskType::Signal && RosaPlan->Tasks[1].Label.ToString().Contains(TEXT("Signal 1")), TEXT("Rosa's second step is signal 1"));
-		Expect(bShapes && VicPlan->Tasks[0].Label.ToString().Contains(TEXT("Signal 1")) && !VicPlan->Tasks[0].bBlocked, TEXT("Vic's first step waits for signal 1"));
+		Expect(bShapes && RosaPlan->Tasks[1].Type == EDCPlanTaskType::Signal && RosaPlan->Tasks[1].Label.ToString().Contains(TEXT("Vic")),
+			FString::Printf(TEXT("Rosa got a signal for Vic right after cracking: %s"), bShapes ? *RosaPlan->Tasks[1].Label.ToString() : TEXT("-")));
+		Expect(bShapes && VicPlan->Tasks[0].Label.ToString().Contains(TEXT("Zeichen von Rosa")) && !VicPlan->Tasks[0].bBlocked,
+			FString::Printf(TEXT("Vic's first step waits for it: %s"), bShapes ? *VicPlan->Tasks[0].Label.ToString() : TEXT("-")));
 		Expect(bShapes && FMath::Abs(VicPlan->Tasks[0].WorkStart - RosaPlan->Tasks[1].End) < 0.05f,
 			FString::Printf(TEXT("Vic goes on when the signal is given (%.1f / %.1f)"), bShapes ? VicPlan->Tasks[0].WorkStart : 0.f, bShapes ? RosaPlan->Tasks[1].End : 0.f));
 		Expect(bShapes && VicPlan->Tasks[0].WaitFor == R && VicPlan->Tasks[0].WaitForIndex == 1, TEXT("the plan knows Vic waits for Rosa's step 2"));
 		Expect(bShapes && !VicPlan->Tasks[1].bBlocked && VicPlan->Tasks[1].Start >= VicPlan->Tasks[0].End - 0.01f, TEXT("then Vic loots the safe"));
 
-		// Until Rosa is done altogether.
-		PickWaitTarget(R, INDEX_NONE);
+		// The same step again: the signal is shared; removing one wait keeps it.
+		ChooseInDialog(FDCWaitChoice::EKind::AfterStep, R, 0, 0.f);
+		Expect(Plans->GetTasks(R).Num() == 2 && Plans->GetTasks(V).Num() == 3, TEXT("a second wait on the same step shares Rosa's signal"));
+		Plans->RemoveTask(V, 2);
+		Expect(Plans->GetTasks(R).Num() == 2, TEXT("... and removing it keeps the signal for the first wait"));
+
+		// Until Rosa is done altogether; a fixed time.
+		ChooseInDialog(FDCWaitChoice::EKind::AllDone, R, INDEX_NONE, 0.f);
 		Heist->Refresh();
 		VicPlan = Heist->GetSchedule().Find(V);
 		RosaPlan = Heist->GetSchedule().Find(R);
 		Expect(VicPlan && RosaPlan && VicPlan->Tasks.Num() == 3 && !VicPlan->Tasks[2].bBlocked && VicPlan->Tasks[2].WorkStart >= RosaPlan->End - 0.05f,
 			FString::Printf(TEXT("\"until Rosa is done\": %s"), VicPlan && VicPlan->Tasks.Num() == 3 ? *VicPlan->Tasks[2].Label.ToString() : TEXT("-")));
 		Plans->RemoveTask(V, 2);
+		ChooseInDialog(FDCWaitChoice::EKind::Seconds, NAME_None, INDEX_NONE, 10.f);
+		Expect(Plans->GetTasks(V).Num() == 3 && Plans->GetTasks(V)[2].Type == EDCPlanTaskType::Wait && FMath::IsNearlyEqual(Plans->GetTasks(V)[2].Seconds, 10.f), TEXT("a fixed 10 s wait"));
+		Plans->RemoveTask(V, 2);
 
-		// Waiting for oneself is refused; a deleted signal blocks the wait.
-		PickWaitTarget(V, 0);
-		Expect(Plans->GetTasks(V).Num() == 2, TEXT("waiting for oneself is refused"));
-		const FDCPlanTask SignalStep = Plans->GetTasks(R)[1];
+		// Wait and signal belong together: deleting the signal deletes the wait, and the other way round.
 		Plans->RemoveTask(R, 1);
+		Expect(Plans->GetTasks(R).Num() == 1 && Plans->GetTasks(V).Num() == 1, TEXT("deleting Rosa's signal also deletes Vic's wait for it"));
+		ChooseInDialog(FDCWaitChoice::EKind::AfterStep, R, 0, 0.f);
+		MoveStep(1, -1);
+		Plans->RemoveTask(V, 0);
+		Expect(Plans->GetTasks(R).Num() == 1, TEXT("deleting the only wait also deletes the signal"));
+		ChooseInDialog(FDCWaitChoice::EKind::AfterStep, R, 0, 0.f);
+		MoveStep(1, -1);
 		Heist->Refresh();
 		VicPlan = Heist->GetSchedule().Find(V);
-		Expect(VicPlan && VicPlan->Tasks.Num() == 2 && VicPlan->Tasks[0].bBlocked,
-			FString::Printf(TEXT("without the signal Vic would wait forever: %s"), VicPlan && !VicPlan->Tasks.IsEmpty() ? *VicPlan->Tasks[0].WaitReason.ToString() : TEXT("-")));
-		Plans->AddTask(R, SignalStep);
-		Heist->Refresh();
-		VicPlan = Heist->GetSchedule().Find(V);
-		Expect(VicPlan && VicPlan->Tasks.Num() == 2 && !VicPlan->Tasks[0].bBlocked && !VicPlan->Tasks[1].bBlocked, TEXT("signal back (same id): all fine again"));
+		Expect(VicPlan && VicPlan->Tasks.Num() == 2 && VicPlan->Tasks[0].Type == EDCPlanTaskType::WaitFor && !VicPlan->Tasks[0].bBlocked && !VicPlan->Tasks[1].bBlocked,
+			TEXT("wait, then loot – ready to play"));
 
 		FocusStep(V, 0);
 		Plans->SetSpeed(2.f);
@@ -1951,14 +2061,38 @@ void ADCPlayerController::StartSignalSelfTest()
 		{
 			FocusStep(Rosa->GetFName(), 1);
 		}
-		StartPickWait();
 		return true;
 	});
 	SelfTestSteps.Add(Wait(0.5f));
-	SelfTestSteps.Add(Screenshot(TEXT("signal_rosa_pick.png")));
+	SelfTestSteps.Add(Screenshot(TEXT("signal_rosa.png")));
+	// The dialog with a choice, for the screenshot (not confirmed).
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		SelectFromBar(CrewNamed(TEXT("Vic")));
+		OpenWaitDialog();
+		FDCWaitChoice Choice;
+		Choice.Kind = FDCWaitChoice::EKind::AfterStep;
+		Choice.Crew = CrewNamed(TEXT("Rosa"))->GetFName();
+		Choice.Step = 0;
+		WaitDialog->Choose(Choice);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.6f));
+	SelfTestSteps.Add(Screenshot(TEXT("wait_dialog.png")));
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		WaitDialog->Close();
+		OpenProfile(CrewNamed(TEXT("Rosa")));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.6f));
+	SelfTestSteps.Add(Screenshot(TEXT("crew_profile.png")));
 	SelfTestSteps.Add([this]()
 	{
-		CancelPickWait();
+		if (InventoryPanel)
+		{
+			InventoryPanel->Hide();
+		}
 		StartPlayback();
 		return true;
 	});
@@ -1968,7 +2102,7 @@ void ADCPlayerController::StartSignalSelfTest()
 		const double Now = GetWorld()->GetTimeSeconds();
 		Started = Started < 0.0 ? Now : Started;
 		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
-		const bool bWaiting = Vic && Vic->GetPlanRunner()->GetWaitText().ToString().Contains(TEXT("Signal"));
+		const bool bWaiting = Vic && Vic->GetPlanRunner()->GetWaitText().ToString().Contains(TEXT("Zeichen"));
 		if (bWaiting || Now - Started > 30.0)
 		{
 			Expect(bWaiting, FString::Printf(TEXT("Vic waits for the signal during playback: %s"), Vic ? *Vic->GetPlanRunner()->GetWaitText().ToString() : TEXT("-")));

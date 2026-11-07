@@ -81,6 +81,8 @@ struct FDCScheduledTask
 	/** Makes a loud noise. */
 	bool bLoud = false;
 	float FailChance = 0.f;
+	/** Duration and chance come from a skill check (worth showing "17 s · 100 %"). */
+	bool bHasChance = false;
 	/** "Hintertür knacken". */
 	FText Label;
 	/** "ca. 3 s · Erfolg 100 % · Schlösser 6 (nötig 3): geübt". */

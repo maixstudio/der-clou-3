@@ -2,6 +2,8 @@
 
 #include "DCItemWidgets.h"
 #include "DCNoise.h"
+#include "DCNoiseListener.h"
+#include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SBoxPanel.h"
@@ -82,6 +84,35 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						return FSlateColor(Noise ? UDCNoiseSubsystem::ColorFor(Noise->GetLastLoudNoise().Range) : FLinearColor::White);
 					})
 					.Font(Font(13, true))
+				]
+			]
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 6.f, 0.f, 0.f)
+			[
+				SNew(SBorder)
+				.BorderImage(Brush())
+				.BorderBackgroundColor(PanelColor)
+				.Padding(FMargin(12.f, 4.f))
+				[
+					SNew(STextBlock)
+					.Font(Font(12, true))
+					.Text_Lambda([WeakThis]()
+					{
+						TArray<FString> Parts;
+						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
+						{
+							Parts.Add(FString::Printf(TEXT("%s: Misstrauen %d %%"), *It->GetInteractableName().ToString(), FMath::RoundToInt(It->GetSuspicion())));
+						}
+						return FText::FromString(FString::Join(Parts, TEXT("  ·  ")));
+					})
+					.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
+					{
+						float Highest = 0.f;
+						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
+						{
+							Highest = FMath::Max(Highest, It->GetSuspicion());
+						}
+						return Highest >= 67.f ? FLinearColor(1.f, 0.35f, 0.25f) : Highest >= 34.f ? FLinearColor(1.f, 0.8f, 0.3f) : TextColor;
+					})
 				]
 			]
 		];

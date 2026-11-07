@@ -22,6 +22,9 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
+	/** Glides over to look at this place (stops as soon as the player pans). */
+	void FocusOn(const FVector& Location);
+
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<USceneComponent> Root;
@@ -66,5 +69,6 @@ protected:
 
 private:
 	bool bDragging = false;
+	TOptional<FVector> FocusTarget;
 	FVector2D LastMouse = FVector2D::ZeroVector;
 };

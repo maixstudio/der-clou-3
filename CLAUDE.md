@@ -114,19 +114,36 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     `GetPositionAt`, `DescribeActivityAt`). Wege am Boden folgen dem NavMesh-Pfad; nur die ausgewählte
     Figur hat Nummern, die anderen sind klein und dunkel, der gewählte Schritt groß (`EDCMarkerLook`).
   - **Aufeinander abstimmen (Schritt 7):** Plan-Schritte haben eine feste `Id` (`FGuid`, bleibt beim
-    Verschieben). Neu `EDCPlanTaskType::WaitFor` („warten, bis Rosa „Wandtresor knacken“ erledigt hat“,
-    `Target` = Figur, `Ref` = Schritt-Id; ohne `Ref` = „bis Rosa ganz fertig ist“) und `Signal`
-    („Signal 1 geben“, `Action` = Nummer, 0,5 s). Knöpfe „Warten auf …“ (danach in der Zeitleiste auf
-    einen Schritt/ein Signal einer anderen Figur klicken, auf ihren Namen oder sie im Raum = bis sie
-    fertig ist; Esc bricht ab, andere Zeilen gelb getönt) und „Signal geben“. Simulation: jeder fertige
-    Schritt ist ein Ereignis (`DoneTasks`, `DoneCrews` im Snapshot); live fragt der Runner den Runner der
-    anderen Figur (fertig = erledigt oder aufgegeben). Gelöschtes Ziel → rot. Automatisches Warten
-    (Ausräumen wartet von selbst, bis der Tresor offen ist) bleibt zusätzlich.
+    Verschieben). `EDCPlanTaskType::WaitFor` (`Target` = Figur, `Ref` = Schritt-Id; ohne `Ref` = „bis
+    Rosa ganz fertig ist“) und `Signal` (`Action` = Nummer, 0,5 s). Simulation: jeder fertige Schritt
+    ist ein Ereignis (`DoneTasks`, `DoneCrews` im Snapshot); live fragt der Runner den Runner der
+    anderen Figur (fertig = erledigt oder aufgegeben). Automatisches Warten (Ausräumen wartet von
+    selbst, bis der Tresor offen ist) bleibt zusätzlich.
+  - **Warten-Dialog** `UDCWaitDialog` (Knopf „Warten …“ neben „Plan von Vic“): „Worauf soll Vic warten?“
+    – feste Zeit (5/10/20/30 s), „bis Rosa Schritt N erledigt hat“ (legt bei Rosa direkt danach „Vic
+    das Zeichen geben“ an, ein vorhandenes Zeichen wird geteilt) oder „bis Rosa mit allem fertig ist“;
+    Vorschau-Satz mit Uhrzeiten und Wartezeit, „Übernehmen“ (Enter) / „Abbrechen“ (Esc), Doppelklick =
+    übernehmen. `FDCWaitChoice`, `ApplyWaitChoice`. Warten und Zeichen gehören zusammen: Zeichen löschen
+    löscht die Waits darauf, letzten Wait löschen löscht das Zeichen (`RemoveTask`).
   - Zwei Figuren am selben Gegenstand: die zweite sucht sich einen freien Platz daneben (±40°/80°/120°).
+- **Interface aufgeräumt (Schritt 8)** nach `Docs/UI-Leitfaden.md` (vom Interface-Agenten
+  `.claude/agents/game-ui.md` angelegt – bei UI-Arbeit zuerst lesen):
+  - `UDCCrewBar`: Profilkarten links (Farbe + Initiale, Taste 1–9, beste Fähigkeiten, Plan-Stand bzw.
+    Tätigkeit, rot wenn ein Schritt nicht geht). Klick = wählen + Kamera hin (`ADCCameraPawn::FocusOn`),
+    „Profil“ = Profil & Inventar (das Inventarfenster heißt jetzt „Profil – Vic“ und öffnet rechts neben
+    den Karten).
+  - Planungsleiste mit fester Breite: Umschalter „Planen | Ausprobieren“ (orangefarbener Rahmen beim
+    Ausprobieren), Hauptknopf „Abspielen“ gelb gefüllt (`DCItemWidgets::PrimaryButtonStyle`), Tempo,
+    „Plan leeren“ rot mit zweitem Klick zur Bestätigung. Schrittliste: eine Zeile pro Schritt (Nummer,
+    Zeit, Name, rechts „17 s · 100 %“ / „→ Vic wartet“ / „geht nicht“); Klick klappt Details und
+    „↑ früher / ↓ später / × löschen“ auf. Abstimmung in Cyan (`CoordinationColor`), Schrift ≥ 11–12.
+  - Rückmeldungen als Meldung über der Leiste (`ShowToast`): „Vic, Schritt 3: …“, rot „Geht nicht: …“.
+  - Status oben Mitte: „Nachbar: Misstrauen 0 %“; im Raum steht beim Nachbarn nur noch der Name.
   - Texte über Figuren/Stecknadeln laufen durch `DCVisuals::PlainText` (TextRender-Schrift kennt kein
     „ “ – → …).
-  - Selbsttest `-DCSelfTest=Signals`: Rosa knackt den Tresor und gibt Signal 1, Vic wartet darauf und
-    räumt aus; auch automatisches Warten, „bis Rosa fertig ist“, gelöschtes Signal, eigener Plan.
+  - Selbsttest `-DCSelfTest=Signals`: alles über den Warten-Dialog – Rosa knackt den Tresor und gibt
+    Vic das Zeichen, Vic wartet und räumt aus; geteiltes Zeichen, „bis Rosa fertig“, feste Zeit,
+    gekoppeltes Löschen. Screenshots `signal_vic/rosa.png`, `wait_dialog.png`, `crew_profile.png`.
   - Selbsttest `-DCSelfTest=PlanInventory`: Brecheisen aufheben → Schublade aufbrechen → ausräumen,
     Verschieben/Löschen/Ablegen, Rosa wartet auf Vics Schritt 4, Vorschau, Abspielen (geplant 14,1 s,
     gespielt 13,5 s). Screenshots `plan_list_vic/rosa/done.png`.
@@ -141,8 +158,8 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
 Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest geprüft, nicht mit echter Maus),
 Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus,
 Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüft), ob die neue Ablaufliste
-und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Regel passt, „Warten auf …“ per
-Klick in die Zeitleiste und „Signal geben“ mit der Maus.
+und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Regel passt, Warten-Dialog,
+Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 

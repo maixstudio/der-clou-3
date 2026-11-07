@@ -14,6 +14,9 @@ class UDCInfoPanel;
 class UDCInventoryPanel;
 class UDCNoiseHud;
 class UDCTimelinePanel;
+class UDCCrewBar;
+class UDCWaitDialog;
+struct FDCWaitChoice;
 struct FDCPlanTask;
 struct FDCRadialOption;
 struct FDCTaskCheck;
@@ -44,6 +47,8 @@ public:
 	bool IsPlaybackPaused() const;
 	/** Back to the start state of the level, plan kept. */
 	void ReturnToPlanning();
+	/** "Planen": back from trying things out (resets the room) – nothing to do if already planning. */
+	void ReturnToPlanningIfNeeded();
 	void SetDirectMode(bool bDirect);
 	void ToggleInventory();
 	/** Planning: the selected crew member waits. */
@@ -63,14 +68,26 @@ public:
 	void SetPreviewTime(float Time);
 
 	//~ Waiting for each other
-	/** Planning: the selected crew member gives a signal (the next free number). */
-	void AddSignal();
-	/** Planning: the next click on another crew member's step or signal (timeline) or on them says what to wait for. */
-	void StartPickWait();
-	void CancelPickWait();
-	bool IsPickingWait() const { return bPickingWait; }
-	/** The selected crew member waits until Crew's step Index is over (INDEX_NONE: until Crew is done with everything). */
-	void PickWaitTarget(FName Crew, int32 Index);
+	/** Planning: asks what the selected crew member should wait for (guided dialog). */
+	void OpenWaitDialog();
+	/**
+	 * Adds the chosen wait to the selected crew member's plan. Waiting for another crew member's
+	 * step puts a signal into their plan right after that step (or reuses the one already there).
+	 */
+	void ApplyWaitChoice(const FDCWaitChoice& Choice);
+	UDCWaitDialog* GetWaitDialog() const { return WaitDialog; }
+
+	//~ Feedback
+	/** A short message above the plan bar for a few seconds (bProblem: red) – instead of text in the room. */
+	void ShowToast(const FText& Text, bool bProblem = false);
+	/** The message being shown (empty when there is none). */
+	FText GetToast(bool& bOutProblem) const;
+
+	//~ Crew cards
+	/** Selects the crew member and moves the camera to them. */
+	void SelectFromBar(ADCCrewCharacter* Crew);
+	/** Selects the crew member and opens their profile (skills and inventory). */
+	void OpenProfile(ADCCrewCharacter* Crew);
 	/** 1x, 2x, 4x. */
 	void CycleSpeed();
 
@@ -134,8 +151,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDCTimelinePanel> TimelinePanel;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UDCCrewBar> CrewBar;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCWaitDialog> WaitDialog;
+
 	float RefreshTimer = 0.f;
-	bool bPickingWait = false;
+	FText ToastText;
+	double ToastTime = -100.0;
+	bool bToastProblem = false;
 
 	FDelegateHandle ContainerReachedHandle;
 

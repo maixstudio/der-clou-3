@@ -412,7 +412,11 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 	case EDCPlanTaskType::Drop:
 		return FText::Format(LOCTEXT("TaskDrop", "{0} ablegen"), ItemName(FName(*Task.ItemPath)));
 	case EDCPlanTaskType::Signal:
-		return FText::Format(LOCTEXT("TaskSignal", "Signal {0} geben"), FText::AsNumber(Task.Action));
+	{
+		const ADCCrewCharacter* For = Task.Target.IsNone() ? nullptr : FindCrew(Task.Target);
+		return For ? FText::Format(LOCTEXT("TaskSignalFor", "{0} das Zeichen geben"), For->GetCrewName())
+			: FText::Format(LOCTEXT("TaskSignal", "Zeichen {0} geben"), FText::AsNumber(Task.Action));
+	}
 	case EDCPlanTaskType::WaitFor:
 		return DescribeWaitFor(Task, false);
 	case EDCPlanTaskType::Item:
@@ -469,8 +473,16 @@ FText UDCHeistStateSubsystem::DescribeWaitFor(const FDCPlanTask& Task, bool bWai
 	}
 	if (Ref->Type == EDCPlanTaskType::Signal)
 	{
-		return FText::Format(bWaiting ? LOCTEXT("WaitingSignal", "wartet auf Signal {0} von {1}") : LOCTEXT("TaskWaitSignal", "auf Signal {0} von {1} warten"),
-			FText::AsNumber(Ref->Action), OtherName);
+		// Name the step the signal comes after: that is what the player chose.
+		const TArray<FDCPlanTask>& Theirs = Plans->GetTasks(Task.Target);
+		const FDCPlanTask* Before = Theirs.IsValidIndex(RefIndex - 1) && Theirs[RefIndex - 1].Type != EDCPlanTaskType::WaitFor ? &Theirs[RefIndex - 1] : nullptr;
+		if (bWaiting)
+		{
+			return FText::Format(LOCTEXT("WaitingSignal", "wartet auf das Zeichen von {0}"), OtherName);
+		}
+		return Before
+			? FText::Format(LOCTEXT("TaskWaitSignalAfter", "auf das Zeichen von {0} warten (kommt nach „{1}“)"), OtherName, DescribeTask(*Before))
+			: FText::Format(LOCTEXT("TaskWaitSignal", "auf das Zeichen von {0} warten"), OtherName);
 	}
 	// A wait waiting for a wait: no nested names (they could go round in a circle).
 	const FText RefLabel = Ref->Type == EDCPlanTaskType::WaitFor ? LOCTEXT("TaskWaitWait", "sein Warten") : DescribeTask(*Ref);
@@ -625,6 +637,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		{
 			Duration = Check.Seconds;
 			Out.FailChance = Check.FailChance;
+			Out.bHasChance = true;
 			Out.Detail = Check.Describe();
 		};
 
