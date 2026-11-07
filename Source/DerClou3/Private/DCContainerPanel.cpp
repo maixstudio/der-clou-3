@@ -42,18 +42,26 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 	TWeakObjectPtr<UDCContainerPanel> WeakThis = this;
 
 	Context = MakeShared<FDCItemTreeContext>();
-	Context->CheckInto = [WeakThis](UDCItem* Item, UDCItem* Into)
+	Context->CheckInto = [WeakThis](UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 	{
 		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
-		return Member ? Member->GetInventory()->CheckInto(Item, Into) : FText::GetEmpty();
+		return Member ? Member->GetInventory()->CheckInto(Item, Into, Cell) : FText::GetEmpty();
 	};
-	Context->MoveInto = [WeakThis](UDCItem* Item, UDCItem* Into)
+	Context->MoveInto = [WeakThis](UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 	{
 		if (WeakThis.IsValid())
 		{
-			WeakThis->MoveInto(Item, Into);
+			WeakThis->MoveInto(Item, Into, Cell);
 		}
 	};
+	Context->Select = [WeakThis](UDCItem* Item)
+	{
+		if (WeakThis.IsValid())
+		{
+			WeakThis->SelectItem(Item);
+		}
+	};
+	Context->GetSelected = [WeakThis]() { return WeakThis.IsValid() ? WeakThis->Selected.Get() : nullptr; };
 	Context->GetActions = [WeakThis](UDCItem* Item)
 	{
 		return DefaultActions(Item, true, false);
@@ -131,7 +139,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 						]
-						+ SVerticalBox::Slot().MaxHeight(430.f)
+						+ SVerticalBox::Slot().MaxHeight(560.f)
 						[
 							SNew(SScrollBox)
 							+ SScrollBox::Slot()
@@ -150,7 +158,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 						[
-							MakeMuted(LOCTEXT("Hint", "Ins Inventar ziehen oder „nehmen“ · Dinge aus dem Inventar hierher ziehen = verstecken"), 10)
+							MakeMuted(LOCTEXT("Hint", "Anklicken = Knöpfe · ins Profil ziehen oder „nehmen“ · Dinge aus dem Profil hierher ziehen = verstecken"), 10)
 						]
 					])
 			]
@@ -168,6 +176,10 @@ void UDCContainerPanel::ReleaseSlateResources(bool bReleaseChildren)
 
 void UDCContainerPanel::Open(ADCCrewCharacter* InCrew, ADCItemPickup* InPickup)
 {
+	if (Pickup.Get() != InPickup)
+	{
+		Selected.Reset();
+	}
 	Crew = InCrew;
 	Pickup = InPickup;
 	Message = FText::GetEmpty();
@@ -187,7 +199,13 @@ void UDCContainerPanel::ShowMessage(const FText& Text)
 	MessageTime = 4.f;
 }
 
-void UDCContainerPanel::MoveInto(UDCItem* Item, UDCItem* Into)
+void UDCContainerPanel::SelectItem(UDCItem* Item)
+{
+	Selected = Selected.Get() == Item ? nullptr : Item;
+	bDirty = true;
+}
+
+void UDCContainerPanel::MoveInto(UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 {
 	ADCCrewCharacter* Member = Crew.Get();
 	if (!Member || !Item || !Into)
@@ -195,7 +213,7 @@ void UDCContainerPanel::MoveInto(UDCItem* Item, UDCItem* Into)
 		return;
 	}
 	FText Reason;
-	if (!Member->GetInventory()->MoveInto(Item, Into, Reason))
+	if (!Member->GetInventory()->MoveInto(Item, Into, Reason, Cell))
 	{
 		ShowMessage(Reason);
 	}
@@ -246,7 +264,27 @@ void UDCContainerPanel::RebuildContent()
 		return;
 	}
 	// The container itself is not dragged; it can be taken with its button if it is portable.
-	Content->AddSlot().AutoHeight()[DCItemWidgets::MakeItem(Item, Context.ToSharedRef(), false)];
+	Content->AddSlot().AutoHeight()[DCItemWidgets::MakeSection(Item, Context.ToSharedRef(), false)];
+
+	// What the window shows anyway: the container and its fixed parts. Below: the selected item.
+	TArray<UDCItem*> Shown = { Item };
+	for (UDCItem* Part : Item->GetContents())
+	{
+		if (Part->IsAttached())
+		{
+			Shown.Add(Part);
+		}
+	}
+	UDCItem* Pick = Selected.Get();
+	if (Pick && !Pick->IsInside(Item))
+	{
+		Selected.Reset();
+		Pick = nullptr;
+	}
+	if (Pick && !Shown.Contains(Pick))
+	{
+		Content->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)[DCItemWidgets::MakeSelection(Pick, Shown, Context.ToSharedRef())];
+	}
 	if (!Item->IsContainer() && Item->GetContents().IsEmpty())
 	{
 		Content->AddSlot().AutoHeight().Padding(0.f, 6.f, 0.f, 0.f)

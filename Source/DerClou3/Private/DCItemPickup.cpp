@@ -130,7 +130,8 @@ void ADCItemPickup::BuildItem()
 				continue;
 			}
 			// The level designer decides; still say so if it would not fit by the rules.
-			if (Target->GetDef().Size > Container->GetDef().MaxContentSize || !Container->IsContainer())
+			FIntPoint Free;
+			if (Target->GetDef().Size > Container->GetDef().MaxContentSize || !Container->FindFreeSpot(Target, Free))
 			{
 				UE_LOG(LogDerClou, Warning, TEXT("%s: %s does not really fit into %s"), *GetName(), *Spec.ItemId.ToString(), *Container->GetDefId().ToString());
 			}

@@ -66,6 +66,7 @@ UDCItem* UDCItem::Clone() const
 	Copy->bLockBroken = bLockBroken;
 	Copy->bAttached = bAttached;
 	Copy->bDestroyed = bDestroyed;
+	Copy->GridPos = GridPos;
 	for (const UDCItem* Child : Contents)
 	{
 		UDCItem* ChildCopy = Child->Clone();
@@ -119,18 +120,35 @@ bool UDCItem::IsInside(const UDCItem* Other) const
 	return false;
 }
 
-void UDCItem::AddContent(UDCItem* Item)
+void UDCItem::AddContent(UDCItem* Item, FIntPoint Cell)
 {
-	if (!Item || Contents.Contains(Item))
+	if (!Item || Item == this)
 	{
 		return;
 	}
-	if (UDCItem* OldParent = Item->GetParent())
+	if (UDCItem* OldParent = Item->GetParent(); OldParent && OldParent != this)
 	{
 		OldParent->Contents.Remove(Item);
 	}
-	Contents.Add(Item);
+	if (!Contents.Contains(Item))
+	{
+		Contents.Add(Item);
+	}
 	Item->Parent = this;
+	// Fixed parts sit outside the grid; everything else gets a cell if there is one.
+	Item->GridPos = DCItems::AnyCell;
+	if (!Item->bAttached && IsContainer())
+	{
+		FIntPoint Free;
+		if (Cell.X >= 0 && Cell.Y >= 0)
+		{
+			Item->GridPos = Cell;
+		}
+		else if (FindFreeSpot(Item, Free))
+		{
+			Item->GridPos = Free;
+		}
+	}
 	NotifyChanged();
 }
 
@@ -141,8 +159,93 @@ bool UDCItem::RemoveContent(UDCItem* Item)
 		return false;
 	}
 	Item->Parent.Reset();
+	Item->GridPos = DCItems::AnyCell;
 	NotifyChanged();
 	return true;
+}
+
+UDCItem* UDCItem::GetItemAt(FIntPoint Cell) const
+{
+	for (UDCItem* Item : Contents)
+	{
+		if (!Item->HasGridPos())
+		{
+			continue;
+		}
+		const FIntPoint Min = Item->GridPos;
+		const FIntPoint Max = Min + Item->GetGridSize();
+		if (Cell.X >= Min.X && Cell.Y >= Min.Y && Cell.X < Max.X && Cell.Y < Max.Y)
+		{
+			return Item;
+		}
+	}
+	return nullptr;
+}
+
+FText UDCItem::CheckPlaceAt(const UDCItem* Item, FIntPoint Cell) const
+{
+	const FDCItemDef& Def = GetDef();
+	if (!Item || !Item->GetDef().FitsInGrid())
+	{
+		return FText::Format(LOCTEXT("NoGrid", "{0} passt in keine Tasche – nur mit beiden Händen"), Item ? Item->GetDisplayName() : FText::GetEmpty());
+	}
+	const FIntPoint Size = Item->GetGridSize();
+	if (Size.X > Def.Grid.X || Size.Y > Def.Grid.Y)
+	{
+		return FText::Format(LOCTEXT("GridTooSmall", "{0} ({1}) passt nicht in {2} ({3})"),
+			Item->GetDisplayName(), DCItems::FormatCells(Size), Def.Name, DCItems::FormatCells(Def.Grid));
+	}
+	if (Cell.X < 0 || Cell.Y < 0 || Cell.X + Size.X > Def.Grid.X || Cell.Y + Size.Y > Def.Grid.Y)
+	{
+		return LOCTEXT("OverEdge", "Ragt über den Rand");
+	}
+	for (int32 Y = Cell.Y; Y < Cell.Y + Size.Y; ++Y)
+	{
+		for (int32 X = Cell.X; X < Cell.X + Size.X; ++X)
+		{
+			const UDCItem* Taken = GetItemAt(FIntPoint(X, Y));
+			if (Taken && Taken != Item)
+			{
+				return FText::Format(LOCTEXT("CellTaken", "Dort liegt schon {0}"), Taken->GetDisplayName());
+			}
+		}
+	}
+	return FText::GetEmpty();
+}
+
+bool UDCItem::FindFreeSpot(const UDCItem* Item, FIntPoint& OutCell) const
+{
+	if (!Item || !IsContainer() || !Item->GetDef().FitsInGrid())
+	{
+		return false;
+	}
+	const FIntPoint Grid = GetDef().Grid;
+	const FIntPoint Size = Item->GetGridSize();
+	for (int32 Y = 0; Y + Size.Y <= Grid.Y; ++Y)
+	{
+		for (int32 X = 0; X + Size.X <= Grid.X; ++X)
+		{
+			if (CheckPlaceAt(Item, FIntPoint(X, Y)).IsEmpty())
+			{
+				OutCell = FIntPoint(X, Y);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+int32 UDCItem::GetUsedCells() const
+{
+	int32 Used = 0;
+	for (const UDCItem* Item : Contents)
+	{
+		if (Item->HasGridPos())
+		{
+			Used += Item->GetGridSize().X * Item->GetGridSize().Y;
+		}
+	}
+	return Used;
 }
 
 UDCItem* UDCItem::FindInside(FName Id) const
@@ -240,22 +343,6 @@ float UDCItem::GetTotalMass() const
 	return Mass;
 }
 
-float UDCItem::GetUsedVolume() const
-{
-	float Volume = 0.f;
-	for (const UDCItem* Item : Contents)
-	{
-		Volume += Item->GetEffectiveVolume();
-	}
-	return Volume;
-}
-
-float UDCItem::GetEffectiveVolume() const
-{
-	const FDCItemDef& Def = GetDef();
-	return Def.bRigid ? Def.VolumeLiters : Def.VolumeLiters + GetUsedVolume();
-}
-
 int32 UDCItem::GetTotalValue() const
 {
 	int32 Value = GetDef().Value;
@@ -266,7 +353,7 @@ int32 UDCItem::GetTotalValue() const
 	return Value;
 }
 
-FText UDCItem::CheckCanHold(const UDCItem* Item) const
+FText UDCItem::CheckCanHold(const UDCItem* Item, FIntPoint Cell) const
 {
 	const FDCItemDef& Def = GetDef();
 	if (!Item)
@@ -277,7 +364,8 @@ FText UDCItem::CheckCanHold(const UDCItem* Item) const
 	{
 		return FText::Format(LOCTEXT("NotContainer", "In {0} kann man nichts hineintun"), Def.Name);
 	}
-	if (Contents.Contains(Item))
+	const bool bAnywhere = Cell.X < 0 || Cell.Y < 0;
+	if (Contents.Contains(Item) && (bAnywhere || Item->GridPos == Cell))
 	{
 		return FText::GetEmpty();
 	}
@@ -294,11 +382,21 @@ FText UDCItem::CheckCanHold(const UDCItem* Item) const
 		return FText::Format(LOCTEXT("TooBig", "{0} ist zu groß für {1} (passt nur bis „{2}“)"),
 			Item->GetDisplayName(), Def.Name, DCItems::DescribeSize(Def.MaxContentSize));
 	}
-	if (GetUsedVolume() + Item->GetEffectiveVolume() > Def.CapacityLiters + KINDA_SMALL_NUMBER)
+	if (!bAnywhere)
 	{
-		return FText::Format(LOCTEXT("TooFull", "{0} ist zu voll ({1} von {2} belegt, {3} braucht {4})"),
-			Def.Name, DCItems::FormatLiters(GetUsedVolume()), DCItems::FormatLiters(Def.CapacityLiters),
-			Item->GetDisplayName(), DCItems::FormatLiters(Item->GetEffectiveVolume()));
+		return CheckPlaceAt(Item, Cell);
+	}
+	FIntPoint Free;
+	if (!FindFreeSpot(Item, Free))
+	{
+		// Name the real problem: does not fit at all, or no room left.
+		const FIntPoint Size = Item->GetGridSize();
+		if (!Item->GetDef().FitsInGrid() || Size.X > Def.Grid.X || Size.Y > Def.Grid.Y)
+		{
+			return CheckPlaceAt(Item, FIntPoint::ZeroValue);
+		}
+		return FText::Format(LOCTEXT("TooFull", "{0} ist zu voll – kein freier Platz für {1} ({2})"),
+			Def.Name, Item->GetDisplayName(), DCItems::FormatCells(Item->GetGridSize()));
 	}
 	return FText::GetEmpty();
 }
@@ -348,7 +446,7 @@ void UDCItem::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
 		OutLines.Add({ LOCTEXT("LabelState", "Zustand"), DescribeState() });
 	}
 	OutLines.Add({ LOCTEXT("LabelMass", "Gewicht"), DCItems::FormatKg(GetTotalMass()) });
-	OutLines.Add({ LOCTEXT("LabelVolume", "Volumen"), DCItems::FormatLiters(GetEffectiveVolume()) });
+	OutLines.Add({ LOCTEXT("LabelCells", "Platz"), Def.FitsInGrid() ? FText::Format(LOCTEXT("Cells", "{0} Felder"), DCItems::FormatCells(Def.GridSize)) : LOCTEXT("NoCells", "passt in kein Raster") });
 	OutLines.Add({ LOCTEXT("LabelSize", "Größe"), DCItems::DescribeSize(Def.Size) });
 	OutLines.Add({ LOCTEXT("LabelCarry", "Tragen"), DescribeCarrying() });
 	if (Def.WearSlot != EDCEquipSlot::None)
@@ -372,8 +470,8 @@ void UDCItem::GetInfoLines(TArray<FDCInfoLine>& OutLines) const
 	}
 	if (Def.IsContainer())
 	{
-		OutLines.Add({ LOCTEXT("LabelCapacity", "Fasst"), FText::Format(LOCTEXT("Capacity", "{0}, bis „{1}“"),
-			DCItems::FormatLiters(Def.CapacityLiters), DCItems::DescribeSize(Def.MaxContentSize)) });
+		OutLines.Add({ LOCTEXT("LabelCapacity", "Fasst"), FText::Format(LOCTEXT("Capacity", "Raster {0}, bis „{1}“"),
+			DCItems::FormatCells(Def.Grid), DCItems::DescribeSize(Def.MaxContentSize)) });
 		FText Inside;
 		if (!IsReachable())
 		{

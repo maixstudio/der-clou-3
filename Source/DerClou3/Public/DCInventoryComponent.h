@@ -56,16 +56,16 @@ public:
 	/** Can this person take the item at all (not fixed, not too big or heavy, reachable)? */
 	FText CheckCarry(const UDCItem* Item) const;
 	FText CheckSlot(const UDCItem* Item, EDCEquipSlot Slot) const;
-	/** Into any container: one the crew member has on them, or one in the world next to them. */
-	FText CheckInto(const UDCItem* Item, const UDCItem* Container) const;
+	/** Into any container (on that cell, or anywhere): one the crew member has on them, or one in the world next to them. */
+	FText CheckInto(const UDCItem* Item, const UDCItem* Container, FIntPoint Cell = DCItems::AnyCell) const;
 	/** Would AddAnywhere succeed? */
 	FText CheckAdd(const UDCItem* Item) const;
 
 	/** Moves an item (owned, or from the world) to a slot. False + reason if it does not fit. */
 	bool MoveToSlot(UDCItem* Item, EDCEquipSlot Slot, FText& OutReason);
-	/** Moves an item (owned, or from the world) into a container (owned, or in the world). */
-	bool MoveInto(UDCItem* Item, UDCItem* Container, FText& OutReason);
-	/** Puts an item where it fits best: wear it, then pockets/vest/backpack, then hands. */
+	/** Moves an item (owned, or from the world) into a container (owned, or in the world), on that cell or the first free one. */
+	bool MoveInto(UDCItem* Item, UDCItem* Container, FText& OutReason, FIntPoint Cell = DCItems::AnyCell);
+	/** Puts an item where it fits best: wear it, then the first free cell in pockets/vest/backpack, then hands. */
 	bool AddAnywhere(UDCItem* Item, FText& OutReason);
 	/** Takes the item out of the inventory (it keeps its own contents). */
 	bool Remove(UDCItem* Item);

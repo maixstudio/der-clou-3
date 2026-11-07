@@ -123,6 +123,8 @@ private:
 	void StartPlanInventorySelfTest();
 	/** -DCSelfTest=Signals: Rosa cracks the safe and gives a signal, Vic waits for it and loots the safe. */
 	void StartSignalSelfTest();
+	/** -DCSelfTest=Grid: footprints in the grids (crowbar not in the pockets but in the backpack), moving, nesting, copying. */
+	void StartGridSelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */

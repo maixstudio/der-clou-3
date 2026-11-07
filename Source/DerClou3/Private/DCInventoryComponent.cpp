@@ -273,7 +273,7 @@ FText UDCInventoryComponent::CheckSlot(const UDCItem* Item, EDCEquipSlot Slot) c
 	return FText::GetEmpty();
 }
 
-FText UDCInventoryComponent::CheckInto(const UDCItem* Item, const UDCItem* Container) const
+FText UDCInventoryComponent::CheckInto(const UDCItem* Item, const UDCItem* Container, FIntPoint Cell) const
 {
 	if (!Item || !Container)
 	{
@@ -281,14 +281,15 @@ FText UDCInventoryComponent::CheckInto(const UDCItem* Item, const UDCItem* Conta
 	}
 	if (Item->GetParent() == Container)
 	{
-		return FText::GetEmpty();
+		// Moving it to another cell of the same container.
+		return Container->CheckCanHold(Item, Cell);
 	}
 	FText Reason = Item->CheckCanTakeOut();
 	if (!Reason.IsEmpty())
 	{
 		return Reason;
 	}
-	Reason = Container->CheckCanHold(Item);
+	Reason = Container->CheckCanHold(Item, Cell);
 	if (!Reason.IsEmpty())
 	{
 		return Reason;
@@ -358,19 +359,24 @@ bool UDCInventoryComponent::MoveToSlot(UDCItem* Item, EDCEquipSlot Slot, FText& 
 	return true;
 }
 
-bool UDCInventoryComponent::MoveInto(UDCItem* Item, UDCItem* Container, FText& OutReason)
+bool UDCInventoryComponent::MoveInto(UDCItem* Item, UDCItem* Container, FText& OutReason, FIntPoint Cell)
 {
-	OutReason = CheckInto(Item, Container);
+	OutReason = CheckInto(Item, Container, Cell);
 	if (!OutReason.IsEmpty())
 	{
 		return false;
 	}
 	if (Item->GetParent() == Container)
 	{
+		if (Cell.X >= 0 && Cell.Y >= 0 && Cell != Item->GetGridPos())
+		{
+			Container->AddContent(Item, Cell);
+			Changed();
+		}
 		return true;
 	}
 	Detach(Item);
-	Container->AddContent(Item);
+	Container->AddContent(Item, Cell);
 	Changed();
 	return true;
 }

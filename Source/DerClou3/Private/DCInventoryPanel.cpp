@@ -20,7 +20,8 @@
 namespace
 {
 	constexpr float InventoryWidth = 430.f;
-	constexpr float SlotLabelWidth = 90.f;
+	constexpr float ColumnGap = 8.f;
+	constexpr float HandHeight = 58.f;
 }
 
 void UDCInventoryPanel::NativeConstruct()
@@ -37,18 +38,26 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 
 	// What the item tree does in this window.
 	Context = MakeShared<FDCItemTreeContext>();
-	Context->CheckInto = [WeakThis](UDCItem* Item, UDCItem* Into)
+	Context->CheckInto = [WeakThis](UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 	{
 		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
-		return Member ? Member->GetInventory()->CheckInto(Item, Into) : FText::GetEmpty();
+		return Member ? Member->GetInventory()->CheckInto(Item, Into, Cell) : FText::GetEmpty();
 	};
-	Context->MoveInto = [WeakThis](UDCItem* Item, UDCItem* Into)
+	Context->MoveInto = [WeakThis](UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 	{
 		if (WeakThis.IsValid())
 		{
-			WeakThis->MoveItem(Item, EDCEquipSlot::None, Into);
+			WeakThis->MoveItem(Item, EDCEquipSlot::None, Into, Cell);
 		}
 	};
+	Context->Select = [WeakThis](UDCItem* Item)
+	{
+		if (WeakThis.IsValid())
+		{
+			WeakThis->SelectItem(Item);
+		}
+	};
+	Context->GetSelected = [WeakThis]() { return WeakThis.IsValid() ? WeakThis->Selected.Get() : nullptr; };
 	Context->GetActions = [](UDCItem* Item) { return DefaultActions(Item, false, true); };
 	Context->CheckAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
 	{
@@ -126,7 +135,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 						]
-						+ SVerticalBox::Slot().MaxHeight(430.f)
+						+ SVerticalBox::Slot().MaxHeight(640.f)
 						[
 							SNew(SScrollBox)
 							+ SScrollBox::Slot()
@@ -145,7 +154,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 						[
-							MakeMuted(LOCTEXT("Hint", "Ziehen zum Umpacken · auf einen Behälter ziehen = hineinlegen · aus dem Fenster ziehen = auf den Boden legen"), 10)
+							MakeMuted(LOCTEXT("Hint", "Anklicken = Knöpfe · ziehen = umpacken (grün passt, rot sagt warum) · auf einen Behälter ziehen = hineinlegen · aus dem Fenster ziehen = auf den Boden"), 10)
 						]
 					])
 			]
@@ -194,6 +203,10 @@ void UDCInventoryPanel::Unbind()
 void UDCInventoryPanel::SetCrew(ADCCrewCharacter* InCrew)
 {
 	Unbind();
+	if (Crew.Get() != InCrew)
+	{
+		Selected.Reset();
+	}
 	Crew = InCrew;
 	if (InCrew && InCrew->GetInventory())
 	{
@@ -227,7 +240,13 @@ void UDCInventoryPanel::ShowMessage(const FText& Text)
 	MessageTime = 4.f;
 }
 
-void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container)
+void UDCInventoryPanel::SelectItem(UDCItem* Item)
+{
+	Selected = Selected.Get() == Item ? nullptr : Item;
+	bDirty = true;
+}
+
+void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container, FIntPoint Cell)
 {
 	ADCCrewCharacter* Member = Crew.Get();
 	UDCInventoryComponent* Inventory = Member ? Member->GetInventory() : nullptr;
@@ -236,7 +255,7 @@ void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem*
 		return;
 	}
 	FText Reason;
-	const bool bMoved = Container ? Inventory->MoveInto(Item, Container, Reason) : Inventory->MoveToSlot(Item, EquipSlot, Reason);
+	const bool bMoved = Container ? Inventory->MoveInto(Item, Container, Reason, Cell) : Inventory->MoveToSlot(Item, EquipSlot, Reason);
 	if (!bMoved)
 	{
 		ShowMessage(Reason);
@@ -253,17 +272,49 @@ void UDCInventoryPanel::DropToFloor(UDCItem* Item)
 
 void UDCInventoryPanel::RebuildContent()
 {
+	using namespace DCItemWidgets;
 	Content->ClearChildren();
 	const ADCCrewCharacter* Member = Crew.Get();
-	if (!Member || !Member->GetInventory() || !Context.IsValid())
+	const UDCInventoryComponent* Inventory = Member ? Member->GetInventory() : nullptr;
+	if (!Inventory || !Context.IsValid())
 	{
-		Content->AddSlot().AutoHeight()[DCItemWidgets::MakeMuted(LOCTEXT("Nobody", "Niemand ausgewählt."), 12)];
+		Content->AddSlot().AutoHeight()[MakeMuted(LOCTEXT("Nobody", "Niemand ausgewählt."), 12)];
 		return;
 	}
-	Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)[MakeSkills()];
-	for (const EDCEquipSlot EquipSlot : { EDCEquipSlot::Head, EDCEquipSlot::Body, EDCEquipSlot::Vest, EDCEquipSlot::Back, EDCEquipSlot::LeftHand, EDCEquipSlot::RightHand })
+	if (Selected.IsValid() && !Inventory->Owns(Selected.Get()))
 	{
-		Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 3.f)[MakeSlotRow(EquipSlot)];
+		Selected.Reset();
+	}
+	Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)[MakeSkills()];
+
+	// Two columns: clothes and backpack on the left; head, vest and hands on the right.
+	Content->AddSlot().AutoHeight()
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, ColumnGap * 0.5f, 0.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)[MakeSlotCard(EDCEquipSlot::Body)]
+			+ SVerticalBox::Slot().AutoHeight()[MakeSlotCard(EDCEquipSlot::Back)]
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(ColumnGap * 0.5f, 0.f, 0.f, 0.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)[MakeSlotCard(EDCEquipSlot::Head)]
+			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)[MakeSlotCard(EDCEquipSlot::Vest)]
+			+ SVerticalBox::Slot().AutoHeight()[MakeHands()]
+		]
+	];
+
+	// The selected item: its buttons, and the grid of a container held or packed somewhere.
+	TArray<UDCItem*> Shown;
+	for (UDCItem* Worn : Inventory->GetContainers())
+	{
+		Shown.Add(Worn);
+	}
+	if (UDCItem* Item = Selected.Get())
+	{
+		Content->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)[MakeSelection(Item, Shown, Context.ToSharedRef())];
 	}
 }
 
@@ -318,43 +369,104 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSkills()
 		+ SVerticalBox::Slot().AutoHeight()[Rows];
 }
 
-TSharedRef<SWidget> UDCInventoryPanel::MakeSlotRow(EDCEquipSlot EquipSlot)
+TSharedRef<SWidget> UDCInventoryPanel::MakeSlotCard(EDCEquipSlot EquipSlot)
 {
 	using namespace DCItemWidgets;
 	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
 	UDCInventoryComponent* Inventory = Crew->GetInventory();
 	TWeakObjectPtr<UDCInventoryComponent> WeakInventory = Inventory;
 	UDCItem* Item = Inventory->GetSlotItem(EquipSlot);
+	const TSharedRef<FDCItemTreeContext> Ctx = Context.ToSharedRef();
 
-	TSharedRef<SWidget> Filling = MakeMuted(LOCTEXT("EmptySlot", "–"));
-	if (Item && EquipSlot == EDCEquipSlot::LeftHand && Inventory->HasBothHandsFull())
+	// The slot itself takes things to wear; its grid (clothes, vest, backpack) takes things to pack.
+	TSharedRef<SVerticalBox> Card = SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			MakeDropZone(
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(DCItems::DescribeSlot(EquipSlot), 10)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)
+				[
+					Item ? MakeHeader(Item, Ctx, true, false) : MakeMuted(LOCTEXT("EmptySlot", "–"))
+				],
+				[WeakInventory, EquipSlot](UDCItem* Dragged) { return WeakInventory.IsValid() ? WeakInventory->CheckSlot(Dragged, EquipSlot) : FText::GetEmpty(); },
+				[WeakThis, EquipSlot](UDCItem* Dragged)
+				{
+					if (WeakThis.IsValid())
+					{
+						WeakThis->MoveItem(Dragged, EquipSlot, nullptr);
+					}
+				},
+				ZoneColor, FMargin(5.f, 3.f), DCItems::DescribeSlot(EquipSlot))
+		];
+	if (Item && Item->IsContainer())
 	{
-		Filling = MakeMuted(FText::Format(LOCTEXT("BothHands", "trägt {0} mit beiden Händen"), Item->GetDisplayName()));
+		Card->AddSlot().AutoHeight().Padding(0.f, 3.f, 0.f, 0.f)[MakeGrid(Item, Ctx)];
 	}
-	else if (Item)
-	{
-		Filling = MakeItem(Item, Context.ToSharedRef());
-	}
+	return Card;
+}
 
-	return MakeDropZone(
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 3.f, 0.f, 0.f)
-		[
-			SNew(SBox).WidthOverride(SlotLabelWidth)[MakeMuted(DCItems::DescribeSlot(EquipSlot))]
-		]
-		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
-		[
-			Filling
-		],
-		[WeakInventory, EquipSlot](UDCItem* Dragged) { return WeakInventory.IsValid() ? WeakInventory->CheckSlot(Dragged, EquipSlot) : FText::GetEmpty(); },
-		[WeakThis, EquipSlot](UDCItem* Dragged)
+TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
+{
+	using namespace DCItemWidgets;
+	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
+	UDCInventoryComponent* Inventory = Crew->GetInventory();
+	TWeakObjectPtr<UDCInventoryComponent> WeakInventory = Inventory;
+	const TSharedRef<FDCItemTreeContext> Ctx = Context.ToSharedRef();
+
+	// One big place per hand; something large fills both.
+	const auto Hand = [&](EDCEquipSlot EquipSlot, const FText& Label, UDCItem* Item)
+	{
+		TSharedRef<SWidget> Filling = MakeMuted(LOCTEXT("EmptyHand", "frei"), 10);
+		if (Item)
 		{
-			if (WeakThis.IsValid())
+			Filling = MakeTile(Item, Ctx,
+				SNew(SBorder)
+				.BorderImage(Brush())
+				.BorderBackgroundColor_Lambda([Ctx, Weak = TWeakObjectPtr<UDCItem>(Item)]() { return Ctx->GetSelected && Ctx->GetSelected() == Weak.Get() ? FLinearColor(0.3f, 0.26f, 0.1f) : FLinearColor(0.14f, 0.15f, 0.19f); })
+				.Padding(FMargin(5.f, 3.f))
+				.Cursor(EMouseCursor::GrabHand)
+				.ToolTipText(FText::Format(LOCTEXT("HandTip", "{0} · {1}"), Item->GetDisplayName(), DCItems::FormatKg(Item->GetTotalMass())))
+				[
+					SNew(STextBlock)
+					.Text(Item->GetDisplayName())
+					.Font(Font(11, true))
+					.ColorAndOpacity(Item->GetDef().Value > 0 ? LootColor : TextColor)
+					.AutoWrapText(true)
+				]);
+		}
+		return MakeDropZone(
+			SNew(SBox)
+			.MinDesiredHeight(HandHeight)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(Label, 10)]
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)[Filling]
+			],
+			[WeakInventory, EquipSlot](UDCItem* Dragged) { return WeakInventory.IsValid() ? WeakInventory->CheckSlot(Dragged, EquipSlot) : FText::GetEmpty(); },
+			[WeakThis, EquipSlot](UDCItem* Dragged)
 			{
-				WeakThis->MoveItem(Dragged, EquipSlot, nullptr);
-			}
-		},
-		ZoneColor, FMargin(6.f, 3.f));
+				if (WeakThis.IsValid())
+				{
+					WeakThis->MoveItem(Dragged, EquipSlot, nullptr);
+				}
+			},
+			ZoneColor, FMargin(5.f, 3.f), Label);
+	};
+
+	if (Inventory->HasBothHandsFull())
+	{
+		return Hand(EDCEquipSlot::RightHand, LOCTEXT("BothHands", "Beide Hände"), Inventory->GetSlotItem(EDCEquipSlot::RightHand));
+	}
+	return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(0.f, 0.f, 3.f, 0.f)
+		[
+			Hand(EDCEquipSlot::LeftHand, DCItems::DescribeSlot(EDCEquipSlot::LeftHand), Inventory->GetSlotItem(EDCEquipSlot::LeftHand))
+		]
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(3.f, 0.f, 0.f, 0.f)
+		[
+			Hand(EDCEquipSlot::RightHand, DCItems::DescribeSlot(EDCEquipSlot::RightHand), Inventory->GetSlotItem(EDCEquipSlot::RightHand))
+		];
 }
 
 #undef LOCTEXT_NAMESPACE

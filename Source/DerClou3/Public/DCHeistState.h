@@ -27,6 +27,8 @@ struct FDCSimItem
 	bool bAttached = false;
 	bool bMovable = true;
 	int32 Value = 0;
+	/** Cell inside the parent container (AnyCell if none). */
+	FIntPoint GridPos = FIntPoint(-1, -1);
 
 	bool IsOpen() const { return !bOpenable || bOpen || bDestroyed; }
 };

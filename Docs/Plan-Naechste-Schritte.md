@@ -19,7 +19,11 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
 
 ## Schritte (in dieser Reihenfolge)
 
-### 1. Raster-Inventar
+### 1. Raster-Inventar – **gebaut 2026-11-07** (Details in CLAUDE.md, Schritt 12)
+- Umgesetzt wie unten, mit drei Abweichungen: Taschen und Weste nehmen weiter nur „kleine“ Dinge
+  (Größenklasse als zweite Grenze, sonst passt ein Laptop 3×2 genau in die Hosentasche 3×2);
+  Kleidung und Weste als Gegenstand 2×2; Umzugskarton, Gemälde, Bronzefigur passen in kein Raster.
+  Knöpfe stehen nicht mehr auf jeder Kachel, sondern unter „Ausgewählt“ (anklicken).
 - **Daten:** `FDCItemDef` bekommt `GridSize` (B × H Felder). Behälter bekommen ein Raster (`GridW × GridH`)
   statt Liter. Gewicht und Kraft-Grenzen bleiben. Größenklassen bleiben für die Hände (groß = beide Hände,
   sperrig = allein unmöglich).

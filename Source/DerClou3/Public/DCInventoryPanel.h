@@ -12,10 +12,11 @@ class UDCItem;
 struct FDCItemTreeContext;
 
 /**
- * Inventory of the selected crew member (left side, toggled with I or the button bottom left):
- * body slots and hands with everything inside them as a tree, total weight and speed.
- * Items are moved by drag and drop (also to and from an open container window); dropping one
- * outside every window puts it on the floor. Built in Slate.
+ * Profile and inventory of the selected crew member (docked on the right): skills, the body
+ * slots with the grids of clothes, vest and backpack, both hands, total weight and speed.
+ * Items are rectangles on the grids, moved by drag and drop (also to and from an open search
+ * window); dropping one outside every window puts it on the floor. A click selects an item:
+ * its buttons and, for a container, its grid show below. Built in Slate.
  */
 UCLASS()
 class DERCLOU3_API UDCInventoryPanel : public UUserWidget
@@ -32,8 +33,9 @@ public:
 	/** Short red line at the bottom, e.g. why an item does not fit. */
 	void ShowMessage(const FText& Text);
 
-	/** What a drop does (also used by the self-test): into a slot, or into a container if given. */
-	void MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container);
+	/** What a drop does (also used by the self-test): into a slot, or into a container if given (on that cell or anywhere). */
+	void MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container, FIntPoint Cell = DCItems::AnyCell);
+	void SelectItem(UDCItem* Item);
 	void DropToFloor(UDCItem* Item);
 
 protected:
@@ -45,11 +47,13 @@ protected:
 
 private:
 	void RebuildContent();
-	TSharedRef<SWidget> MakeSlotRow(EDCEquipSlot EquipSlot);
+	TSharedRef<SWidget> MakeSlotCard(EDCEquipSlot EquipSlot);
+	TSharedRef<SWidget> MakeHands();
 	TSharedRef<SWidget> MakeSkills();
 	void Unbind();
 
 	TWeakObjectPtr<ADCCrewCharacter> Crew;
+	TWeakObjectPtr<UDCItem> Selected;
 	FDelegateHandle ChangedHandle;
 	FDelegateHandle ItemsChangedHandle;
 	TSharedPtr<FDCItemTreeContext> Context;

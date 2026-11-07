@@ -21,7 +21,7 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Katalog in C++ (`DCItemTypes.cpp`, später evtl. Data Assets): Gewicht, Volumen (L), Größenklasse
     klein/mittel/groß/sperrig, Wert, Trageplatz, Behälter-Fassung.
   - `UDCInventoryComponent` an der Figur: Kopf, Kleidung, Weste, Rücken, linke/rechte Hand. Behälter
-    (Kleidungstaschen 3 L klein, Weste 6 L klein, Rucksack 25 L bis mittel). „Groß“ nur mit beiden
+    (seit Schritt 12 Raster: Kleidung 3×2 klein, Weste 4×2 klein, Rucksack 5×4 bis mittel). „Groß“ nur mit beiden
     Händen, „sperrig“ oder > 40 kg zu schwer für eine Person, max. 60 kg. Last ab 15 kg und beide
     Hände voll bremsen.
   - `ADCItemPickup` in der Welt (Ordner „Gegenstaende“, 9 Testgegenstände inkl. Klavier):
@@ -33,7 +33,7 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
 - **Gegenstände in Gegenständen (Schritt 2):**
   - Möbel sind auch Gegenstände (`UDCItem`), beliebig verschachtelt: Schreibtisch > Schublade
     (Einbauteil, `FixedParts`) > Schmuckschatulle > Ring. Eigenschaften im Katalog: beweglich/fest
-    eingebaut, Behälter (Liter, max. Größe), mit Tür/Deckel, starr/weich (weich wächst mit Inhalt),
+    eingebaut, Behälter (Raster, max. Größe), mit Tür/Deckel,
     Schloss (Knack-Dauer, aufzubrechen ja/nein). Zustände: zu/offen/versperrt/aufgebrochen.
   - Knacken braucht das Dietrich-Set (auch bei Türen), Aufbrechen das Brecheisen (Schloss danach
     kaputt). Tresor: fest eingebaut, nur knackbar (20 s).
@@ -187,6 +187,24 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=PlanInventory`: Brecheisen aufheben → Schublade aufbrechen → ausräumen,
     Verschieben/Löschen/Ablegen, Rosa wartet auf Vics Schritt 4, Vorschau, Abspielen (geplant 14,1 s,
     gespielt 13,5 s). Screenshots `plan_list_vic/rosa/done.png`.
+- **Raster-Inventar (Schritt 12 = Schritt 1 aus `Docs/Plan-Naechste-Schritte.md`):**
+  - Katalog: `GridSize` (Fußabdruck B×H, `{0,0}` = passt in kein Raster, nur Hände/gar nicht), `Grid`
+    (Raster eines Behälters statt Liter), `ShortName` für die Kachel. `MaxContentSize` bleibt zusätzlich
+    (Taschen und Weste nur „klein“ – sonst läge ein Laptop 3×2 in der Hosentasche). Volumen/starr/weich weg.
+  - `UDCItem::GridPos` (Zelle im Elternbehälter, `DCItems::AnyCell` = keine), `CheckPlaceAt`,
+    `FindFreeSpot` (zeilenweise von oben links), `GetItemAt`, `GetUsedCells`; `AddContent(Item, Cell)`
+    setzt auf die Zelle oder die erste freie; `CheckCanHold(Item, Cell)` mit Gründen („Dort liegt schon
+    Brecheisen“, „Ragt über den Rand“, „zu voll – kein freier Platz für …“). Einbauteile haben keine Zelle.
+    Inventar: `CheckInto/MoveInto(…, Cell)`, auch Verschieben im selben Behälter. `Clone`, `CopyFrom`
+    und `BuildSimItem` (`FDCSimItem::GridPos`) behalten die Zellen.
+  - UI (`DCItemWidgets`): `SDCItemGrid` (Zellen 36 Einheiten, Gegenstände als Rechtecke mit Kurznamen,
+    hochkant beschriftet bei 1×N), beim Ziehen Fußabdruck grün/rot und Begründung am gezogenen Gegenstand;
+    über einem Behälter im Raster = hineinlegen. Anklicken wählt aus: „Ausgewählt“ zeigt Knöpfe und die
+    Raster der Behälter, in denen er liegt (Schrank › Mantel › Brieftasche). Profil: zwei Spalten
+    (Kleidung + Rücken | Kopf, Weste, Hände), Durchsuchen: Raster des Möbels und seiner Schubladen.
+  - Selbsttest `-DCSelfTest=Grid` (Regeln, Fußabdrücke, Kopie, Aufheben in den Rucksack, Verschieben,
+    Schrank/Schreibtisch; Screenshots `grid_profile/wardrobe/desk.png`).
+  - Noch nicht: Drehen (R), Geld als Menge, „Wohin damit?“ (Schritt 2), Drag & Drop mit echter Maus ungetestet.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -207,7 +225,7 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

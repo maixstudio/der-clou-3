@@ -65,8 +65,10 @@ struct FDCItemDef
 	FText Description;
 
 	float MassKg = 0.f;
-	/** Space it takes up in a container (outer size). */
-	float VolumeLiters = 0.f;
+	/** Footprint in a container grid (width × height in cells); 0 × 0 = fits in no grid, only in the hands. */
+	FIntPoint GridSize = FIntPoint(1, 1);
+	/** Short label for the grid tile (empty = Name). */
+	FText ShortName;
 	EDCItemSize Size = EDCItemSize::Small;
 	/** Fence value in euros (0 = worthless). */
 	int32 Value = 0;
@@ -76,14 +78,12 @@ struct FDCItemDef
 	/** Head, Body, Vest or Back if it can be worn there; None otherwise. */
 	EDCEquipSlot WearSlot = EDCEquipSlot::None;
 
-	/** > 0 makes it a container (pockets, drawer, safe, cushions as a hiding place, …). */
-	float CapacityLiters = 0.f;
-	/** Largest size class that fits into this container. */
+	/** Grid of cells inside (width × height); not zero makes it a container (pockets, drawer, safe, cushions as a hiding place, …). */
+	FIntPoint Grid = FIntPoint::ZeroValue;
+	/** Largest size class that fits into this container (pockets take small things only, however much room is left). */
 	EDCItemSize MaxContentSize = EDCItemSize::Small;
 	/** Has a door, lid or drawer front: contents can only be reached while it is open. */
 	bool bOpenable = false;
-	/** Rigid (box, safe): outer volume stays the same. Soft (bag, backpack): grows with the contents. */
-	bool bRigid = true;
 	/** Can be locked. 0 = no lock; otherwise the time it takes to pick it. */
 	float LockPickSeconds = 0.f;
 	/** Which skill picking the lock needs, how hard it is (0..10) and with which tool. */
@@ -103,7 +103,11 @@ struct FDCItemDef
 	FVector ShapeSize = FVector(20.0);
 	FLinearColor Color = FLinearColor::Gray;
 
-	bool IsContainer() const { return CapacityLiters > 0.f; }
+	bool IsContainer() const { return Grid.X > 0 && Grid.Y > 0; }
+	/** False for things that only go into the hands (a painting, a statue) or not at all (furniture). */
+	bool FitsInGrid() const { return GridSize.X > 0 && GridSize.Y > 0; }
+	int32 GetCellCount() const { return Grid.X * Grid.Y; }
+	const FText& GetShortName() const { return ShortName.IsEmpty() ? Name : ShortName; }
 	bool HasLock() const { return LockPickSeconds > 0.f; }
 	/** Furniture and other big things stand in the way. */
 	bool IsObstacle() const { return Size >= EDCItemSize::Large; }
@@ -120,10 +124,13 @@ namespace DCItems
 	DERCLOU3_API FText DescribeSlot(EDCEquipSlot Slot);
 	DERCLOU3_API FText DescribeAction(EDCItemAction Action);
 
-	/** "2,5 kg", "12 L", "4.500 €" (German number format). */
+	/** "2,5 kg", "3 × 2", "4.500 €" (German number format). */
 	DERCLOU3_API FText FormatKg(float Kg);
-	DERCLOU3_API FText FormatLiters(float Liters);
+	DERCLOU3_API FText FormatCells(FIntPoint Cells);
 	DERCLOU3_API FText FormatEuro(int32 Euro);
+
+	/** "Anywhere": put it on the first free cell. */
+	inline const FIntPoint AnyCell(-1, -1);
 
 	/** Tools the actions need. */
 	inline const FName LockpicksId(TEXT("lockpicks"));

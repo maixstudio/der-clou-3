@@ -105,7 +105,7 @@ namespace
 			{
 				if (UDCItem* Built = BuildSimItem(Pickup, Child))
 				{
-					Item->AddContent(Built);
+					Item->AddContent(Built, Pickup.Items[Child].GridPos);
 				}
 			}
 		}
@@ -374,6 +374,7 @@ FDCWorldSnapshot UDCHeistStateSubsystem::TakeSnapshot() const
 			Sim.bAttached = Item->IsAttached();
 			Sim.bMovable = Def.bMovable;
 			Sim.Value = Def.Value;
+			Sim.GridPos = Item->GetGridPos();
 			if (Parent != INDEX_NONE)
 			{
 				Pickup.Items[Parent].Children.Add(Index);

@@ -24,7 +24,7 @@ public:
 	static UDCItem* Create(UObject* Outer, FName DefId);
 	/** For the planning simulation: an item in the given state, without contents or fixed parts. */
 	static UDCItem* CreateBare(FName DefId, bool bInOpen, bool bInLocked, bool bInDestroyed, bool bInAttached);
-	/** A copy of this item with everything inside it, in the same state. */
+	/** A copy of this item with everything inside it, in the same state and on the same cells. */
 	UDCItem* Clone() const;
 
 	/**
@@ -52,11 +52,30 @@ public:
 	UDCItem* GetRoot();
 	/** True if this is Other or lies (somewhere) inside it. */
 	bool IsInside(const UDCItem* Other) const;
-	/** Puts Item inside without any checks (use CheckCanHold first). */
-	void AddContent(UDCItem* Item);
+	/**
+	 * Puts Item inside without any rule checks (use CheckCanHold first): on the given cell, or with
+	 * DCItems::AnyCell on the first free one (if none is free, it lies there without a cell).
+	 * Fixed parts never get a cell. Also moves an item that is already inside to another cell.
+	 */
+	void AddContent(UDCItem* Item, FIntPoint Cell = DCItems::AnyCell);
 	bool RemoveContent(UDCItem* Item);
 	/** First item with this id inside (any depth). */
 	UDCItem* FindInside(FName Id) const;
+
+	//~ Grid
+	/** Top-left cell inside the parent container; DCItems::AnyCell if it has none (worn, held, fixed part, in the world). */
+	FIntPoint GetGridPos() const { return GridPos; }
+	/** Cells it takes up in a container (0 × 0: fits in no grid). */
+	FIntPoint GetGridSize() const { return GetDef().GridSize; }
+	bool HasGridPos() const { return GridPos.X >= 0 && GridPos.Y >= 0; }
+	/** The content lying on this cell (nullptr if free). */
+	UDCItem* GetItemAt(FIntPoint Cell) const;
+	/** Empty if Item's footprint lies inside the grid on free cells at Cell (Item itself does not block). Geometry only. */
+	FText CheckPlaceAt(const UDCItem* Item, FIntPoint Cell) const;
+	/** First free cell for Item, row by row from the top left. False if there is none. Geometry only. */
+	bool FindFreeSpot(const UDCItem* Item, FIntPoint& OutCell) const;
+	/** Cells taken by contents. */
+	int32 GetUsedCells() const;
 
 	//~ State
 	bool IsOpen() const { return !GetDef().bOpenable || bOpen || bDestroyed; }
@@ -79,16 +98,12 @@ public:
 	//~ Size
 	/** Own mass plus everything inside. */
 	float GetTotalMass() const;
-	/** Space taken up in another container; soft containers grow with their contents. */
-	float GetEffectiveVolume() const;
-	/** Volume taken by the contents. */
-	float GetUsedVolume() const;
 	/** Value including everything inside. */
 	int32 GetTotalValue() const;
 
 	//~ Rules
-	/** Empty if Item may be put inside this, otherwise the reason. */
-	FText CheckCanHold(const UDCItem* Item) const;
+	/** Empty if Item may be put inside this (on that cell, or anywhere with AnyCell), otherwise the reason. */
+	FText CheckCanHold(const UDCItem* Item, FIntPoint Cell = DCItems::AnyCell) const;
 	/** Empty if this may be taken out of where it lies, otherwise the reason. */
 	FText CheckCanTakeOut() const;
 
@@ -107,6 +122,9 @@ private:
 	TArray<TObjectPtr<UDCItem>> Contents;
 
 	TWeakObjectPtr<UDCItem> Parent;
+
+	UPROPERTY()
+	FIntPoint GridPos = FIntPoint(-1, -1);
 
 	UPROPERTY()
 	bool bOpen = false;

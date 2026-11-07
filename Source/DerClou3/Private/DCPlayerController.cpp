@@ -151,6 +151,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartSignalSelfTest();
 	}
+	else if (SelfTest == TEXT("Grid"))
+	{
+		StartGridSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -2139,6 +2143,243 @@ void ADCPlayerController::StartSignalSelfTest()
 				Expect(Member->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("%s step %d done"), *Member->GetCrewName().ToString(), Index + 1));
 			}
 		}
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartGridSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Grid started"));
+	UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Direct);
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto WaitIdle = [this]()
+	{
+		return [this]() { return !Selected || !Selected->IsBusy(); };
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto Cell = [](const UDCItem* Item) { return Item ? FString::Printf(TEXT("(%d,%d)"), Item->GetGridPos().X, Item->GetGridPos().Y) : FString(TEXT("-")); };
+	const auto PickUp = [this](FName Id)
+	{
+		return [this, Id]()
+		{
+			if (ADCItemPickup* Pickup = FindPickup(Id))
+			{
+				Selected->PickUp(Pickup);
+			}
+			return true;
+		};
+	};
+	// Walk to a container and wait until its window is open.
+	const auto SearchStep = [this, Expect](FName Id)
+	{
+		return [this, Id, Expect, bStarted = false, Started = 0.0]() mutable
+		{
+			ADCItemPickup* Pickup = FindPickup(Id);
+			if (!bStarted)
+			{
+				Expect(Pickup != nullptr, FString::Printf(TEXT("%s is in the level"), *Id.ToString()));
+				if (!Pickup)
+				{
+					return true;
+				}
+				Selected->Search(Pickup);
+				bStarted = true;
+				Started = GetWorld()->GetTimeSeconds();
+				return false;
+			}
+			const bool bOpen = ContainerPanel && ContainerPanel->IsOpen() && ContainerPanel->GetPickup() == Pickup;
+			if (bOpen || GetWorld()->GetTimeSeconds() - Started > 15.0)
+			{
+				Expect(bOpen, FString::Printf(TEXT("search %s opens its window"), *Id.ToString()));
+				return true;
+			}
+			return false;
+		};
+	};
+
+	SelfTestSteps.Add(Wait(1.5f));
+	// Pure rules first: a crowbar (1 x 4) fits neither the pockets (3 x 2) nor the vest (4 x 2), but the backpack (5 x 4).
+	SelfTestSteps.Add([Expect]()
+	{
+		UDCItem* Clothes = UDCItem::Create(TEXT("work_clothes"));
+		UDCItem* Vest = UDCItem::Create(TEXT("tool_vest"));
+		UDCItem* Backpack = UDCItem::Create(TEXT("backpack"));
+		UDCItem* Crowbar = UDCItem::Create(TEXT("crowbar"));
+		UDCItem* Laptop = UDCItem::Create(TEXT("laptop"));
+		UDCItem* Painting = UDCItem::Create(TEXT("painting"));
+		const FText InPockets = Clothes->CheckCanHold(Crowbar);
+		const FText InVest = Vest->CheckCanHold(Crowbar);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: crowbar into pockets -> '%s', into vest -> '%s'"), *InPockets.ToString(), *InVest.ToString());
+		Expect(!InPockets.IsEmpty(), TEXT("crowbar does not fit the pockets"));
+		Expect(!InVest.IsEmpty(), TEXT("crowbar does not fit the vest"));
+		// Also by its shape alone: 4 cells high does not go into 2 rows.
+		const FText Shape = Vest->CheckPlaceAt(Crowbar, FIntPoint::ZeroValue);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: crowbar footprint in the vest -> '%s'"), *Shape.ToString());
+		Expect(!Shape.IsEmpty(), TEXT("crowbar footprint 1 x 4 does not fit a 4 x 2 grid"));
+		Expect(Backpack->CheckCanHold(Crowbar).IsEmpty(), TEXT("crowbar fits the backpack"));
+		const FText PaintingReason = Backpack->CheckCanHold(Painting);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: painting into backpack -> '%s'"), *PaintingReason.ToString());
+		Expect(!PaintingReason.IsEmpty(), TEXT("painting fits no grid"));
+
+		// Footprints in the backpack: the crowbar stands in column 0, the laptop (3 x 2) next to it.
+		Backpack->AddContent(Crowbar);
+		Expect(Crowbar->GetGridPos() == FIntPoint(0, 0), TEXT("crowbar on the first free cell (0,0)"));
+		const FText Taken = Backpack->CheckCanHold(Laptop, FIntPoint(0, 0));
+		const FText Edge = Backpack->CheckCanHold(Laptop, FIntPoint(3, 0));
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: laptop at (0,0) -> '%s', at (3,0) -> '%s'"), *Taken.ToString(), *Edge.ToString());
+		Expect(!Taken.IsEmpty(), TEXT("laptop cannot lie on the crowbar"));
+		Expect(!Edge.IsEmpty(), TEXT("laptop cannot stick out over the edge"));
+		Expect(Backpack->CheckCanHold(Laptop, FIntPoint(1, 0)).IsEmpty(), TEXT("laptop fits next to the crowbar"));
+		FIntPoint Free;
+		Expect(Backpack->FindFreeSpot(Laptop, Free) && Free == FIntPoint(1, 0), TEXT("first free spot for the laptop is (1,0)"));
+		Backpack->AddContent(Laptop, FIntPoint(2, 2));
+		Expect(Laptop->GetGridPos() == FIntPoint(2, 2), TEXT("laptop placed at (2,2)"));
+		Expect(!Backpack->CheckCanHold(Crowbar, FIntPoint(4, 0)).IsEmpty(), TEXT("crowbar cannot move onto the laptop"));
+		Expect(Backpack->CheckCanHold(Crowbar, FIntPoint(1, 0)).IsEmpty(), TEXT("crowbar may move within the backpack"));
+		Expect(Backpack->GetUsedCells() == 10, TEXT("10 of 20 cells used"));
+
+		// Copies keep the cells (the planning simulation relies on it).
+		const UDCItem* Copy = Backpack->Clone();
+		bool bSameCells = Copy->GetContents().Num() == 2;
+		for (int32 Index = 0; bSameCells && Index < 2; ++Index)
+		{
+			bSameCells = Copy->GetContents()[Index]->GetGridPos() == Backpack->GetContents()[Index]->GetGridPos();
+		}
+		Expect(bSameCells, TEXT("a copy keeps every item on its cell"));
+		return true;
+	});
+
+	// Now with Vic: put on the backpack, pick up crowbar and laptop – both land in the backpack, not in the pockets.
+	SelfTestSteps.Add(PickUp(TEXT("backpack")));
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add(PickUp(DCItems::CrowbarId));
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add(PickUp(TEXT("laptop")));
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add([this, Expect, Cell]()
+	{
+		UDCInventoryComponent* Inventory = Selected->GetInventory();
+		UDCItem* Back = Inventory->GetSlotItem(EDCEquipSlot::Back);
+		UDCItem* Crowbar = Inventory->FindItem(DCItems::CrowbarId);
+		UDCItem* Laptop = Inventory->FindItem(TEXT("laptop"));
+		Expect(Back && Crowbar && Crowbar->GetParent() == Back, FString::Printf(TEXT("crowbar in the backpack at %s"), *Cell(Crowbar)));
+		Expect(Back && Laptop && Laptop->GetParent() == Back, FString::Printf(TEXT("laptop in the backpack at %s"), *Cell(Laptop)));
+		if (const UDCItem* Pockets = Inventory->GetSlotItem(EDCEquipSlot::Body))
+		{
+			for (const UDCItem* Item : Pockets->GetContents())
+			{
+				UE_LOG(LogDerClou, Display, TEXT("Self-test: pockets hold %s at %s"), *Item->GetDisplayName().ToString(), *Cell(Item));
+			}
+		}
+		// Moving to a cell: the panel does what a drop does.
+		if (InventoryPanel && Laptop && Back)
+		{
+			InventoryPanel->MoveItem(Laptop, EDCEquipSlot::None, Back, FIntPoint(2, 2));
+			Expect(Laptop->GetGridPos() == FIntPoint(2, 2), TEXT("drop on a cell moves the laptop to (2,2)"));
+			FText Reason;
+			const bool bMoved = Inventory->MoveInto(Crowbar, Back, Reason, FIntPoint(4, 0));
+			Expect(!bMoved, FString::Printf(TEXT("crowbar onto the laptop refused ('%s')"), *Reason.ToString()));
+			InventoryPanel->SelectItem(Laptop);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("grid_profile.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+
+	// Wardrobe: its grid with the coat; the wallet selected shows the coat pocket and the wallet itself.
+	SelfTestSteps.Add([this]()
+	{
+		if (InventoryPanel)
+		{
+			InventoryPanel->SelectItem(nullptr);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(SearchStep(TEXT("wardrobe")));
+	SelfTestSteps.Add([this, Expect, Cell]()
+	{
+		ADCItemPickup* Wardrobe = FindPickup(TEXT("wardrobe"));
+		UDCItem* Item = Wardrobe ? Wardrobe->GetItem() : nullptr;
+		if (Item && ContainerPanel)
+		{
+			ContainerPanel->DoAction(Item, EDCItemAction::Open);
+			UDCItem* Coat = Item->FindInside(TEXT("coat"));
+			Expect(Coat && Coat->HasGridPos(), FString::Printf(TEXT("coat lies on the wardrobe grid at %s"), *Cell(Coat)));
+			if (UDCItem* Wallet = Coat ? Coat->FindInside(TEXT("wallet")) : nullptr)
+			{
+				Expect(Wallet->HasGridPos(), FString::Printf(TEXT("wallet in the coat pocket at %s"), *Cell(Wallet)));
+				ContainerPanel->SelectItem(Wallet);
+			}
+		}
+		return true;
+	});
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("grid_wardrobe.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+
+	// Desk: the drawer with its own grid, the jewellery box inside.
+	SelfTestSteps.Add(SearchStep(TEXT("desk")));
+	SelfTestSteps.Add([this]()
+	{
+		ADCItemPickup* Desk = FindPickup(TEXT("desk"));
+		UDCItem* Drawer = Desk ? Desk->GetItem()->FindInside(TEXT("desk_drawer")) : nullptr;
+		if (Drawer && ContainerPanel)
+		{
+			ContainerPanel->DoAction(Drawer, EDCItemAction::PickLock);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(WaitIdle());
+	SelfTestSteps.Add([this, Expect, Cell]()
+	{
+		ADCItemPickup* Desk = FindPickup(TEXT("desk"));
+		UDCItem* Drawer = Desk ? Desk->GetItem()->FindInside(TEXT("desk_drawer")) : nullptr;
+		if (Drawer && ContainerPanel)
+		{
+			ContainerPanel->DoAction(Drawer, EDCItemAction::Open);
+			UDCItem* Box = Drawer->FindInside(TEXT("jewelry_box"));
+			Expect(Box && Box->HasGridPos(), FString::Printf(TEXT("jewellery box on the drawer grid at %s"), *Cell(Box)));
+			if (Box)
+			{
+				ContainerPanel->SelectItem(Box);
+			}
+		}
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("grid_desk.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this, bPassed]()
+	{
 		FinishSelfTest(*bPassed);
 		return true;
 	});
