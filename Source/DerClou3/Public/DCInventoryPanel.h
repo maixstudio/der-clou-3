@@ -8,6 +8,7 @@
 
 class ADCCrewCharacter;
 class SVerticalBox;
+class UDCInventoryComponent;
 class UDCItem;
 struct FDCItemTreeContext;
 
@@ -37,6 +38,11 @@ public:
 	void MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem* Container, FIntPoint Cell = DCItems::AnyCell);
 	void SelectItem(UDCItem* Item);
 
+	/** Planning: show the inventory as it will be after the plan (true) or as it is now (false). */
+	void SetPlanView(bool bInPlanView);
+	/** True while the window shows the planned inventory (read-only). */
+	bool IsPlanView() const;
+
 	/** Set while the player decides about a find: every move here costs play time (owned before, owned after). */
 	TFunction<void(bool bWasOwned, bool bNowOwned)> HandlingHook;
 	void DropToFloor(UDCItem* Item);
@@ -50,6 +56,9 @@ protected:
 
 private:
 	void RebuildContent();
+	/** The inventory the window shows: the real one, or the planned one during planning. */
+	UDCInventoryComponent* GetShownInventory() const;
+	TSharedRef<SWidget> MakeViewToggle();
 	TSharedRef<SWidget> MakeSlotCard(EDCEquipSlot EquipSlot);
 	TSharedRef<SWidget> MakeHands();
 	TSharedRef<SWidget> MakeSkills();
@@ -57,6 +66,11 @@ private:
 
 	TWeakObjectPtr<ADCCrewCharacter> Crew;
 	TWeakObjectPtr<UDCItem> Selected;
+	bool bWantPlanView = true;
+	/** What the last rebuild showed (the planned inventory is a fresh copy after every plan change). */
+	TWeakObjectPtr<const UDCInventoryComponent> LastShown;
+	/** Items of the planned inventory that the crew member does not have yet. */
+	TSet<const UDCItem*> PlannedOnly;
 	FDelegateHandle ChangedHandle;
 	FDelegateHandle ItemsChangedHandle;
 	TSharedPtr<FDCItemTreeContext> Context;

@@ -138,6 +138,8 @@ private:
 	void FinishFind();
 	/** -DCSelfTest=Find: Rosa cracks and searches the safe during the heist; the game stops, she takes one thing, leaves one, drops her torch there. */
 	void StartFindSelfTest();
+	/** -DCSelfTest=PlanView: search the sofa, pick up the statue; the profile shows the state after the plan, a second pick-up says where it already is. */
+	void StartPlanViewSelfTest();
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 

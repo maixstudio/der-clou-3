@@ -336,6 +336,11 @@ namespace
 		return Context.IsValid() && Context->GetSelected && Context->GetSelected() == Item;
 	}
 
+	bool IsPlannedItem(const TSharedPtr<FDCItemTreeContext>& Context, const UDCItem* Item)
+	{
+		return Context.IsValid() && Context->IsPlanned && Context->IsPlanned(Item);
+	}
+
 	/**
 	 * A container's grid: cells underneath, the items on them as rectangles. While an item is dragged
 	 * over it, its footprint shows where it would land, green or red; over a container lying in the
@@ -481,11 +486,12 @@ namespace
 				];
 
 			const FLinearColor Fill = FMath::Lerp(TileColor, Def.Color.CopyWithNewOpacity(1.f), 0.22f);
+			const bool bPlanned = IsPlannedItem(Context, Item);
 			TSharedRef<SWidget> Look = SNew(SBorder)
 				.BorderImage(Brush())
-				.BorderBackgroundColor_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? TitleColor : FLinearColor(0.32f, 0.34f, 0.4f); })
-				.Padding(FMargin(1.f))
-				.ToolTipText(Tooltip(Item))
+				.BorderBackgroundColor_Lambda([CtxPtr, WeakItem, bPlanned]() { return IsSelected(CtxPtr, WeakItem.Get()) ? TitleColor : (bPlanned ? CoordinationColor : FLinearColor(0.32f, 0.34f, 0.4f)); })
+				.Padding(FMargin(bPlanned ? 2.f : 1.f))
+				.ToolTipText(bPlanned ? FText::Format(LOCTEXT("PlannedTip", "geplant \u2013 kommt erst mit dem Plan\n{0}"), Tooltip(Item)) : Tooltip(Item))
 				.Cursor(EMouseCursor::GrabHand)
 				[
 					SNew(SBorder)
@@ -655,6 +661,12 @@ namespace DCItemWidgets
 
 		const FText State = Item->DescribeState();
 		const bool bCanDrag = bDraggable && !Item->IsAttached() && Def.bMovable;
+		const bool bPlanned = IsPlannedItem(Context, Item);
+		FText Name = State.IsEmpty() ? Def.Name : FText::Format(LOCTEXT("NameState", "{0}  ({1})"), Def.Name, State);
+		if (bPlanned)
+		{
+			Name = FText::Format(LOCTEXT("NamePlanned", "{0}  \u00b7 geplant"), Name);
+		}
 		TSharedRef<SWidget> Look = SNew(SBorder)
 			.BorderImage(Brush())
 			.BorderBackgroundColor_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? SelectedTileColor : TileColor; })
@@ -666,9 +678,9 @@ namespace DCItemWidgets
 				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
-					.Text(State.IsEmpty() ? Def.Name : FText::Format(LOCTEXT("NameState", "{0}  ({1})"), Def.Name, State))
+					.Text(Name)
 					.Font(Font(11, true))
-					.ColorAndOpacity(NameColor(Item))
+					.ColorAndOpacity(bPlanned ? CoordinationColor : NameColor(Item))
 					.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.f, 0.f, 2.f, 0.f)

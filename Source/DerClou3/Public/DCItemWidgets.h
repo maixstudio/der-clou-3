@@ -23,6 +23,8 @@ struct FDCItemTreeContext
 	/** A click on an item: the window shows its buttons and, for a container, its grid. */
 	TFunction<void(UDCItem* Item)> Select;
 	TFunction<UDCItem*()> GetSelected;
+	/** True for things that only come with the plan (picked up in a planned step): drawn in the coordination colour. */
+	TFunction<bool(const UDCItem* Item)> IsPlanned;
 };
 
 /**

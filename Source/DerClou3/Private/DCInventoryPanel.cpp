@@ -3,6 +3,8 @@
 #include "DCFrame.h"
 
 #include "DCCrewCharacter.h"
+#include "DCHeistState.h"
+#include "DCPlan.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemWidgets.h"
@@ -40,6 +42,10 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 	Context = MakeShared<FDCItemTreeContext>();
 	Context->CheckInto = [WeakThis](UDCItem* Item, UDCItem* Into, FIntPoint Cell)
 	{
+		if (WeakThis.IsValid() && WeakThis->IsPlanView())
+		{
+			return LOCTEXT("PlanViewOnly", "Das ist der Stand nach dem Plan \u2013 zum Umpacken oben auf \u201eJetzt\u201c schalten");
+		}
 		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
 		return Member ? Member->GetInventory()->CheckInto(Item, Into, Cell) : FText::GetEmpty();
 	};
@@ -58,7 +64,11 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 		}
 	};
 	Context->GetSelected = [WeakThis]() { return WeakThis.IsValid() ? WeakThis->Selected.Get() : nullptr; };
-	Context->GetActions = [](UDCItem* Item) { return DefaultActions(Item, false, true); };
+	Context->GetActions = [WeakThis](UDCItem* Item)
+	{
+		return WeakThis.IsValid() && WeakThis->IsPlanView() ? TArray<EDCItemAction>() : DefaultActions(Item, false, true);
+	};
+	Context->IsPlanned = [WeakThis](const UDCItem* Item) { return WeakThis.IsValid() && WeakThis->PlannedOnly.Contains(Item); };
 	Context->CheckAction = [WeakThis](UDCItem* Item, EDCItemAction Action)
 	{
 		const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
@@ -116,22 +126,27 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 								.Font(Font(15, true))
 								.ColorAndOpacity(TitleColor)
 							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								MakeViewToggle()
+							]
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 10.f)
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]()
 							{
-								const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
-								const UDCInventoryComponent* Inventory = Member ? Member->GetInventory() : nullptr;
+								const UDCInventoryComponent* Inventory = WeakThis.IsValid() ? WeakThis->GetShownInventory() : nullptr;
 								if (!Inventory)
 								{
 									return FText::GetEmpty();
 								}
-								return FText::Format(LOCTEXT("Summary", "Gewicht {0} / {1}  ·  Tempo {2} %  ·  Wert {3}"),
+								return FText::Format(WeakThis->IsPlanView() ? LOCTEXT("SummaryPlan", "Nach dem Plan: {0} / {1} · Tempo {2} % · Wert {3}")
+									: LOCTEXT("Summary", "Gewicht {0} / {1}  ·  Tempo {2} %  ·  Wert {3}"),
 									DCItems::FormatKg(Inventory->GetTotalMass()), DCItems::FormatKg(Inventory->GetMaxCarryMass()),
 									FText::AsNumber(FMath::RoundToInt(Inventory->GetSpeedFactor() * 100.f)), DCItems::FormatEuro(Inventory->GetTotalValue()));
 							})
+							.AutoWrapText(true)
 							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 						]
@@ -174,6 +189,11 @@ void UDCInventoryPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	MessageTime = FMath::Max(0.f, MessageTime - InDeltaTime);
+	// The planned inventory is rebuilt after every plan change: show the new one.
+	if (GetShownInventory() != LastShown.Get())
+	{
+		bDirty = true;
+	}
 	if (bDirty && Content.IsValid())
 	{
 		bDirty = false;
@@ -240,6 +260,79 @@ void UDCInventoryPanel::ShowMessage(const FText& Text)
 	MessageTime = 4.f;
 }
 
+void UDCInventoryPanel::SetPlanView(bool bInPlanView)
+{
+	bWantPlanView = bInPlanView;
+	Selected.Reset();
+	bDirty = true;
+}
+
+bool UDCInventoryPanel::IsPlanView() const
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	const ADCCrewCharacter* Member = Crew.Get();
+	return bWantPlanView && Plans && Heist && Member && Plans->GetMode() == EDCPlanMode::Planning && Heist->GetPlannedInventory(Member->GetFName());
+}
+
+UDCInventoryComponent* UDCInventoryPanel::GetShownInventory() const
+{
+	const ADCCrewCharacter* Member = Crew.Get();
+	if (!Member)
+	{
+		return nullptr;
+	}
+	if (IsPlanView())
+	{
+		// Read-only: the window does not change it (moves are refused in this view).
+		return const_cast<UDCInventoryComponent*>(UDCHeistStateSubsystem::Get(this)->GetPlannedInventory(Member->GetFName()));
+	}
+	return Member->GetInventory();
+}
+
+TSharedRef<SWidget> UDCInventoryPanel::MakeViewToggle()
+{
+	using namespace DCItemWidgets;
+	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
+	const auto Button = [WeakThis](const FText& Label, const FText& Tip, bool bPlan)
+	{
+		return SNew(SButton)
+			.IsFocusable(false)
+			.ToolTipText(Tip)
+			.ContentPadding(FMargin(6.f, 1.f))
+			.ButtonColorAndOpacity_Lambda([WeakThis, bPlan]()
+			{
+				const bool bActive = WeakThis.IsValid() && WeakThis->IsPlanView() == bPlan;
+				// Bright (the active view) against dark: the tint multiplies the default dark button.
+				return bActive ? FLinearColor(6.f, 5.f, 1.5f) : FLinearColor(0.6f, 0.6f, 0.65f);
+			})
+			.OnClicked_Lambda([WeakThis, bPlan]()
+			{
+				if (WeakThis.IsValid())
+				{
+					WeakThis->SetPlanView(bPlan);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Text(Label).Font(Font(10, true))
+				.ColorAndOpacity_Lambda([WeakThis, bPlan]()
+				{
+					const bool bActive = WeakThis.IsValid() && WeakThis->IsPlanView() == bPlan;
+					return FSlateColor(bActive ? DarkTextColor : MutedColor);
+				})
+			];
+	};
+	return SNew(SHorizontalBox)
+		.Visibility_Lambda([WeakThis]()
+		{
+			const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+			return Plans && Plans->GetMode() == EDCPlanMode::Planning ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		+ SHorizontalBox::Slot().AutoWidth()[Button(LOCTEXT("ViewNow", "Jetzt"), LOCTEXT("ViewNowTip", "Was die Figur jetzt dabei hat \u2013 hier kannst du umpacken"), false)]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f, 0.f, 0.f)[Button(LOCTEXT("ViewPlan", "Nach dem Plan"), LOCTEXT("ViewPlanTip", "Was sie nach ihren geplanten Schritten dabei hat (Geplantes ist blau markiert)"), true)];
+}
+
 void UDCInventoryPanel::SelectItem(UDCItem* Item)
 {
 	Selected = Selected.Get() == Item ? nullptr : Item;
@@ -252,6 +345,11 @@ void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem*
 	UDCInventoryComponent* Inventory = Member ? Member->GetInventory() : nullptr;
 	if (!Inventory || !Item)
 	{
+		return;
+	}
+	if (IsPlanView())
+	{
+		ShowMessage(LOCTEXT("PlanViewMove", "Das ist der Stand nach dem Plan \u2013 zum Umpacken oben auf \u201eJetzt\u201c schalten"));
 		return;
 	}
 	FText Reason;
@@ -271,6 +369,10 @@ void UDCInventoryPanel::MoveItem(UDCItem* Item, EDCEquipSlot EquipSlot, UDCItem*
 
 void UDCInventoryPanel::DropToFloor(UDCItem* Item)
 {
+	if (IsPlanView())
+	{
+		return;
+	}
 	if (ADCCrewCharacter* Member = Crew.Get())
 	{
 		const bool bWasOwned = Member->GetInventory()->Owns(Item);
@@ -287,7 +389,49 @@ void UDCInventoryPanel::RebuildContent()
 	using namespace DCItemWidgets;
 	Content->ClearChildren();
 	const ADCCrewCharacter* Member = Crew.Get();
-	const UDCInventoryComponent* Inventory = Member ? Member->GetInventory() : nullptr;
+	const UDCInventoryComponent* Inventory = GetShownInventory();
+	LastShown = Inventory;
+	// What comes only with the plan: everything the real inventory has fewer of.
+	PlannedOnly.Reset();
+	if (Inventory && Member && Inventory != Member->GetInventory())
+	{
+		TMap<FName, int32> Have;
+		TFunction<void(const UDCItem*, TFunction<void(const UDCItem*)>)> Walk = [&Walk](const UDCItem* Item, TFunction<void(const UDCItem*)> Visit)
+		{
+			Visit(Item);
+			for (const UDCItem* Child : Item->GetContents())
+			{
+				Walk(Child, Visit);
+			}
+		};
+		for (const EDCEquipSlot EquipSlot : { EDCEquipSlot::Head, EDCEquipSlot::Body, EDCEquipSlot::Vest, EDCEquipSlot::Back, EDCEquipSlot::LeftHand, EDCEquipSlot::RightHand })
+		{
+			const UDCItem* Real = Member->GetInventory()->GetSlotItem(EquipSlot);
+			if (Real && !(EquipSlot == EDCEquipSlot::LeftHand && Member->GetInventory()->HasBothHandsFull()))
+			{
+				Walk(Real, [&Have](const UDCItem* Item) { ++Have.FindOrAdd(Item->GetDefId()); });
+			}
+		}
+		for (const EDCEquipSlot EquipSlot : { EDCEquipSlot::Head, EDCEquipSlot::Body, EDCEquipSlot::Vest, EDCEquipSlot::Back, EDCEquipSlot::LeftHand, EDCEquipSlot::RightHand })
+		{
+			const UDCItem* Planned = Inventory->GetSlotItem(EquipSlot);
+			if (Planned && !(EquipSlot == EDCEquipSlot::LeftHand && Inventory->HasBothHandsFull()))
+			{
+				Walk(Planned, [this, &Have](const UDCItem* Item)
+				{
+					int32& Count = Have.FindOrAdd(Item->GetDefId());
+					if (Count > 0)
+					{
+						--Count;
+					}
+					else
+					{
+						PlannedOnly.Add(Item);
+					}
+				});
+			}
+		}
+	}
 	if (!Inventory || !Context.IsValid())
 	{
 		Content->AddSlot().AutoHeight()[MakeMuted(LOCTEXT("Nobody", "Niemand ausgewählt."), 12)];
@@ -385,7 +529,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSlotCard(EDCEquipSlot EquipSlot)
 {
 	using namespace DCItemWidgets;
 	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
-	UDCInventoryComponent* Inventory = Crew->GetInventory();
+	UDCInventoryComponent* Inventory = GetShownInventory();
 	TWeakObjectPtr<UDCInventoryComponent> WeakInventory = Inventory;
 	UDCItem* Item = Inventory->GetSlotItem(EquipSlot);
 	const TSharedRef<FDCItemTreeContext> Ctx = Context.ToSharedRef();
@@ -401,7 +545,15 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSlotCard(EDCEquipSlot EquipSlot)
 				[
 					Item ? MakeHeader(Item, Ctx, true, false) : MakeMuted(LOCTEXT("EmptySlot", "–"))
 				],
-				[WeakInventory, EquipSlot](UDCItem* Dragged) { return WeakInventory.IsValid() ? WeakInventory->CheckSlot(Dragged, EquipSlot) : FText::GetEmpty(); },
+				[WeakThis, EquipSlot](UDCItem* Dragged)
+				{
+					if (!WeakThis.IsValid() || !WeakThis->Crew.IsValid())
+					{
+						return FText::GetEmpty();
+					}
+					return WeakThis->IsPlanView() ? LOCTEXT("PlanViewOnlySlot", "Das ist der Stand nach dem Plan \u2013 zum Umpacken oben auf \u201eJetzt\u201c schalten")
+						: WeakThis->Crew->GetInventory()->CheckSlot(Dragged, EquipSlot);
+				},
 				[WeakThis, EquipSlot](UDCItem* Dragged)
 				{
 					if (WeakThis.IsValid())
@@ -422,7 +574,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 {
 	using namespace DCItemWidgets;
 	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
-	UDCInventoryComponent* Inventory = Crew->GetInventory();
+	UDCInventoryComponent* Inventory = GetShownInventory();
 	TWeakObjectPtr<UDCInventoryComponent> WeakInventory = Inventory;
 	const TSharedRef<FDCItemTreeContext> Ctx = Context.ToSharedRef();
 
@@ -441,9 +593,9 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 				.ToolTipText(FText::Format(LOCTEXT("HandTip", "{0} · {1}"), Item->GetDisplayName(), DCItems::FormatKg(Item->GetTotalMass())))
 				[
 					SNew(STextBlock)
-					.Text(Item->GetDisplayName())
+					.Text(PlannedOnly.Contains(Item) ? FText::Format(LOCTEXT("HandPlanned", "{0} \u00b7 geplant"), Item->GetDisplayName()) : Item->GetDisplayName())
 					.Font(Font(11, true))
-					.ColorAndOpacity(Item->GetDef().Value > 0 ? LootColor : TextColor)
+					.ColorAndOpacity(PlannedOnly.Contains(Item) ? CoordinationColor : (Item->GetDef().Value > 0 ? LootColor : TextColor))
 					.AutoWrapText(true)
 				]);
 		}
@@ -455,7 +607,15 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(Label, 10)]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)[Filling]
 			],
-			[WeakInventory, EquipSlot](UDCItem* Dragged) { return WeakInventory.IsValid() ? WeakInventory->CheckSlot(Dragged, EquipSlot) : FText::GetEmpty(); },
+			[WeakThis, EquipSlot](UDCItem* Dragged)
+				{
+					if (!WeakThis.IsValid() || !WeakThis->Crew.IsValid())
+					{
+						return FText::GetEmpty();
+					}
+					return WeakThis->IsPlanView() ? LOCTEXT("PlanViewOnlySlot", "Das ist der Stand nach dem Plan \u2013 zum Umpacken oben auf \u201eJetzt\u201c schalten")
+						: WeakThis->Crew->GetInventory()->CheckSlot(Dragged, EquipSlot);
+				},
 			[WeakThis, EquipSlot](UDCItem* Dragged)
 			{
 				if (WeakThis.IsValid())

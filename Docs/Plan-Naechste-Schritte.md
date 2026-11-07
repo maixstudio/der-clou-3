@@ -57,6 +57,9 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
   einen anderen Platz an oder bestätigt. „Liegen lassen“ bricht ab.
 - **Planung:** `FDCPlanTask` speichert den Platz (Tragplatz oder Behälterpfad + `GridPos`). Simulation und
   Runner legen genau dort ab. Ist der Platz belegt, legen sie an die erste freie Stelle und melden das.
+- **Gebaut 2026-11-07 (v1, nur Ansicht):** Profil zeigt in der Planung den Stand nach dem Plan, Umschalter
+  „Jetzt | Nach dem Plan“, Geplantes blau markiert. Offen: Schrittnummer an geplanten Dingen, Umpacken der
+  echten Ausrüstung direkt in dieser Ansicht.
 - Das **Profil rechts zeigt in der Planung den Stand nach dem Plan**. Geplante Gegenstände sind markiert
   („geplant, Schritt 1“) und nicht ziehbar. Echte Ausrüstung bleibt umpackbar (Vorbereitung vor dem
   Einbruch). Ein Umschalter im Profil wechselt zwischen „Jetzt“ und „Nach dem Plan“.

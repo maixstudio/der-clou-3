@@ -224,6 +224,16 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     (`IssueTasks`); Test-Hilfe `UDCRadialMenu::ChooseOption`.
   - Offen: Protokoll im Ergebnis-Bildschirm,
     Zeitleiste zeigt die Verschiebung durch Handgriffe noch nicht vorab.
+- **Profil zeigt den Plan-Stand (Schritt 14, nach User-Bug „Statue: Hände nicht frei, dann ist schon weg“):**
+  Ursache: der erste Klick hatte das Aufheben geplant, das Profil zeigte aber den Stand *jetzt*. Jetzt:
+  `UDCInventoryPanel` zeigt in der Planung standardmäßig das geplante Inventar (`GetShownInventory`,
+  `IsPlanView`, Umschalter „Jetzt | Nach dem Plan“ oben im Profil), Geplantes blau mit „· geplant“
+  (`FDCItemTreeContext::IsPlanned`, Abgleich nach Anzahl je DefId), in dieser Ansicht nur lesen
+  (Ziehen rot mit Grund, keine Knöpfe). Zusammenfassung „Nach dem Plan: 37,1 / 64 kg · Tempo 58 %“.
+  Schon Geplantes sagt im Menü, wer es wann nimmt: „schon im Plan: Vic nimmt es in Schritt 2“.
+  Menüklicks, „geht nicht“ und neue Plan-Schritte stehen jetzt im Log (`Menu:`, `Not possible:`,
+  `Plan Vic: step …`) – auch im Editor. Selbsttest `-DCSelfTest=PlanView` (Screenshots `plan_view*.png`).
+  Funde beim Durchsuchen erscheinen weiterhin erst im Einbruch (Inhalt ist in der Planung unbekannt).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -244,7 +254,7 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

@@ -159,6 +159,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartFindSelfTest();
 	}
+	else if (SelfTest == TEXT("PlanView"))
+	{
+		StartPlanViewSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -382,6 +386,26 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 	// Planning: tools and hands as they will be after the crew member's plan so far (a crowbar picked up earlier counts).
 	const UDCInventoryComponent* Carried = bPlanning ? Heist->GetPlannedInventory(Selected->GetFName()) : nullptr;
 	const bool bGoneInPlan = Planned && Planned->bGone;
+	// Say who takes it, and in which step: otherwise "gone" looks like a mistake.
+	FText GoneReason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
+	if (bGoneInPlan)
+	{
+		for (const FDCCrewPlan& Plan : UDCPlanSubsystem::Get(this)->GetPlans())
+		{
+			for (int32 Index = 0; Index < Plan.Tasks.Num(); ++Index)
+			{
+				const FDCPlanTask& Task = Plan.Tasks[Index];
+				const bool bTakes = Task.Type == EDCPlanTaskType::PickUp
+					|| (Task.Type == EDCPlanTaskType::Item && Task.ItemPath.IsEmpty() && Task.Action == static_cast<uint8>(EDCItemAction::Take));
+				if (bTakes && Task.Target == Pickup->GetFName())
+				{
+					const ADCCrewCharacter* Taker = Heist->FindCrew(Plan.Crew);
+					GoneReason = FText::Format(LOCTEXT("GoneInPlanBy", "schon im Plan: {0} nimmt es in Schritt {1}"),
+						Taker ? Taker->GetCrewName() : FText::FromName(Plan.Crew), FText::AsNumber(Index + 1));
+				}
+			}
+		}
+	}
 	// Locked, smashed, ... as it will be after the plan so far (planning) or as it is now (direct).
 	const auto StateOf = [Planned](const UDCItem* Item, bool& bLocked, bool& bDestroyed)
 	{
@@ -397,13 +421,13 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 			}
 		}
 	};
-	const auto Check = [this, bPlanning, Carried, bGoneInPlan](const UDCItem* Item, EDCItemAction Action)
+	const auto Check = [this, bPlanning, Carried, bGoneInPlan, GoneReason](const UDCItem* Item, EDCItemAction Action)
 	{
 		if (bGoneInPlan)
 		{
 			FDCTaskCheck Gone;
 			Gone.bPossible = false;
-			Gone.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
+			Gone.Reason = GoneReason;
 			return Gone;
 		}
 		return bPlanning ? Selected->PlanCheckItem(Item->GetDef(), Action, Carried) : Selected->CheckItemAction(Item, Action);
@@ -488,7 +512,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		Task.Target = Pickup->GetFName();
 		FDCTaskCheck LootCheck;
 		LootCheck.bPossible = !bGoneInPlan;
-		LootCheck.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
+		LootCheck.Reason = GoneReason;
 		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, Task);
 		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "Inhalt unbekannt · Funde entscheidest du live");
 		Options.Add(Option);
@@ -499,7 +523,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		Task.Type = EDCPlanTaskType::PickUp;
 		Task.Target = Pickup->GetFName();
 		FDCTaskCheck Take;
-		const FText Reason = bGoneInPlan ? LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)")
+		const FText Reason = bGoneInPlan ? GoneReason
 			: (Carried ? Carried : Selected->GetInventory())->CheckAdd(Root);
 		Take.bPossible = Reason.IsEmpty();
 		Take.Reason = Reason;
@@ -557,6 +581,7 @@ FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FD
 		if (!bPossible)
 		{
 			WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Reason), true);
+			UE_LOG(LogDerClou, Display, TEXT("Not possible: %s"), *Reason.ToString());
 			return;
 		}
 		WeakThis->IssueTask(Task);
@@ -703,6 +728,8 @@ void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
 		Plans->AddTask(Selected->GetFName(), Task);
 		ShowToast(FText::Format(LOCTEXT("StepAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(),
 			FText::AsNumber(Plans->GetTasks(Selected->GetFName()).Num()), UDCHeistStateSubsystem::Get(this)->DescribeTask(Task)));
+		UE_LOG(LogDerClou, Display, TEXT("Plan %s: step %d %s"), *Selected->GetCrewName().ToString(), Plans->GetTasks(Selected->GetFName()).Num(),
+			*UDCHeistStateSubsystem::Get(this)->DescribeTask(Task).ToString());
 		return;
 	}
 	case EDCPlanMode::Direct:
@@ -2708,6 +2735,103 @@ void ADCPlayerController::StartFindSelfTest()
 		Expect(Heist->GetPlaybackTime() >= Heist->GetSchedule().Duration + 1.f, TEXT("the handling made the heist longer than planned"));
 		Expect(Rosa && Rosa->GetInventory()->HasTool(TEXT("necklace")) && !Rosa->GetInventory()->HasTool(TEXT("watch")), TEXT("Rosa has the necklace, not the watch"));
 		Expect(Rosa && Rosa->GetPlanRunner()->GetStatus(1) == EDCTaskStatus::Done, TEXT("the search step is done"));
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartPlanViewSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test PlanView started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = FPlatformTime::Seconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto Choose = [this, Expect](const TCHAR* Pickup, const TCHAR* Label)
+	{
+		return [this, Expect, Pickup, Label]()
+		{
+			OpenPickupMenu(FindPickup(Pickup));
+			const bool bChosen = RadialMenu && RadialMenu->ChooseOption(Label);
+			Expect(bChosen, FString::Printf(TEXT("menu of %s has '%s'"), Pickup, Label));
+			return true;
+		};
+	};
+
+	SelfTestSteps.Add(Wait(1.f));
+	// The user's case: Vic searches the sofa, then picks up the statue.
+	SelfTestSteps.Add([this]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		if (InventoryPanel)
+		{
+			InventoryPanel->SetPlanView(true);
+		}
+		return true;
+	});
+	SelfTestSteps.Add(Choose(TEXT("sofa"), TEXT("Durchsuchen")));
+	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Aufheben")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		const TArray<FDCPlanTask>& Steps = UDCPlanSubsystem::Get(this)->GetTasks(Selected->GetFName());
+		Expect(Steps.Num() == 2 && Steps[1].Type == EDCPlanTaskType::PickUp, TEXT("plan: search the sofa, pick up the statue"));
+		const UDCInventoryComponent* Planned = UDCHeistStateSubsystem::Get(this)->GetPlannedInventory(Selected->GetFName());
+		const UDCItem* Held = Planned ? Planned->GetSlotItem(EDCEquipSlot::RightHand) : nullptr;
+		Expect(Held && Held->GetDefId() == TEXT("statue") && Planned->HasBothHandsFull(), TEXT("after the plan Vic carries the statue in both hands"));
+		Expect(InventoryPanel && InventoryPanel->IsPlanView(), TEXT("the profile shows the state after the plan"));
+		Expect(!Selected->GetInventory()->HasTool(TEXT("statue")), TEXT("... while Vic himself does not have it yet"));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Shot(TEXT("plan_view.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	// Picking it up again: the message says it is already in the plan, and where.
+	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Aufheben")));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		bool bProblem = false;
+		const FString Toast = GetToast(bProblem).ToString();
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: second pick-up -> '%s'"), *Toast);
+		Expect(bProblem && Toast.Contains(TEXT("Vic")) && Toast.Contains(TEXT("Schritt 2")), TEXT("second pick-up: already in the plan, says who and which step"));
+		Expect(UDCPlanSubsystem::Get(this)->GetTasks(Selected->GetFName()).Num() == 2, TEXT("... and adds nothing"));
+		// "Jetzt" shows the real inventory again.
+		InventoryPanel->SetPlanView(false);
+		Expect(!InventoryPanel->IsPlanView(), TEXT("switching to \u201eJetzt\u201c shows the real inventory"));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Shot(TEXT("plan_view_now.png")));
+	SelfTestSteps.Add(Wait(0.3f));
+	SelfTestSteps.Add([this, bPassed]()
+	{
+		InventoryPanel->SetPlanView(true);
 		FinishSelfTest(*bPassed);
 		return true;
 	});

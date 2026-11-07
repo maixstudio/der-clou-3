@@ -1,5 +1,7 @@
 #include "DCRadialMenu.h"
 
+#include "DerClou3.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -101,8 +103,9 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 				.ToolTipText(Option.Tooltip)
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
-				.OnClicked_Lambda([this, OnSelected]()
+				.OnClicked_Lambda([this, OnSelected, Label = Option.Label, Detail = Option.Detail, bEnabled = Option.bEnabled]()
 				{
+					UE_LOG(LogDerClou, Display, TEXT("Menu: %s (%s)%s"), *Label.ToString(), *Detail.ToString(), bEnabled ? TEXT("") : TEXT(" [not possible]"));
 					Close();
 					if (OnSelected)
 					{
