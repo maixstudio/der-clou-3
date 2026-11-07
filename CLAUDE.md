@@ -220,7 +220,9 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     liegen gelassen: … · dagelassen: …“). Leertaste/Pause-Knopf („Fund offen“) wirken währenddessen nicht.
   - Selbsttests mit Abspielen setzen `UDCPlanSubsystem::bAutoDecideFinds` (nimmt alles Wertvolle, weiter).
     Neuer Test `-DCSelfTest=Find` (Screenshots `find_pause.png`, `find_decided.png`).
-  - Offen: „Knacken und durchsuchen“ als ein Menüeintrag (User gefragt), Protokoll im Ergebnis-Bildschirm,
+  - Radialmenü „… knacken und durchsuchen“ (bei versperrten Behältern und Schubladen) legt beide Schritte an
+    (`IssueTasks`); Test-Hilfe `UDCRadialMenu::ChooseOption`.
+  - Offen: Protokoll im Ergebnis-Bildschirm,
     Zeitleiste zeigt die Verschiebung durch Handgriffe noch nicht vorab.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),

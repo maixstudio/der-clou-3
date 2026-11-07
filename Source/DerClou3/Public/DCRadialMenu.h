@@ -33,6 +33,8 @@ public:
 	void Open(const FText& Title, TArray<FDCRadialOption> Options);
 	void Close();
 	bool IsOpen() const { return bOpen; }
+	/** Self-tests: picks the open menu's first entry whose label contains the text (as a click would). False if there is none. */
+	bool ChooseOption(const FString& LabelPart);
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;
@@ -43,6 +45,7 @@ private:
 	TSharedPtr<SCanvas> Canvas;
 	FGeometry LastGeometry;
 	bool bOpen = false;
+	TArray<FDCRadialOption> Current;
 	/** Clearing waits for the next tick, never inside one of the menu's own click handlers. */
 	bool bClearPending = false;
 };

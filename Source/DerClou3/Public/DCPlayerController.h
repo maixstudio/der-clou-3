@@ -108,6 +108,8 @@ private:
 	EDCPlanMode GetMode() const;
 	/** Planning: add to the selected crew member's plan. Direct: do it now. */
 	void IssueTask(const FDCPlanTask& Task);
+	/** Several steps at once ("knacken und durchsuchen"). */
+	void IssueTasks(const TArray<FDCPlanTask>& Tasks);
 	/** A menu entry for a step, with duration and chance; not possible = greyed, says why when clicked. */
 	FDCRadialOption MakeTaskOption(const FText& Label, const FDCTaskCheck& Check, const FDCPlanTask& Task);
 	void ReloadLevel();

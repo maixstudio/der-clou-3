@@ -59,6 +59,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 	Canvas->ClearChildren();
 	bClearPending = false;
 	bOpen = true;
+	Current = Options;
 
 	const FVector2D Centre = LastGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
 
@@ -125,6 +126,21 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 					]
 			];
 	}
+}
+
+bool UDCRadialMenu::ChooseOption(const FString& LabelPart)
+{
+	for (const FDCRadialOption& Option : Current)
+	{
+		if (bOpen && Option.Label.ToString().Contains(LabelPart) && Option.OnSelected)
+		{
+			const TFunction<void()> Selected = Option.OnSelected;
+			Close();
+			Selected();
+			return true;
+		}
+	}
+	return false;
 }
 
 void UDCRadialMenu::Close()

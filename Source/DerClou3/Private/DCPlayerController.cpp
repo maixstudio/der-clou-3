@@ -441,6 +441,35 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		if (bLocked && Def.HasLock())
 		{
 			Options.Add(MakeTaskOption(Label(LOCTEXT("PickVerb", "knacken")), Check(Item, EDCItemAction::PickLock), ItemTask(Item, EDCItemAction::PickLock)));
+			// The usual pair in one click: pick the lock, then search the whole thing.
+			if (Root->IsContainer() || !Root->GetContents().IsEmpty())
+			{
+				const FDCTaskCheck PickCheck = Check(Item, EDCItemAction::PickLock);
+				FDCPlanTask Search;
+				Search.Type = EDCPlanTaskType::Loot;
+				Search.Target = Pickup->GetFName();
+				FDCRadialOption Both = MakeTaskOption(Label(LOCTEXT("PickSearchVerb", "knacken und durchsuchen")), PickCheck, ItemTask(Item, EDCItemAction::PickLock));
+				Both.Detail = PickCheck.bPossible ? FText::Format(LOCTEXT("PickSearchDetail", "{0} · dann durchsuchen"), PickCheck.DescribeShort()) : PickCheck.DescribeShort();
+				Both.Tooltip = FText::Format(LOCTEXT("PickSearchTip", "Zwei Schritte: knacken, danach durchsuchen.\n{0}"), PickCheck.Describe());
+				TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+				const TArray<FDCPlanTask> Pair = { ItemTask(Item, EDCItemAction::PickLock), Search };
+				const bool bPossible = PickCheck.bPossible;
+				const FText Reason = PickCheck.Reason;
+				Both.OnSelected = [WeakThis, Pair, bPossible, Reason]()
+				{
+					if (!WeakThis.IsValid())
+					{
+						return;
+					}
+					if (!bPossible)
+					{
+						WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Reason), true);
+						return;
+					}
+					WeakThis->IssueTasks(Pair);
+				};
+				Options.Add(Both);
+			}
 			if (Def.bForceable)
 			{
 				Options.Add(MakeTaskOption(Label(LOCTEXT("ForceVerb", "aufbrechen")), Check(Item, EDCItemAction::Force), ItemTask(Item, EDCItemAction::Force)));
@@ -461,7 +490,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		LootCheck.bPossible = !bGoneInPlan;
 		LootCheck.Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
 		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, Task);
-		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "öffnet, was aufgeht · was gefunden wird, entscheidest du im Einbruch");
+		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "Inhalt unbekannt · Funde entscheidest du live");
 		Options.Add(Option);
 	}
 	if (Root->GetDef().bMovable)
@@ -627,6 +656,37 @@ EDCPlanMode ADCPlayerController::GetMode() const
 {
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
 	return Plans ? Plans->GetMode() : EDCPlanMode::Direct;
+}
+
+void ADCPlayerController::IssueTasks(const TArray<FDCPlanTask>& Tasks)
+{
+	if (!Selected || Tasks.IsEmpty())
+	{
+		return;
+	}
+	switch (GetMode())
+	{
+	case EDCPlanMode::Planning:
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		const int32 First = Plans->GetTasks(Selected->GetFName()).Num() + 1;
+		TArray<FString> Names;
+		for (const FDCPlanTask& Task : Tasks)
+		{
+			Plans->AddTask(Selected->GetFName(), Task);
+			Names.Add(UDCHeistStateSubsystem::Get(this)->DescribeTask(Task).ToString());
+		}
+		ShowToast(FText::Format(LOCTEXT("StepsAdded", "{0}, Schritte {1}–{2}: {3}"), Selected->GetCrewName(), FText::AsNumber(First),
+			FText::AsNumber(First + Tasks.Num() - 1), FText::FromString(FString::Join(Names, TEXT(", dann ")))));
+		return;
+	}
+	case EDCPlanMode::Direct:
+		Selected->GetPlanRunner()->Start(Tasks);
+		UDCHeistStateSubsystem::Get(this)->MarkWorldUsed();
+		return;
+	case EDCPlanMode::Playing:
+		return;
+	}
 }
 
 void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
@@ -2533,7 +2593,7 @@ void ADCPlayerController::StartFindSelfTest()
 	const TSharedRef<double> PlannedSearch = MakeShared<double>(0.0);
 
 	SelfTestSteps.Add(Wait(1.f));
-	// The plan: Rosa cracks the safe and searches it. Nothing about the contents is known yet.
+	// The plan: Rosa cracks the safe and searches it (one menu entry). Nothing about the contents is known yet.
 	SelfTestSteps.Add([this, Expect, CrewNamed, PlannedSearch]()
 	{
 		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -2547,15 +2607,14 @@ void ADCPlayerController::StartFindSelfTest()
 		{
 			return true;
 		}
-		FDCPlanTask Crack;
-		Crack.Type = EDCPlanTaskType::Item;
-		Crack.Target = Safe->GetFName();
-		Crack.Action = static_cast<uint8>(EDCItemAction::PickLock);
-		FDCPlanTask Search;
-		Search.Type = EDCPlanTaskType::Loot;
-		Search.Target = Safe->GetFName();
-		Plans->AddTask(Rosa->GetFName(), Crack);
-		Plans->AddTask(Rosa->GetFName(), Search);
+		// One entry in the menu adds both steps: pick the lock, then search.
+		Select(Rosa);
+		OpenPickupMenu(Safe);
+		const bool bChosen = RadialMenu && RadialMenu->ChooseOption(TEXT("knacken und durchsuchen"));
+		Expect(bChosen, TEXT("the safe menu offers \u201eknacken und durchsuchen\u201c"));
+		const TArray<FDCPlanTask>& Steps = Plans->GetTasks(Rosa->GetFName());
+		Expect(Steps.Num() == 2 && Steps[0].Type == EDCPlanTaskType::Item && Steps[0].Action == static_cast<uint8>(EDCItemAction::PickLock)
+			&& Steps[1].Type == EDCPlanTaskType::Loot, TEXT("... which plans two steps: pick the lock, then search"));
 		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
 		Heist->Refresh();
 		const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Rosa->GetFName());
