@@ -167,12 +167,6 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Pickups und getragene Gegenstände. `/Game/DerClou/Items` steht in `DirectoriesToAlwaysCook`.
   - Offen: Zustände sichtbar machen (Tresortür/Schublade offen, Vitrine eingeschlagen), Licht/Nachbearbeitung
     im Level für mehr Atmosphäre, Werte im Editor statt in Python, wenn der User selbst ändern will.
-- **Im Gespräch (noch nicht gebaut): zwei Phasen.** Phase 1 Planung (grob: Wege, Schlösser, Wache,
-  Warten/Zeichen; Inhalte von Behältern unbekannt, „Ausräumen“ wird „Durchsuchen“). Phase 2 Einbruch:
-  der Plan läuft, bei Funden hält das Spiel an und der Spieler sortiert selbst ein (einstecken,
-  liegen lassen, umpacken – kostet Spielzeit), bei Störungen hält nur die betroffene Figur an und
-  fragt. Offene Fragen an den User: anhalten oder Zeit läuft weiter, Einbruch einmalig oder
-  wiederholbar, Figur fragt bei Störung oder macht selbst weiter.
   - Texte über Figuren/Stecknadeln laufen durch `DCVisuals::PlainText` (TextRender-Schrift kennt kein
     „ “ – → …).
   - Selbsttest `-DCSelfTest=Signals`: alles über den Warten-Dialog – Rosa knackt den Tresor und gibt
@@ -181,6 +175,11 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=PlanInventory`: Brecheisen aufheben → Schublade aufbrechen → ausräumen,
     Verschieben/Löschen/Ablegen, Rosa wartet auf Vics Schritt 4, Vorschau, Abspielen (geplant 14,1 s,
     gespielt 13,5 s). Screenshots `plan_list_vic/rosa/done.png`.
+- **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
+  zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
+  Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
+  bei nur vermuteten Objekten, Umschalter einmalig/wiederholbar. Reihenfolge und Details stehen dort.
+  Spielregeln vor dem Bauen mit dem User besprechen.
 - Offen für spätere Schritte: Polizei kommt wirklich (Zeitlimit), Wachen/Hunde als Zuhörer (Aufpassen),
   Alarmanlagen (Elektronik), Gegner überwältigen (Kampf), schleichen vs. rennen, zu zweit tragen /
   Sackkarre, Übergeben zwischen Crew-Mitgliedern, Schritte mitten im Plan einfügen (bisher: anhängen und
