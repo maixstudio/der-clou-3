@@ -124,6 +124,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartPlanInventorySelfTest();
 	}
+	else if (SelfTest == TEXT("Signals"))
+	{
+		StartSignalSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -175,6 +179,11 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (bMenuOpen && (WasInputKeyJustPressed(EKeys::RightMouseButton) || WasInputKeyJustPressed(EKeys::Escape)))
 	{
 		RadialMenu->Close();
+		return;
+	}
+	if (!bMenuOpen && bPickingWait && WasInputKeyJustPressed(EKeys::Escape))
+	{
+		CancelPickWait();
 		return;
 	}
 	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape))
@@ -504,6 +513,20 @@ void ADCPlayerController::HandleClick()
 	{
 		return;
 	}
+	// Choosing what to wait for: another crew member in the room = until they are done.
+	if (bPickingWait)
+	{
+		ADCCrewCharacter* Other = Cast<ADCCrewCharacter>(Hit.GetActor());
+		if (Other && Other != Selected)
+		{
+			PickWaitTarget(Other->GetFName(), INDEX_NONE);
+		}
+		else
+		{
+			CancelPickWait();
+		}
+		return;
+	}
 	if (ADCCrewCharacter* Crew = Cast<ADCCrewCharacter>(Hit.GetActor()))
 	{
 		Select(Crew);
@@ -717,6 +740,54 @@ void ADCPlayerController::PlanDrop(FName ItemId)
 		Task.ItemPath = ItemId.ToString();
 		IssueTask(Task);
 	}
+}
+
+void ADCPlayerController::AddSignal()
+{
+	if (Selected && GetMode() == EDCPlanMode::Planning)
+	{
+		FDCPlanTask Task;
+		Task.Type = EDCPlanTaskType::Signal;
+		Task.Action = static_cast<uint8>(FMath::Clamp(UDCPlanSubsystem::Get(this)->GetNextSignalNumber(), 1, 255));
+		IssueTask(Task);
+	}
+}
+
+void ADCPlayerController::StartPickWait()
+{
+	bPickingWait = Selected && GetMode() == EDCPlanMode::Planning;
+	if (RadialMenu)
+	{
+		RadialMenu->Close();
+	}
+}
+
+void ADCPlayerController::CancelPickWait()
+{
+	bPickingWait = false;
+}
+
+void ADCPlayerController::PickWaitTarget(FName Crew, int32 Index)
+{
+	bPickingWait = false;
+	if (!Selected || GetMode() != EDCPlanMode::Planning)
+	{
+		return;
+	}
+	if (Crew == Selected->GetFName())
+	{
+		Selected->Say(LOCTEXT("WaitSelf", "auf sich selbst warten geht nicht"));
+		return;
+	}
+	FDCPlanTask Task;
+	Task.Type = EDCPlanTaskType::WaitFor;
+	Task.Target = Crew;
+	const TArray<FDCPlanTask>& Theirs = UDCPlanSubsystem::Get(this)->GetTasks(Crew);
+	if (Theirs.IsValidIndex(Index))
+	{
+		Task.Ref = Theirs[Index].Id;
+	}
+	IssueTask(Task);
 }
 
 void ADCPlayerController::SetPreviewTime(float Time)
@@ -1726,6 +1797,204 @@ void ADCPlayerController::StartPlanInventorySelfTest()
 		Expect(Vic && Vic->GetInventory()->FindReadyTool(DCItems::CrowbarId), TEXT("Vic holds the crowbar"));
 		Expect(Vic && Vic->GetInventory()->HasTool(TEXT("ring")), TEXT("Vic has the ring"));
 		Expect(Door && !Door->IsLocked(), TEXT("back door unlocked"));
+		for (ADCCrewCharacter* Member : { Vic, Rosa })
+		{
+			for (int32 Index = 0; Member && Index < UDCPlanSubsystem::Get(this)->GetTasks(Member->GetFName()).Num(); ++Index)
+			{
+				Expect(Member->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("%s step %d done"), *Member->GetCrewName().ToString(), Index + 1));
+			}
+		}
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartSignalSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Signals started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = GetWorld()->GetTimeSeconds();
+			End = End < 0.0 ? Now + Seconds : End;
+			return Now >= End;
+		};
+	};
+	const auto Screenshot = [this](const TCHAR* Name)
+	{
+		return [this, Name]()
+		{
+			FScreenshotRequest::RequestScreenshot(FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name), true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), Name);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto LogPlan = [](const FDCCrewSchedule* Crew)
+	{
+		for (int32 Index = 0; Crew && Index < Crew->Tasks.Num(); ++Index)
+		{
+			const FDCScheduledTask& Task = Crew->Tasks[Index];
+			UE_LOG(LogDerClou, Display, TEXT("Plan %s %d. %s: walk %.1f-%.1f wait -%.1f work -%.1f%s | %s | waits for %s %d"), *Crew->Name.ToString(), Index + 1, *Task.Label.ToString(),
+				Task.Start, Task.Ready, Task.WorkStart, Task.End, Task.bBlocked ? TEXT(" BLOCKED") : TEXT(""), *Task.Detail.ToString(), *Task.WaitFor.ToString(), Task.WaitForIndex + 1);
+		}
+	};
+
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add([this, Expect, CrewNamed, LogPlan]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		Expect(Vic && Rosa && Safe, TEXT("Vic, Rosa and the safe are there"));
+		if (!Vic || !Rosa || !Safe)
+		{
+			return true;
+		}
+		const FName V = Vic->GetFName();
+		const FName R = Rosa->GetFName();
+		FDCPlanTask Crack;
+		Crack.Type = EDCPlanTaskType::Item;
+		Crack.Target = Safe->GetFName();
+		Crack.Action = static_cast<uint8>(EDCItemAction::PickLock);
+		FDCPlanTask Loot;
+		Loot.Type = EDCPlanTaskType::Loot;
+		Loot.Target = Safe->GetFName();
+
+		// Without anything extra: Vic's looting waits by itself until Rosa has cracked the safe.
+		Plans->AddTask(R, Crack);
+		Plans->AddTask(V, Loot);
+		Heist->Refresh();
+		const FDCCrewSchedule* VicPlan = Heist->GetSchedule().Find(V);
+		const FDCCrewSchedule* RosaPlan = Heist->GetSchedule().Find(R);
+		LogPlan(RosaPlan);
+		LogPlan(VicPlan);
+		Expect(VicPlan && VicPlan->Tasks.Num() == 1 && !VicPlan->Tasks[0].bBlocked && VicPlan->Tasks[0].WaitFor == R,
+			TEXT("Rosa cracks, Vic loots: Vic waits for Rosa by himself"));
+
+		// Now explicitly: Rosa gives signal 1 after cracking, Vic waits for it before he walks over.
+		Plans->RemoveTask(V, 0);
+		Select(Rosa);
+		AddSignal();
+		Select(Vic);
+		StartPickWait();
+		Expect(IsPickingWait(), TEXT("\"Warten auf\" waits for a click"));
+		PickWaitTarget(R, 1);
+		Expect(!IsPickingWait(), TEXT("... and is done after it"));
+		IssueTask(Loot);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		RosaPlan = Heist->GetSchedule().Find(R);
+		LogPlan(RosaPlan);
+		LogPlan(VicPlan);
+		const bool bShapes = VicPlan && RosaPlan && VicPlan->Tasks.Num() == 2 && RosaPlan->Tasks.Num() == 2;
+		Expect(bShapes && RosaPlan->Tasks[1].Type == EDCPlanTaskType::Signal && RosaPlan->Tasks[1].Label.ToString().Contains(TEXT("Signal 1")), TEXT("Rosa's second step is signal 1"));
+		Expect(bShapes && VicPlan->Tasks[0].Label.ToString().Contains(TEXT("Signal 1")) && !VicPlan->Tasks[0].bBlocked, TEXT("Vic's first step waits for signal 1"));
+		Expect(bShapes && FMath::Abs(VicPlan->Tasks[0].WorkStart - RosaPlan->Tasks[1].End) < 0.05f,
+			FString::Printf(TEXT("Vic goes on when the signal is given (%.1f / %.1f)"), bShapes ? VicPlan->Tasks[0].WorkStart : 0.f, bShapes ? RosaPlan->Tasks[1].End : 0.f));
+		Expect(bShapes && VicPlan->Tasks[0].WaitFor == R && VicPlan->Tasks[0].WaitForIndex == 1, TEXT("the plan knows Vic waits for Rosa's step 2"));
+		Expect(bShapes && !VicPlan->Tasks[1].bBlocked && VicPlan->Tasks[1].Start >= VicPlan->Tasks[0].End - 0.01f, TEXT("then Vic loots the safe"));
+
+		// Until Rosa is done altogether.
+		PickWaitTarget(R, INDEX_NONE);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		RosaPlan = Heist->GetSchedule().Find(R);
+		Expect(VicPlan && RosaPlan && VicPlan->Tasks.Num() == 3 && !VicPlan->Tasks[2].bBlocked && VicPlan->Tasks[2].WorkStart >= RosaPlan->End - 0.05f,
+			FString::Printf(TEXT("\"until Rosa is done\": %s"), VicPlan && VicPlan->Tasks.Num() == 3 ? *VicPlan->Tasks[2].Label.ToString() : TEXT("-")));
+		Plans->RemoveTask(V, 2);
+
+		// Waiting for oneself is refused; a deleted signal blocks the wait.
+		PickWaitTarget(V, 0);
+		Expect(Plans->GetTasks(V).Num() == 2, TEXT("waiting for oneself is refused"));
+		const FDCPlanTask SignalStep = Plans->GetTasks(R)[1];
+		Plans->RemoveTask(R, 1);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && VicPlan->Tasks.Num() == 2 && VicPlan->Tasks[0].bBlocked,
+			FString::Printf(TEXT("without the signal Vic would wait forever: %s"), VicPlan && !VicPlan->Tasks.IsEmpty() ? *VicPlan->Tasks[0].WaitReason.ToString() : TEXT("-")));
+		Plans->AddTask(R, SignalStep);
+		Heist->Refresh();
+		VicPlan = Heist->GetSchedule().Find(V);
+		Expect(VicPlan && VicPlan->Tasks.Num() == 2 && !VicPlan->Tasks[0].bBlocked && !VicPlan->Tasks[1].bBlocked, TEXT("signal back (same id): all fine again"));
+
+		FocusStep(V, 0);
+		Plans->SetSpeed(2.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Screenshot(TEXT("signal_vic.png")));
+	SelfTestSteps.Add([this, CrewNamed]()
+	{
+		if (ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa")))
+		{
+			FocusStep(Rosa->GetFName(), 1);
+		}
+		StartPickWait();
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("signal_rosa_pick.png")));
+	SelfTestSteps.Add([this]()
+	{
+		CancelPickWait();
+		StartPlayback();
+		return true;
+	});
+	// During playback Vic really waits for the signal.
+	SelfTestSteps.Add([this, Expect, CrewNamed, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		const bool bWaiting = Vic && Vic->GetPlanRunner()->GetWaitText().ToString().Contains(TEXT("Signal"));
+		if (bWaiting || Now - Started > 30.0)
+		{
+			Expect(bWaiting, FString::Printf(TEXT("Vic waits for the signal during playback: %s"), Vic ? *Vic->GetPlanRunner()->GetWaitText().ToString() : TEXT("-")));
+			return true;
+		}
+		return false;
+	});
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = GetWorld()->GetTimeSeconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 120.0;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Screenshot(TEXT("signal_done.png")));
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		const ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s)"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration);
+		Expect(Heist->IsPlaybackFinished(), TEXT("everyone is through with the plan"));
+		Expect(Safe && Safe->GetItem() && !Safe->GetItem()->IsLocked(), TEXT("the safe is cracked"));
+		Expect(Vic && Vic->GetInventory()->HasTool(TEXT("watch")) && Vic->GetInventory()->HasTool(TEXT("necklace")), TEXT("Vic took watch and necklace from the safe"));
 		for (ADCCrewCharacter* Member : { Vic, Rosa })
 		{
 			for (int32 Index = 0; Member && Index < UDCPlanSubsystem::Get(this)->GetTasks(Member->GetFName()).Num(); ++Index)

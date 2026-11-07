@@ -99,7 +99,7 @@ void ADCPlanMarker::InitGhost(const FLinearColor& Color)
 void ADCPlanMarker::SetGhost(const FVector& FloorLocation, const FText& Text)
 {
 	SetActorLocation(FloorLocation);
-	Label->SetText(Text);
+	Label->SetText(DCVisuals::PlainText(Text));
 }
 
 void ADCPlanMarker::Tick(float DeltaSeconds)

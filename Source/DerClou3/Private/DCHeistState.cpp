@@ -137,6 +137,12 @@ namespace
 		return Path.Last();
 	}
 
+	/** "10,2" */
+	FText TenthsText(float Seconds)
+	{
+		return FText::FromString(FString::Printf(TEXT("%.1f"), Seconds).Replace(TEXT("."), TEXT(",")));
+	}
+
 	/** "Ring, Goldkette" */
 	FText JoinNames(const TArray<FText>& Names)
 	{
@@ -405,6 +411,10 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 	}
 	case EDCPlanTaskType::Drop:
 		return FText::Format(LOCTEXT("TaskDrop", "{0} ablegen"), ItemName(FName(*Task.ItemPath)));
+	case EDCPlanTaskType::Signal:
+		return FText::Format(LOCTEXT("TaskSignal", "Signal {0} geben"), FText::AsNumber(Task.Action));
+	case EDCPlanTaskType::WaitFor:
+		return DescribeWaitFor(Task, false);
 	case EDCPlanTaskType::Item:
 	case EDCPlanTaskType::PickUp:
 	case EDCPlanTaskType::Loot:
@@ -442,6 +452,33 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 	return FText::GetEmpty();
 }
 
+FText UDCHeistStateSubsystem::DescribeWaitFor(const FDCPlanTask& Task, bool bWaiting) const
+{
+	const ADCCrewCharacter* Other = FindCrew(Task.Target);
+	const FText OtherName = Other ? Other->GetCrewName() : FText::FromName(Task.Target);
+	if (!Task.Ref.IsValid())
+	{
+		return FText::Format(bWaiting ? LOCTEXT("WaitingCrew", "wartet, bis {0} ganz fertig ist") : LOCTEXT("TaskWaitCrew", "warten, bis {0} ganz fertig ist"), OtherName);
+	}
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	int32 RefIndex = INDEX_NONE;
+	const FDCPlanTask* Ref = Plans ? Plans->FindTask(Task.Ref, nullptr, &RefIndex) : nullptr;
+	if (!Ref)
+	{
+		return bWaiting ? LOCTEXT("WaitingGone", "wartet auf einen gelöschten Schritt") : LOCTEXT("TaskWaitGone", "warten auf einen gelöschten Schritt");
+	}
+	if (Ref->Type == EDCPlanTaskType::Signal)
+	{
+		return FText::Format(bWaiting ? LOCTEXT("WaitingSignal", "wartet auf Signal {0} von {1}") : LOCTEXT("TaskWaitSignal", "auf Signal {0} von {1} warten"),
+			FText::AsNumber(Ref->Action), OtherName);
+	}
+	// A wait waiting for a wait: no nested names (they could go round in a circle).
+	const FText RefLabel = Ref->Type == EDCPlanTaskType::WaitFor ? LOCTEXT("TaskWaitWait", "sein Warten") : DescribeTask(*Ref);
+	// The waiting form is shown over the figure, whose font has no German quotes.
+	return FText::Format(bWaiting ? LOCTEXT("WaitingStep", "wartet auf {0} (Schritt {2}: {1})")
+		: LOCTEXT("TaskWaitStep", "warten, bis {0} „{1}“ erledigt hat (Schritt {2})"), OtherName, RefLabel, FText::AsNumber(RefIndex + 1));
+}
+
 FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TMap<FName, UDCInventoryComponent*>* OutInventories) const
 {
 	UWorld* World = GetWorld();
@@ -470,6 +507,11 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		Cursor.BaseSpeed = It->GetBaseWalkSpeed();
 		Cursor.Speed = Cursor.BaseSpeed * Cursor.Inventory->GetSpeedFactor();
 		Cursor.bFinished = !Cursor.Tasks || Cursor.Tasks->IsEmpty();
+		if (Cursor.bFinished)
+		{
+			// Nothing planned: "until done" is true from the start.
+			State.DoneCrews.Add(It->GetFName());
+		}
 	}
 
 	TArray<FSimEvent> Events;
@@ -486,6 +528,16 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 	// Is the condition for the pending step met in the current state? If not, why not.
 	const auto ConditionHolds = [this, &State](const FDCPlanTask& Task, FText& OutWait)
 	{
+		if (Task.Type == EDCPlanTaskType::WaitFor)
+		{
+			// Waiting for someone else's step (or signal), or for them to be done altogether.
+			const bool bDone = Task.Ref.IsValid() ? State.DoneTasks.Contains(Task.Ref) : State.DoneCrews.Contains(Task.Target);
+			if (!bDone)
+			{
+				OutWait = DescribeWaitFor(Task, true);
+			}
+			return bDone;
+		}
 		if (Task.Type == EDCPlanTaskType::Door)
 		{
 			const EDCDoorAction Action = static_cast<EDCDoorAction>(Task.Action);
@@ -529,8 +581,14 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		return true;
 	};
 
-	const auto Finish = [&Result](FCursor& Cursor, FDCScheduledTask& Task)
+	const auto Finish = [&Result, &AddEvent](FCursor& Cursor, FDCScheduledTask& Task)
 	{
+		// Others may wait for exactly this step being over.
+		if (!Task.bBlocked)
+		{
+			const FGuid Id = (*Cursor.Tasks)[Cursor.Next].Id;
+			AddEvent(Cursor, Task.End, [Id](FDCWorldSnapshot& S) { S.DoneTasks.Add(Id); });
+		}
 		Result.Crews[Cursor.CrewIndex].Tasks.Add(Task);
 		Cursor.bHasPending = false;
 		++Cursor.Next;
@@ -795,6 +853,36 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		{
 			Duration = Task.Seconds;
 		}
+		else if (Task.Type == EDCPlanTaskType::WaitFor)
+		{
+			// Whom it waits for, even when there was nothing to wait (shown at the other crew member's step).
+			if (Out.WaitFor.IsNone())
+			{
+				const FDCCrewSchedule* Other = Result.Find(Task.Target);
+				int32 RefIndex = INDEX_NONE;
+				if (Task.Ref.IsValid())
+				{
+					Plans->FindTask(Task.Ref, nullptr, &RefIndex);
+				}
+				else
+				{
+					RefIndex = Plans->GetTasks(Task.Target).Num() - 1;
+				}
+				Out.WaitFor = Task.Target;
+				Out.WaitForName = Other ? Other->Name : FText::FromName(Task.Target);
+				Out.WaitForIndex = RefIndex;
+			}
+			const float Waited = T - Out.Ready;
+			const int32 GoOn = FMath::RoundToInt(T);
+			Out.Detail = Waited > 0.05f
+				? FText::Format(LOCTEXT("WaitedFor", "wartet {0} s · geht um {1} weiter"), TenthsText(Waited), FText::FromString(FString::Printf(TEXT("%d:%02d"), GoOn / 60, GoOn % 60)))
+				: LOCTEXT("NoWaitNeeded", "ist dann schon erledigt – kein Warten nötig");
+		}
+		else if (Task.Type == EDCPlanTaskType::Signal)
+		{
+			Duration = HandSeconds;
+			Out.Detail = LOCTEXT("SignalDetail", "kurzes Zeichen über Funk – wer darauf wartet, legt los");
+		}
 		else if (Task.Type == EDCPlanTaskType::Drop)
 		{
 			const FName DropId(*Task.ItemPath);
@@ -825,12 +913,16 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		if (Cursor.Next >= Cursor.Tasks->Num())
 		{
 			Cursor.bFinished = true;
+			// Through with everything: whoever waits for this crew member being done may go on.
+			const FName CrewName = Result.Crews[Cursor.CrewIndex].Crew;
+			Events.Add({ Cursor.Time, [CrewName](FDCWorldSnapshot& S) { S.DoneCrews.Add(CrewName); }, Cursor.CrewIndex, Cursor.Next - 1 });
 			return;
 		}
 		const FDCPlanTask& Task = (*Cursor.Tasks)[Cursor.Next];
 		FDCScheduledTask& Out = Cursor.Pending;
 		Out = FDCScheduledTask();
 		Out.Index = Cursor.Next;
+		Out.Type = Task.Type;
 		Out.Start = Cursor.Time;
 		Out.Label = DescribeTask(Task);
 		Cursor.bHasPending = true;
@@ -844,6 +936,8 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			break;
 		case EDCPlanTaskType::Wait:
 		case EDCPlanTaskType::Drop:
+		case EDCPlanTaskType::WaitFor:
+		case EDCPlanTaskType::Signal:
 			break;
 		case EDCPlanTaskType::Door:
 			if (const ADCDoor* Door = FindDoor(Task.Target))
@@ -1202,7 +1296,7 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 	const FText Number = FText::AsNumber(Task->Index + 1);
 	if (Task->bBlocked && Time >= Task->Ready)
 	{
-		return FText::Format(LOCTEXT("ActivityBlocked", "{0}. {1} – geht nicht"), Number, Task->Label);
+		return FText::Format(LOCTEXT("ActivityBlocked", "{0}. {1}: geht nicht"), Number, Task->Label);
 	}
 	if (Time < Task->Ready)
 	{

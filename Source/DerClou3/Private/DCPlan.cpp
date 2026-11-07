@@ -34,8 +34,55 @@ void UDCPlanSubsystem::AddTask(FName Crew, const FDCPlanTask& Task)
 		Plan = &Plans.AddDefaulted_GetRef();
 		Plan->Crew = Crew;
 	}
-	Plan->Tasks.Add(Task);
+	FDCPlanTask& Added = Plan->Tasks.Add_GetRef(Task);
+	if (!Added.Id.IsValid())
+	{
+		Added.Id = FGuid::NewGuid();
+	}
 	OnPlanChanged.Broadcast();
+}
+
+const FDCPlanTask* UDCPlanSubsystem::FindTask(const FGuid& Id, FName* OutCrew, int32* OutIndex) const
+{
+	if (!Id.IsValid())
+	{
+		return nullptr;
+	}
+	for (const FDCCrewPlan& Plan : Plans)
+	{
+		for (int32 Index = 0; Index < Plan.Tasks.Num(); ++Index)
+		{
+			if (Plan.Tasks[Index].Id == Id)
+			{
+				if (OutCrew)
+				{
+					*OutCrew = Plan.Crew;
+				}
+				if (OutIndex)
+				{
+					*OutIndex = Index;
+				}
+				return &Plan.Tasks[Index];
+			}
+		}
+	}
+	return nullptr;
+}
+
+int32 UDCPlanSubsystem::GetNextSignalNumber() const
+{
+	int32 Highest = 0;
+	for (const FDCCrewPlan& Plan : Plans)
+	{
+		for (const FDCPlanTask& Task : Plan.Tasks)
+		{
+			if (Task.Type == EDCPlanTaskType::Signal)
+			{
+				Highest = FMath::Max(Highest, static_cast<int32>(Task.Action));
+			}
+		}
+	}
+	return Highest + 1;
 }
 
 void UDCPlanSubsystem::RemoveLastTask(FName Crew)

@@ -21,6 +21,19 @@ namespace DCVisuals
 		return LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	}
 
+	FText PlainText(const FText& Text)
+	{
+		FString Plain = Text.ToString();
+		Plain.ReplaceInline(TEXT("–"), TEXT("-"));
+		Plain.ReplaceInline(TEXT("—"), TEXT("-"));
+		Plain.ReplaceInline(TEXT("„"), TEXT("\""));
+		Plain.ReplaceInline(TEXT("“"), TEXT("\""));
+		Plain.ReplaceInline(TEXT("”"), TEXT("\""));
+		Plain.ReplaceInline(TEXT("→"), TEXT("->"));
+		Plain.ReplaceInline(TEXT("…"), TEXT("..."));
+		return FText::FromString(Plain);
+	}
+
 	void Paint(UMeshComponent* Mesh, const FLinearColor& Color)
 	{
 		// The basic shapes default to DefaultMaterial, which has no colour parameter.

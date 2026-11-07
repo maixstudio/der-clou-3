@@ -51,6 +51,10 @@ struct FDCWorldSnapshot
 {
 	TArray<FDCSimDoor> Doors;
 	TArray<FDCSimPickup> Pickups;
+	/** Steps that are over (by id) – what "wait for" and signals react to. */
+	TSet<FGuid> DoneTasks;
+	/** Crew members through with their whole plan. */
+	TSet<FName> DoneCrews;
 
 	FDCSimDoor* FindDoor(FName Actor);
 	FDCSimPickup* FindPickup(FName Actor);
@@ -64,6 +68,7 @@ struct FDCWorldSnapshot
 struct FDCScheduledTask
 {
 	int32 Index = 0;
+	EDCPlanTaskType Type = EDCPlanTaskType::Move;
 	/** Starts walking / doing it. */
 	float Start = 0.f;
 	/** Arrived and could act. */
@@ -162,6 +167,8 @@ public:
 	const UDCInventoryComponent* GetPlannedInventory(FName Crew) const;
 	/** Short name of a step: "Hintertür knacken", "Wandtresor ausräumen". */
 	FText DescribeTask(const FDCPlanTask& Task) const;
+	/** A wait-for step: "warten, bis Rosa „Wandtresor knacken“ erledigt hat" – or, bWaiting, "wartet, bis …". */
+	FText DescribeWaitFor(const FDCPlanTask& Task, bool bWaiting) const;
 
 	/** Where the crew member is at this time of the plan. */
 	static FVector GetPositionAt(const FDCCrewSchedule& Crew, float Time);

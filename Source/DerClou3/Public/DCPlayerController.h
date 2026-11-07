@@ -61,6 +61,16 @@ public:
 	void PlanDrop(FName ItemId);
 	/** Pins in the world show where everyone is at this time of the plan (< 0 = off). */
 	void SetPreviewTime(float Time);
+
+	//~ Waiting for each other
+	/** Planning: the selected crew member gives a signal (the next free number). */
+	void AddSignal();
+	/** Planning: the next click on another crew member's step or signal (timeline) or on them says what to wait for. */
+	void StartPickWait();
+	void CancelPickWait();
+	bool IsPickingWait() const { return bPickingWait; }
+	/** The selected crew member waits until Crew's step Index is over (INDEX_NONE: until Crew is done with everything). */
+	void PickWaitTarget(FName Crew, int32 Index);
 	/** 1x, 2x, 4x. */
 	void CycleSpeed();
 
@@ -93,6 +103,8 @@ private:
 	void StartReloadSelfTest();
 	/** -DCSelfTest=PlanInventory: a crowbar picked up in the plan can be used later in the plan. */
 	void StartPlanInventorySelfTest();
+	/** -DCSelfTest=Signals: Rosa cracks the safe and gives a signal, Vic waits for it and loots the safe. */
+	void StartSignalSelfTest();
 	void FinishSelfTest(bool bPassed);
 	void OnContainerReached(ADCItemPickup* Pickup);
 	/** Each step returns true when it is done. */
@@ -123,6 +135,7 @@ private:
 	TObjectPtr<UDCTimelinePanel> TimelinePanel;
 
 	float RefreshTimer = 0.f;
+	bool bPickingWait = false;
 
 	FDelegateHandle ContainerReachedHandle;
 

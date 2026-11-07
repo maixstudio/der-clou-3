@@ -22,7 +22,11 @@ enum class EDCPlanTaskType : uint8
 	/** Open what can be opened in a container and take everything of value. */
 	Loot,
 	/** Put down something the crew member carries (ItemPath = its item id). */
-	Drop
+	Drop,
+	/** Wait until another crew member (Target) has done one step (Ref) – or their whole plan (Ref unset). */
+	WaitFor,
+	/** Give a signal (Action = its number) that others can wait for. */
+	Signal
 };
 
 /** Planning (clicks add steps), playing the plan, or direct control (clicks act at once). */
@@ -43,6 +47,14 @@ struct FDCPlanTask
 	UPROPERTY()
 	EDCPlanTaskType Type = EDCPlanTaskType::Move;
 
+	/** Stays the same when steps are moved, so others can wait for exactly this step. */
+	UPROPERTY()
+	FGuid Id;
+
+	/** WaitFor: the step waited for (unset = until the crew member in Target has done everything). */
+	UPROPERTY()
+	FGuid Ref;
+
 	/** Move: where to. */
 	UPROPERTY()
 	FVector Location = FVector::ZeroVector;
@@ -51,7 +63,7 @@ struct FDCPlanTask
 	UPROPERTY()
 	float Seconds = 0.f;
 
-	/** Door or item pickup (actor name). */
+	/** Door or item pickup (actor name); WaitFor: the crew member waited for. */
 	UPROPERTY()
 	FName Target;
 
@@ -59,7 +71,7 @@ struct FDCPlanTask
 	UPROPERTY()
 	FString ItemPath;
 
-	/** EDCDoorAction or EDCItemAction. */
+	/** EDCDoorAction or EDCItemAction; Signal: its number. */
 	UPROPERTY()
 	uint8 Action = 0;
 };
@@ -99,6 +111,10 @@ public:
 	void AddTask(FName Crew, const FDCPlanTask& Task);
 	void RemoveLastTask(FName Crew);
 	void RemoveTask(FName Crew, int32 Index);
+	/** The step with this id, in whose plan and where (nullptr if it is gone). */
+	const FDCPlanTask* FindTask(const FGuid& Id, FName* OutCrew = nullptr, int32* OutIndex = nullptr) const;
+	/** The number the next signal gets (1, 2, 3, ...). */
+	int32 GetNextSignalNumber() const;
 	/** Moves a step earlier (Delta < 0) or later in the crew member's plan. */
 	void MoveTask(FName Crew, int32 Index, int32 Delta);
 	void ClearAll();

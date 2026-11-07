@@ -39,6 +39,10 @@ public:
 
 	int32 GetCurrentIndex() const { return Index; }
 	EDCTaskStatus GetStatus(int32 TaskIndex) const;
+	/** Index of the step with this id in the plan being played (INDEX_NONE if it is not in it). */
+	int32 FindTask(const FGuid& Id) const;
+	/** Through with every step (or nothing to do). */
+	bool IsFinished() const { return Index >= Tasks.Num(); }
 	/** "wartet: Hintertür verschlossen" while waiting, else empty. */
 	const FText& GetWaitText() const { return WaitText; }
 

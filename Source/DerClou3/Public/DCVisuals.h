@@ -15,4 +15,10 @@ namespace DCVisuals
 
 	/** Gives the mesh a plain colour (BasicShapeMaterial with its "Color" parameter). */
 	DERCLOU3_API void Paint(UMeshComponent* Mesh, const FLinearColor& Color);
+
+	/**
+	 * Text for labels in the world (TextRender): their font only has plain Latin-1, so dashes,
+	 * German quotes, arrows and the ellipsis become plain characters.
+	 */
+	DERCLOU3_API FText PlainText(const FText& Text);
 }

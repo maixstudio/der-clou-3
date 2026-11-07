@@ -38,8 +38,8 @@ private:
 	void RebuildRows();
 	void RebuildList(const FDCSchedule& Schedule, FName Focus);
 	void RebuildTracks(const FDCSchedule& Schedule, FName Focus);
-	/** Click or drag in the timeline: preview time from x. */
-	void OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale);
+	/** Click or drag in the timeline: preview time from x (or, while choosing what to wait for, the step there). */
+	void OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale, bool bPress);
 	/** Changes whenever what the rows show changes (plan, schedule, selection, playback progress). */
 	FString MakeSignature() const;
 	float GetScale() const;

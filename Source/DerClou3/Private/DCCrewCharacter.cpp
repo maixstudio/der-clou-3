@@ -610,7 +610,33 @@ void ADCCrewCharacter::WalkToPickup(ADCItemPickup* Pickup, bool bSearch)
 	{
 		Away = -GetActorForwardVector();
 	}
-	if (StartMove(ItemLocation + Away * (Pickup->GetFootprintRadius() + ItemReach), &DoorGoal))
+	const double Reach = Pickup->GetFootprintRadius() + ItemReach;
+	FVector Spot = ItemLocation + Away * Reach;
+	// Someone else already works there or is on the way (two at the safe): a free place beside them.
+	const UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
+	for (const double Turn : { 0.0, 40.0, -40.0, 80.0, -80.0, 120.0, -120.0 })
+	{
+		FVector Candidate = ItemLocation + Away.RotateAngleAxis(Turn, FVector::UpVector) * Reach;
+		FNavLocation OnNav;
+		if (Nav && !Nav->ProjectPointToNavigation(Candidate, OnNav, FVector(30.0, 30.0, 200.0)))
+		{
+			continue;
+		}
+		Candidate = Nav ? OnNav.Location : Candidate;
+		bool bTaken = false;
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It && !bTaken; ++It)
+		{
+			const bool bHeadingThere = It->Phase == ETaskPhase::ToItem || It->Phase == ETaskPhase::ToDoor;
+			bTaken = *It != this && (FVector::Dist2D(It->GetActorLocation(), Candidate) < 75.0 || (bHeadingThere && FVector::Dist2D(It->DoorGoal, Candidate) < 75.0));
+		}
+		if (!bTaken)
+		{
+			Spot = Candidate;
+			break;
+		}
+	}
+	UE_LOG(LogDerClou, Verbose, TEXT("%s: to %s, item at %s, spot %s"), *GetName(), *Pickup->GetName(), *ItemLocation.ToCompactString(), *Spot.ToCompactString());
+	if (StartMove(Spot, &DoorGoal))
 	{
 		SetPhase(ETaskPhase::ToItem);
 		return;
@@ -1111,7 +1137,7 @@ void ADCCrewCharacter::UpdateLabels(float DeltaSeconds)
 {
 	NoticeTime = FMath::Max(0.f, NoticeTime - DeltaSeconds);
 	const FText Activity = GetActivityText();
-	ActivityLabel->SetText(Activity.IsEmpty() && NoticeTime > 0.f ? Notice : Activity);
+	ActivityLabel->SetText(DCVisuals::PlainText(Activity.IsEmpty() && NoticeTime > 0.f ? Notice : Activity));
 
 	// Face the player's camera; stack the two lines along the camera's up axis so they never
 	// overlap, however steep the camera looks down.

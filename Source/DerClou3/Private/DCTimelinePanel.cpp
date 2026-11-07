@@ -38,6 +38,8 @@ namespace
 	const FLinearColor HighlightRowColor(1.f, 1.f, 1.f, 0.09f);
 	const FLinearColor SelectedTrackColor(0.11f, 0.115f, 0.145f);
 	const FLinearColor DarkText(0.05f, 0.05f, 0.06f);
+	const FLinearColor SignalColor(1.f, 0.92f, 0.35f);
+	const FLinearColor PickTrackColor(0.26f, 0.23f, 0.08f);
 
 	FText FormatTime(float Seconds)
 	{
@@ -161,6 +163,18 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
 						[
+							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("WaitForButton", "Warten auf …"),
+								LOCTEXT("WaitForTip", "Die ausgewählte Figur wartet, bis eine andere einen Schritt erledigt oder ein Signal gibt – danach in der Zeitleiste auf diesen Schritt klicken (oder auf den Namen / die Figur: bis sie ganz fertig ist)"),
+								[](ADCPlayerController* C) { C->StartPickWait(); })
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+						[
+							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("SignalButton", "Signal geben"),
+								LOCTEXT("SignalTip", "Die ausgewählte Figur gibt ein Signal; andere können mit „Warten auf …“ darauf warten"),
+								[](ADCPlayerController* C) { C->AddSignal(); })
+						]
+						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+						[
 							HeaderButton({ EDCPlanMode::Planning }, LOCTEXT("Clear", "Plan leeren"), LOCTEXT("ClearTip", "Alle Schritte aller Figuren löschen"), [](ADCPlayerController* C) { C->ClearPlan(); })
 						]
 						+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -212,6 +226,30 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 							+ SVerticalBox::Slot().AutoHeight()
 							[
 								SAssignNew(Tracks, SBox).WidthOverride(NameWidth + TrackWidth)
+							]
+							// Choosing what to wait for.
+							+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
+							[
+								SNew(SBox)
+								.WidthOverride(TrackWidth)
+								.Visibility_Lambda([WeakThis]()
+								{
+									const ADCPlayerController* Controller = GetController(WeakThis.Get());
+									return Controller && Controller->IsPickingWait() ? EVisibility::Visible : EVisibility::Collapsed;
+								})
+								[
+									SNew(STextBlock)
+									.Font(Font(11, true))
+									.ColorAndOpacity(SignalColor)
+									.AutoWrapText(true)
+									.Text_Lambda([WeakThis]()
+									{
+										const ADCPlayerController* Controller = GetController(WeakThis.Get());
+										const ADCCrewCharacter* Crew = Controller ? Controller->GetSelectedCrew() : nullptr;
+										return FText::Format(LOCTEXT("PickPrompt", "Worauf soll {0} warten? Klick auf einen Schritt oder ein Signal einer anderen Figur – auf ihren Namen oder sie selbst im Raum: bis sie ganz fertig ist. Esc = abbrechen"),
+											Crew ? Crew->GetCrewName() : FText::GetEmpty());
+									})
+								]
 							]
 							// What everyone does at the preview time.
 							+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 4.f, 0.f, 0.f)
@@ -289,7 +327,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 							switch (Mode())
 							{
 							case EDCPlanMode::Planning:
-								return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = Schritt anhängen · Figur anklicken = ihren Plan bearbeiten · Klick in die Zeitleiste = sehen, wo alle dann sind · Leertaste = abspielen");
+								return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = Schritt anhängen · Figur anklicken = ihren Plan bearbeiten · Klick in die Zeitleiste = sehen, wo alle dann sind · „Warten auf …“ / „Signal geben“ = aufeinander abstimmen · Leertaste = abspielen");
 							case EDCPlanMode::Playing:
 								return LOCTEXT("HintPlaying", "grau = wartet auf etwas, das jemand anderes erst erledigt · Leertaste = Pause");
 							case EDCPlanMode::Direct:
@@ -329,8 +367,8 @@ FString UDCTimelinePanel::MakeSignature() const
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
 	const ADCPlayerController* Controller = GetController(this);
 	const ADCCrewCharacter* Selected = Controller ? Controller->GetSelectedCrew() : nullptr;
-	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
-		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE);
+	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
+		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE, Controller && Controller->IsPickingWait() ? 1 : 0);
 	if (!State)
 	{
 		return Result;
@@ -486,7 +524,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 
 		// Waiting for someone else: its own line, saying for whom and what.
 		const float Waited = Task.WorkStart - Task.Ready;
-		if (!Task.bBlocked && Waited > 0.25f)
+		if (!Task.bBlocked && Waited > 0.25f && Task.Type != EDCPlanTaskType::WaitFor)
 		{
 			FText WaitText;
 			if (!Task.WaitFor.IsNone())
@@ -533,7 +571,8 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		TSharedRef<SVerticalBox> Lines = SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(STextBlock).Text(Task.Label).Font(Font(11, true)).ColorAndOpacity(Task.bBlocked ? StepBlockedTextColor : TextColor)
+				SNew(STextBlock).Text(Task.Label).Font(Font(11, true)).AutoWrapText(true)
+				.ColorAndOpacity(Task.bBlocked ? StepBlockedTextColor : Task.Type == EDCPlanTaskType::Signal ? SignalColor : TextColor)
 			];
 		if (!Task.bBlocked && !Task.Detail.IsEmpty())
 		{
@@ -568,6 +607,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 						SNew(STextBlock)
 						.Text(FText::Format(LOCTEXT("Dependent", "→ {0} wartet darauf ({1} s, dort Schritt {2})"), Other.Name, FormatSeconds(Theirs.WorkStart - Theirs.Ready), FText::AsNumber(Theirs.Index + 1)))
 						.Font(Font(10, true))
+						.AutoWrapText(true)
 						.ColorAndOpacity(Other.Color)
 					];
 				}
@@ -587,7 +627,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 2.f, 6.f, 0.f)
 			[
-				SNew(SBox).WidthOverride(34.f)[SNew(STextBlock).Text(FormatTime(Task.bBlocked ? Task.Ready : Task.WorkStart)).Font(Font(10)).ColorAndOpacity(MutedColor)]
+				SNew(SBox).WidthOverride(34.f)[SNew(STextBlock).Text(FormatTime(Task.bBlocked || Task.Type == EDCPlanTaskType::WaitFor ? Task.Ready : Task.WorkStart)).Font(Font(10)).ColorAndOpacity(MutedColor)]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.f)
 			[
@@ -659,7 +699,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 	}
 }
 
-void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale)
+void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEvent& Event, float Scale, bool bPress)
 {
 	ADCPlayerController* Controller = GetController(this);
 	if (!Controller)
@@ -668,6 +708,18 @@ void UDCTimelinePanel::OnTrackMouse(const FGeometry& Geometry, const FPointerEve
 	}
 	const FVector2D Local = Geometry.AbsoluteToLocal(Event.GetScreenSpacePosition());
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
+	if (Controller->IsPickingWait())
+	{
+		// Choosing what to wait for: the row's step at that time; on the name or after the end = until done.
+		const int32 Row = FMath::FloorToInt((Local.Y - RulerHeight) / RowPitch);
+		if (bPress && State && State->GetSchedule().Crews.IsValidIndex(Row))
+		{
+			const FDCCrewSchedule& Crew = State->GetSchedule().Crews[Row];
+			const int32 Step = Local.X < NameWidth ? INDEX_NONE : UDCHeistStateSubsystem::GetStepAt(Crew, static_cast<float>(Local.X - NameWidth) / Scale);
+			Controller->PickWaitTarget(Crew.Crew, Step);
+		}
+		return;
+	}
 	if (Local.X < NameWidth)
 	{
 		// On a name: that crew member's plan.
@@ -688,6 +740,8 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 	const float Scale = GetScale();
 	const float VisibleSeconds = TrackWidth / Scale;
 	const bool bPlaying = State && State->IsPlaying();
+	const ADCPlayerController* PickController = GetController(this);
+	const bool bPicking = PickController && PickController->IsPickingWait();
 	const float Height = RulerHeight + Schedule.Crews.Num() * RowPitch;
 	TWeakObjectPtr<UDCTimelinePanel> WeakThis = this;
 	TSharedRef<SCanvas> Canvas = SNew(SCanvas);
@@ -704,7 +758,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		{
 			if (WeakThis.IsValid())
 			{
-				WeakThis->OnTrackMouse(Geometry, Event, Scale);
+				WeakThis->OnTrackMouse(Geometry, Event, Scale, true);
 			}
 			return FReply::Handled();
 		})
@@ -712,7 +766,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		{
 			if (WeakThis.IsValid() && Event.IsMouseButtonDown(EKeys::LeftMouseButton))
 			{
-				WeakThis->OnTrackMouse(Geometry, Event, Scale);
+				WeakThis->OnTrackMouse(Geometry, Event, Scale, false);
 			}
 			return FReply::Handled();
 		})
@@ -754,9 +808,10 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 				.ColorAndOpacity(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.75f))
 			]
 		];
+		const bool bPickable = bPicking && !bSelectedRow;
 		Canvas->AddSlot().Position(FVector2D(NameWidth, Top)).Size(FVector2D(TrackWidth, RowHeight))
 		[
-			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
+			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bPickable ? PickTrackColor : bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
 		];
 
 		for (const FDCScheduledTask& Task : Crew.Tasks)
@@ -816,8 +871,15 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 					{
 						if (ADCPlayerController* Controller = GetController(WeakThis.Get()))
 						{
-							Controller->FocusStep(CrewName, TaskIndex);
-							Controller->SetPreviewTime(StepTime);
+							if (Controller->IsPickingWait())
+							{
+								Controller->PickWaitTarget(CrewName, TaskIndex);
+							}
+							else
+							{
+								Controller->FocusStep(CrewName, TaskIndex);
+								Controller->SetPreviewTime(StepTime);
+							}
 						}
 						return FReply::Handled();
 					})
@@ -845,10 +907,12 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			const FLinearColor Base = Crew.Color;
 			AddBlock(Task.Start, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
 			AddBlock(Task.Ready, Task.WorkStart, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
-			const FLinearColor Work = Task.bLoud ? FLinearColor(1.f, 0.35f, 0.15f, Fade) : FLinearColor(Base.R, Base.G, Base.B, Fade);
-			const float WorkWidth = (FMath::Max(Task.End, Task.WorkStart + 0.4f) - Task.WorkStart) * Scale;
+			const bool bSignal = Task.Type == EDCPlanTaskType::Signal;
+			const FLinearColor Work = bSignal ? FLinearColor(SignalColor.R, SignalColor.G, SignalColor.B, Fade)
+				: Task.bLoud ? FLinearColor(1.f, 0.35f, 0.15f, Fade) : FLinearColor(Base.R, Base.G, Base.B, Fade);
+			const float WorkWidth = (FMath::Max(Task.End, Task.WorkStart + (bSignal ? 1.2f : 0.4f)) - Task.WorkStart) * Scale;
 			const FText WorkText = WorkWidth >= 80.f ? FText::Format(LOCTEXT("WorkLabel", "{0} {1}"), Number, Task.Label) : Number;
-			AddBlock(Task.WorkStart, FMath::Max(Task.End, Task.WorkStart + 0.4f), Status == EDCTaskStatus::Failed ? StepBlockedColor : Work, WorkText, bCurrent || bPicked);
+			AddBlock(Task.WorkStart, Task.WorkStart + WorkWidth / Scale, Status == EDCTaskStatus::Failed ? StepBlockedColor : Work, WorkText, bCurrent || bPicked);
 		}
 	}
 

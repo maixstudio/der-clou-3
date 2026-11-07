@@ -62,6 +62,11 @@ EDCTaskStatus UDCPlanRunnerComponent::GetStatus(int32 TaskIndex) const
 	return Statuses.IsValidIndex(TaskIndex) ? Statuses[TaskIndex] : EDCTaskStatus::Planned;
 }
 
+int32 UDCPlanRunnerComponent::FindTask(const FGuid& Id) const
+{
+	return Tasks.IndexOfByPredicate([&Id](const FDCPlanTask& Task) { return Task.Id == Id; });
+}
+
 ADCItemPickup* UDCPlanRunnerComponent::GetPickup() const
 {
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
@@ -211,6 +216,29 @@ void UDCPlanRunnerComponent::StartApproach()
 bool UDCPlanRunnerComponent::ConditionMet(FText& OutWait) const
 {
 	const FDCPlanTask& Task = Current();
+	if (Task.Type == EDCPlanTaskType::WaitFor)
+	{
+		// Asks the other crew member's runner: is that step (or signal) over, or their whole plan?
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		const ADCCrewCharacter* Other = Heist ? Heist->FindCrew(Task.Target) : nullptr;
+		const UDCPlanRunnerComponent* Runner = Other ? Other->GetPlanRunner() : nullptr;
+		bool bDone = true;
+		if (Runner && Task.Ref.IsValid())
+		{
+			const int32 RefStep = Runner->FindTask(Task.Ref);
+			const EDCTaskStatus Status = Runner->GetStatus(RefStep);
+			bDone = RefStep == INDEX_NONE || Status == EDCTaskStatus::Done || Status == EDCTaskStatus::Failed;
+		}
+		else if (Runner)
+		{
+			bDone = Runner->IsFinished();
+		}
+		if (!bDone)
+		{
+			OutWait = Heist->DescribeWaitFor(Task, true);
+		}
+		return bDone;
+	}
 	if (Task.Type == EDCPlanTaskType::Door)
 	{
 		const EDCDoorAction Action = static_cast<EDCDoorAction>(Task.Action);
@@ -339,6 +367,13 @@ void UDCPlanRunnerComponent::StartExecute()
 		// The first handful right away.
 		StepTime = LootStepSeconds;
 		LootSkip.Reset();
+		return;
+	case EDCPlanTaskType::WaitFor:
+		// The waiting is over once the condition holds; nothing else to do.
+		return;
+	case EDCPlanTaskType::Signal:
+		Crew->Say(FText::Format(LOCTEXT("GivesSignal", "gibt Signal {0}"), FText::AsNumber(Task.Action)));
+		UE_LOG(LogDerClou, Log, TEXT("%s gives signal %d"), *Crew->GetCrewName().ToString(), Task.Action);
 		return;
 	case EDCPlanTaskType::Drop:
 		if (UDCItem* Carried = Crew->GetInventory()->FindItem(FName(*Task.ItemPath)))
