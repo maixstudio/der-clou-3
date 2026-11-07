@@ -56,4 +56,6 @@ private:
 	TSharedPtr<SVerticalBox> ListRows;
 	TSharedPtr<SBox> Tracks;
 	FString Signature;
+	/** Width of the timeline itself: the bar fills the bottom of the frame. */
+	float TrackWidthNow = 640.f;
 };

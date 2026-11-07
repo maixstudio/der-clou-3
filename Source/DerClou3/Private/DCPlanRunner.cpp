@@ -13,7 +13,7 @@
 namespace
 {
 	/** One handful while looting (open something or take something). */
-	constexpr float LootStepSeconds = 0.8f;
+	constexpr float RunnerLootStepSeconds = 0.8f;
 	/** Waiting for a door: stand this far beside the spot in front of it, so whoever opens it has room. */
 	constexpr double WaitAside = 110.0;
 
@@ -152,7 +152,7 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			}
 			return;
 		case EDCPlanTaskType::Loot:
-			if (Crew->IsBusy() || StepTime < LootStepSeconds)
+			if (Crew->IsBusy() || StepTime < RunnerLootStepSeconds)
 			{
 				return;
 			}
@@ -365,7 +365,7 @@ void UDCPlanRunnerComponent::StartExecute()
 		return;
 	case EDCPlanTaskType::Loot:
 		// The first handful right away.
-		StepTime = LootStepSeconds;
+		StepTime = RunnerLootStepSeconds;
 		LootSkip.Reset();
 		return;
 	case EDCPlanTaskType::WaitFor:

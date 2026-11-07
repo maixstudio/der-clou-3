@@ -34,9 +34,38 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::HitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(0.f, 18.f)
+		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Top).Padding(0.f, 8.f)
 		[
 			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 10.f)
+			[
+				SNew(SBorder)
+				.BorderImage(Brush())
+				.BorderBackgroundColor(PanelColor)
+				.Padding(FMargin(12.f, 4.f))
+				[
+					SNew(STextBlock)
+					.Font(Font(12, true))
+					.Text_Lambda([WeakThis]()
+					{
+						TArray<FString> Parts;
+						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
+						{
+							Parts.Add(FString::Printf(TEXT("%s: Misstrauen %d %%"), *It->GetInteractableName().ToString(), FMath::RoundToInt(It->GetSuspicion())));
+						}
+						return FText::FromString(FString::Join(Parts, TEXT("  ·  ")));
+					})
+					.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
+					{
+						float Highest = 0.f;
+						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
+						{
+							Highest = FMath::Max(Highest, It->GetSuspicion());
+						}
+						return Highest >= 67.f ? FLinearColor(1.f, 0.35f, 0.25f) : Highest >= 34.f ? FLinearColor(1.f, 0.8f, 0.3f) : TextColor;
+					})
+				]
+			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 			[
 				SNew(SBorder)
@@ -84,35 +113,6 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						return FSlateColor(Noise ? UDCNoiseSubsystem::ColorFor(Noise->GetLastLoudNoise().Range) : FLinearColor::White);
 					})
 					.Font(Font(13, true))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 6.f, 0.f, 0.f)
-			[
-				SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor(PanelColor)
-				.Padding(FMargin(12.f, 4.f))
-				[
-					SNew(STextBlock)
-					.Font(Font(12, true))
-					.Text_Lambda([WeakThis]()
-					{
-						TArray<FString> Parts;
-						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
-						{
-							Parts.Add(FString::Printf(TEXT("%s: Misstrauen %d %%"), *It->GetInteractableName().ToString(), FMath::RoundToInt(It->GetSuspicion())));
-						}
-						return FText::FromString(FString::Join(Parts, TEXT("  ·  ")));
-					})
-					.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
-					{
-						float Highest = 0.f;
-						for (TActorIterator<ADCNoiseListener> It(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr); It; ++It)
-						{
-							Highest = FMath::Max(Highest, It->GetSuspicion());
-						}
-						return Highest >= 67.f ? FLinearColor(1.f, 0.35f, 0.25f) : Highest >= 34.f ? FLinearColor(1.f, 0.8f, 0.3f) : TextColor;
-					})
 				]
 			]
 		];

@@ -1,5 +1,6 @@
 #include "DCTimelinePanel.h"
 
+#include "DCFrame.h"
 #include "DCCrewCharacter.h"
 #include "DCHeistState.h"
 #include "DCInventoryComponent.h"
@@ -25,11 +26,13 @@ namespace
 	constexpr float ListWidth = 440.f;
 	constexpr float ListHeight = 160.f;
 	constexpr float NameWidth = 64.f;
-	constexpr float TrackWidth = 640.f;
+	/** The timeline gets whatever width is left; at least this much. */
+	constexpr float MinTrackWidth = 640.f;
 	/** The bar keeps this width in every mode, so nothing jumps. */
-	constexpr float PanelWidth = ListWidth + 14.f + NameWidth + TrackWidth + 28.f;
+	/** Everything of the bar that is not the timeline itself. */
+	constexpr float PanelFixedWidth = ListWidth + 14.f + NameWidth + 28.f;
 	/** Messages appear this far above the bottom edge, just over the bar. */
-	constexpr float ToastBottom = 318.f;
+	constexpr float ToastBottom = UDCFrame::BottomHeight + 12.f;
 	constexpr float RulerHeight = 16.f;
 	constexpr float RowHeight = 24.f;
 	constexpr float RowPitch = 30.f;
@@ -194,7 +197,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.f)
 		[
 			SNew(SBox)
-			.WidthOverride(PanelWidth)
+			.WidthOverride_Lambda([WeakThis]() { return FOptionalSize(PanelFixedWidth + (WeakThis.IsValid() ? WeakThis->TrackWidthNow : MinTrackWidth)); })
 			[
 				MakeSwallowZone(
 					// Orange frame while trying things out: clicks act at once there.
@@ -347,13 +350,13 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 									SNew(SVerticalBox)
 									+ SVerticalBox::Slot().AutoHeight()
 									[
-										SAssignNew(Tracks, SBox).WidthOverride(NameWidth + TrackWidth)
+										SAssignNew(Tracks, SBox).WidthOverride_Lambda([WeakThis]() { return FOptionalSize(NameWidth + (WeakThis.IsValid() ? WeakThis->TrackWidthNow : MinTrackWidth)); })
 									]
 									// What everyone does at the preview time.
 									+ SVerticalBox::Slot().AutoHeight().Padding(NameWidth, 6.f, 0.f, 0.f)
 									[
 										SNew(SBox)
-										.WidthOverride(TrackWidth)
+										.WidthOverride_Lambda([WeakThis]() { return FOptionalSize(WeakThis.IsValid() ? WeakThis->TrackWidthNow : MinTrackWidth); })
 										[
 											SNew(STextBlock)
 											.Font(Font(12, true))
@@ -440,6 +443,12 @@ void UDCTimelinePanel::ReleaseSlateResources(bool bReleaseChildren)
 void UDCTimelinePanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	const float Track = FMath::Max(MinTrackWidth, static_cast<float>(MyGeometry.GetLocalSize().X) - 24.f - PanelFixedWidth);
+	if (FMath::Abs(Track - TrackWidthNow) > 1.f)
+	{
+		TrackWidthNow = Track;
+		Signature.Reset();
+	}
 	const FString Now = MakeSignature();
 	if (ListRows.IsValid() && Now != Signature)
 	{
@@ -493,7 +502,7 @@ float UDCTimelinePanel::GetScale() const
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
 	const float Duration = State ? State->GetSchedule().Duration : 0.f;
 	const float Visible = FMath::Max(MinVisibleSeconds, FMath::CeilToFloat((Duration + 5.f) / 10.f) * 10.f);
-	return TrackWidth / Visible;
+	return TrackWidthNow / Visible;
 }
 
 void UDCTimelinePanel::RebuildRows()
@@ -863,6 +872,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 	using namespace DCItemWidgets;
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
 	const float Scale = GetScale();
+	const float TrackWidth = TrackWidthNow;
 	const float VisibleSeconds = TrackWidth / Scale;
 	const bool bPlaying = State && State->IsPlaying();
 	const float Height = RulerHeight + Schedule.Crews.Num() * RowPitch;
@@ -1066,7 +1076,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 
 	// Preview time (planning, yellow) and playback time (white).
 	Canvas->AddSlot()
-		.Position(TAttribute<FVector2D>::CreateLambda([WeakThis, Scale]()
+		.Position(TAttribute<FVector2D>::CreateLambda([WeakThis, Scale, TrackWidth]()
 		{
 			const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
 			const float Time = Heist ? (Heist->IsPlaying() ? Heist->GetPlaybackTime() : Heist->GetPreviewTime()) : 0.f;

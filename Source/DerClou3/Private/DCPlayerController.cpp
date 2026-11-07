@@ -8,6 +8,7 @@
 #include "DCCameraPawn.h"
 #include "DCCrewBar.h"
 #include "DCWaitDialog.h"
+#include "DCFrame.h"
 #include "Kismet/GameplayStatics.h"
 #include "DCContainerPanel.h"
 #include "DCCrewCharacter.h"
@@ -57,6 +58,12 @@ void ADCPlayerController::BeginPlay()
 	Params.Owner = this;
 	Marker = GetWorld()->SpawnActor<ADCClickMarker>(FVector::ZeroVector, FRotator::ZeroRotator, Params);
 
+	// The frame around the scene comes first, everything else sits in or on it.
+	Frame = CreateWidget<UDCFrame>(this, UDCFrame::StaticClass());
+	if (Frame)
+	{
+		Frame->AddToViewport(0);
+	}
 	RadialMenu = CreateWidget<UDCRadialMenu>(this, UDCRadialMenu::StaticClass());
 	if (RadialMenu)
 	{
@@ -75,6 +82,7 @@ void ADCPlayerController::BeginPlay()
 	{
 		InventoryPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		InventoryPanel->AddToViewport(6);
+		InventoryPanel->Show();
 	}
 	NoiseHud = CreateWidget<UDCNoiseHud>(this, UDCNoiseHud::StaticClass());
 	if (NoiseHud)
@@ -239,11 +247,6 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (!bMenuOpen && InfoPanel && InfoPanel->IsShown() && WasInputKeyJustPressed(EKeys::Escape))
 	{
 		InfoPanel->Hide();
-		return;
-	}
-	if (!bMenuOpen && InventoryPanel && InventoryPanel->IsShown() && WasInputKeyJustPressed(EKeys::Escape))
-	{
-		InventoryPanel->Hide();
 		return;
 	}
 	// Clicks on the menu buttons are handled by the UI and never arrive here.

@@ -15,6 +15,7 @@ class UDCInventoryPanel;
 class UDCNoiseHud;
 class UDCTimelinePanel;
 class UDCCrewBar;
+class UDCFrame;
 class UDCWaitDialog;
 struct FDCWaitChoice;
 struct FDCPlanTask;
@@ -153,6 +154,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCCrewBar> CrewBar;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCFrame> Frame;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCWaitDialog> WaitDialog;

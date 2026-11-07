@@ -1,5 +1,6 @@
 #include "DCInfoPanel.h"
 
+#include "DCFrame.h"
 #include "DCInteractable.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -37,7 +38,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(20.f)
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(0.f, UDCFrame::TopHeight + 12.f, UDCFrame::RightWidth + 12.f, 0.f))
 		[
 			SNew(SBox)
 			.MinDesiredWidth(340.f)

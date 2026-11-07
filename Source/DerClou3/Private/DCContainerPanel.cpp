@@ -1,5 +1,6 @@
 #include "DCContainerPanel.h"
 
+#include "DCFrame.h"
 #include "DCCrewCharacter.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
@@ -73,7 +74,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(20.f)
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(0.f, UDCFrame::TopHeight + 12.f, UDCFrame::RightWidth + 12.f, 0.f))
 		[
 			SNew(SBox)
 			.WidthOverride(ContainerWidth)

@@ -1,5 +1,6 @@
 #include "DCCrewBar.h"
 
+#include "DCFrame.h"
 #include "DCCrewCharacter.h"
 #include "DCHeistState.h"
 #include "DCItemWidgets.h"
@@ -48,7 +49,7 @@ TSharedRef<SWidget> UDCCrewBar::RebuildWidget()
 	Super::RebuildWidget();
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(12.f, 12.f))
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin((UDCFrame::LeftWidth - CardWidth - 4.f) * 0.5f, UDCFrame::TopHeight + 10.f))
 		[
 			SAssignNew(Cards, SVerticalBox)
 		];
@@ -146,7 +147,7 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 				.BorderImage(Brush())
 				.Padding(FMargin(2.f))
 				.Cursor(EMouseCursor::Hand)
-				.ToolTipText(FText::Format(LOCTEXT("CardTip", "{0} auswählen und die Kamera hinbewegen (Taste {1})"), Member->GetCrewName(), FText::AsNumber(Number)))
+				.ToolTipText(FText::Format(LOCTEXT("CardTip", "{0} auswählen (Taste {1}): Plan unten, Profil rechts, die Kamera fährt hin"), Member->GetCrewName(), FText::AsNumber(Number)))
 				.BorderBackgroundColor_Lambda([IsSelected, Color]() -> FSlateColor { return IsSelected() ? Color : FLinearColor(0.f, 0.f, 0.f, 0.f); })
 				.OnMouseButtonDown_Lambda([WeakThis, WeakMember](const FGeometry&, const FPointerEvent&)
 				{
@@ -194,25 +195,6 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 								[
 									SNew(STextBlock).Text(Member->GetCrewName()).Font(Font(14, true))
 									.ColorAndOpacity_Lambda([IsSelected, Color]() -> FSlateColor { return IsSelected() ? FLinearColor::White : Color; })
-								]
-								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-								[
-									SNew(SButton)
-									.IsFocusable(false)
-									.ContentPadding(FMargin(5.f, 0.f))
-									.ToolTipText(LOCTEXT("ProfileTip", "Profil: Fähigkeiten und Inventar (I)"))
-									.OnClicked_Lambda([WeakThis, WeakMember]()
-									{
-										ADCPlayerController* Controller = BarController(WeakThis.Get());
-										if (Controller && WeakMember.IsValid())
-										{
-											Controller->OpenProfile(WeakMember.Get());
-										}
-										return FReply::Handled();
-									})
-									[
-										SNew(STextBlock).Text(LOCTEXT("Profile", "Profil")).Font(Font(11, true))
-									]
 								]
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)

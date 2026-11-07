@@ -1,6 +1,6 @@
 #include "DCInventoryPanel.h"
 
-#include "DCCrewBar.h"
+#include "DCFrame.h"
 
 #include "DCCrewCharacter.h"
 #include "DCInventoryComponent.h"
@@ -78,7 +78,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 	// The button to open it sits in the timeline.
 	Root = SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(UDCCrewBar::Width + 8.f, 12.f, 20.f, 20.f))
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(0.f, UDCFrame::TopHeight + 8.f, (UDCFrame::RightWidth - InventoryWidth) * 0.5f, 0.f))
 		[
 			SNew(SBox)
 			.WidthOverride(InventoryWidth)
@@ -106,23 +106,6 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 								})
 								.Font(Font(15, true))
 								.ColorAndOpacity(TitleColor)
-							]
-							+ SHorizontalBox::Slot().AutoWidth()
-							[
-								SNew(SButton)
-								.IsFocusable(false)
-								.ToolTipText(LOCTEXT("CloseTip", "Schließen (I)"))
-								.OnClicked_Lambda([WeakThis]()
-								{
-									if (WeakThis.IsValid())
-									{
-										WeakThis->Hide();
-									}
-									return FReply::Handled();
-								})
-								[
-									SNew(STextBlock).Text(FText::FromString(TEXT("×"))).Font(Font(13, true))
-								]
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 10.f)
@@ -223,7 +206,8 @@ void UDCInventoryPanel::SetCrew(ADCCrewCharacter* InCrew)
 
 void UDCInventoryPanel::Toggle()
 {
-	bShown ? Hide() : Show();
+	// Docked in the frame: it always shows the selected crew member.
+	Show();
 }
 
 void UDCInventoryPanel::Show()
@@ -234,7 +218,7 @@ void UDCInventoryPanel::Show()
 
 void UDCInventoryPanel::Hide()
 {
-	bShown = false;
+	// Docked in the frame: stays.
 }
 
 void UDCInventoryPanel::ShowMessage(const FText& Text)

@@ -139,6 +139,20 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     „↑ früher / ↓ später / × löschen“ auf. Abstimmung in Cyan (`CoordinationColor`), Schrift ≥ 11–12.
   - Rückmeldungen als Meldung über der Leiste (`ShowToast`): „Vic, Schritt 3: …“, rot „Geht nicht: …“.
   - Status oben Mitte: „Nachbar: Misstrauen 0 %“; im Raum steht beim Nachbarn nur noch der Name.
+- **Rahmen um die Szene (Schritt 9):** `UDCGameViewportClient` (in DefaultEngine.ini als
+  `GameViewportClientClassName`) zeichnet die 3D-Szene nur in ein Teilrechteck (`ULocalPlayer::Origin/
+  Size`, eigenes `LayoutPlayers`). `UDCFrame` (Z 0) füllt die Ränder fest und fängt dort Klicks ab:
+  oben 44 (Modus „Planung/Plan läuft/Ausprobieren“ links, Status Mitte), links 292 (Profilkarten),
+  rechts 452 (Profil & Inventar der gewählten Figur, immer sichtbar, ohne Schließen-Knopf), unten 330
+  (Planungsleiste über die volle Breite, Zeitleiste wächst mit). Linie um die Szene in der Modusfarbe
+  (bronze Planung, grün läuft, orange Ausprobieren). Info- und Durchsuchen-Fenster oben rechts in der
+  Szene neben dem Profil, Meldungen und Dialoge in der Szene. Größen: `UDCFrame::TopHeight` usw.
+- **Im Gespräch (noch nicht gebaut): zwei Phasen.** Phase 1 Planung (grob: Wege, Schlösser, Wache,
+  Warten/Zeichen; Inhalte von Behältern unbekannt, „Ausräumen“ wird „Durchsuchen“). Phase 2 Einbruch:
+  der Plan läuft, bei Funden hält das Spiel an und der Spieler sortiert selbst ein (einstecken,
+  liegen lassen, umpacken – kostet Spielzeit), bei Störungen hält nur die betroffene Figur an und
+  fragt. Offene Fragen an den User: anhalten oder Zeit läuft weiter, Einbruch einmalig oder
+  wiederholbar, Figur fragt bei Störung oder macht selbst weiter.
   - Texte über Figuren/Stecknadeln laufen durch `DCVisuals::PlainText` (TextRender-Schrift kennt kein
     „ “ – → …).
   - Selbsttest `-DCSelfTest=Signals`: alles über den Warten-Dialog – Rosa knackt den Tresor und gibt
@@ -159,7 +173,8 @@ Inventar und Durchsuchen per Maus (Drag & Drop wurde nur im Code-Selbsttest gepr
 Lärm-Balance (wie schnell der Nachbar misstrauisch wird), Fähigkeiten-Balance und Tooltips per Maus,
 Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüft), ob die neue Ablaufliste
 und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Regel passt, Warten-Dialog,
-Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß).
+Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
+Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
@@ -168,6 +183,8 @@ Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem U
 - NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
   100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock.
 - Slate-Buttons mit `IsFocusable(false)`, sonst kommen Tastatureingaben danach nicht mehr im Spiel an.
+- Unity-Build: neue .cpp-Dateien mischen die Gruppen neu – Konstanten in anonymen Namespaces müssen
+  projektweit eindeutig heißen (z. B. `SimItemReach`, `RunnerLootStepSeconds`).
 - Grundformen der Engine nutzen `DefaultMaterial`; Farbe nur über `BasicShapeMaterial` (`DCVisuals::Paint`).
 - Selbsttest: Haken `bDebugWalkThroughDoorOnStart` an der Figur spielt „Schloss knacken → Durchgehen“
   beim Spielstart ab; Ablauf steht im Log (`LogDerClou`, Phasenwechsel).

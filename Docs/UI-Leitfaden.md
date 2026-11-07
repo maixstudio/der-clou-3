@@ -17,6 +17,11 @@ nur zentral in `DCItemWidgets.h/.cpp` anlegen (InfoPanel, RadialMenu, NoiseHud n
 
 ## 2. Bildschirmzonen
 
+**Umgesetzt (Stand 2026-11-07): fester Rahmen.** Die 3D-Szene wird nur innerhalb des Rahmens gezeichnet
+(`UDCGameViewportClient` + `UDCFrame`, Größen als Konstanten in `DCFrame.h`): oben Status (44), links
+Profilkarten (292), rechts Profil & Inventar (452, immer sichtbar), unten Planungsleiste (330, volle Breite).
+Nur Dialoge, Meldungen, Radialmenü, Info und Durchsuchen liegen auf der Szene.
+
 ```
 +------------------------------------------------------------------------------+
 | [1 Vic   ]                 [ Status: Alarm · Lärm · Misstrauen ]  [ Kontext ] |

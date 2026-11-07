@@ -24,8 +24,8 @@ namespace
 	constexpr float SwingSeconds = 0.6f;
 	constexpr float OpenSeconds = 0.4f;
 	constexpr float TakeSeconds = 0.6f;
-	constexpr float LootStepSeconds = 0.8f;
-	constexpr double ItemReach = 40.0;
+	constexpr float SimLootStepSeconds = 0.8f;
+	constexpr double SimItemReach = 40.0;
 	/** Without a nav path (e.g. behind a closed door) the way is guessed as this much longer than straight. */
 	constexpr double DetourFactor = 1.4;
 
@@ -789,7 +789,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				}
 				UpdateSpeed(Cursor);
 				const int32 Steps = Opened.Num() + Taken.Num() + NoRoom.Num();
-				Duration = 0.3f + LootStepSeconds * Steps;
+				Duration = 0.3f + SimLootStepSeconds * Steps;
 				Out.Detail = Steps == 0 ? LOCTEXT("LootNothing", "nichts Erreichbares zu holen")
 					: FText::Format(LOCTEXT("LootSteps", "ca. {0} s · {1} Handgriffe"), FText::AsNumber(FMath::RoundToInt(Duration)), FText::AsNumber(Steps));
 				if (!TakenNames.IsEmpty())
@@ -964,7 +964,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			{
 				FVector Away = (Cursor.Location - Pickup->GetActorLocation()).GetSafeNormal2D();
 				Away = Away.IsNearlyZero() ? FVector::ForwardVector : Away;
-				Spot = Pickup->GetActorLocation() + Away * (Pickup->GetFootprintRadius() + ItemReach);
+				Spot = Pickup->GetActorLocation() + Away * (Pickup->GetFootprintRadius() + SimItemReach);
 				Out.bHasLocation = true;
 			}
 			break;
