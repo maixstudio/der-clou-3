@@ -33,9 +33,9 @@ void SDCLoadingScreen::Construct(const FArguments& InArgs)
 	using namespace DCItemWidgets;
 	State = InArgs._State.IsValid() ? InArgs._State : MakeShared<FDCLoadingState>();
 	TSharedPtr<FDCLoadingState> Shown = State;
-	FSlateFontInfo TitleFont = Font(16, true);
-	TitleFont.LetterSpacing = 420;
-	FSlateFontInfo KindFont = Font(13, true);
+	FSlateFontInfo TitleFont = HeadFont(22);
+	TitleFont.LetterSpacing = 360;
+	FSlateFontInfo KindFont = HeadFont(16);
 	KindFont.LetterSpacing = 200;
 
 	ChildSlot
@@ -71,9 +71,9 @@ void SDCLoadingScreen::Construct(const FArguments& InArgs)
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 22.f)
 					[
 						SNew(STextBlock)
-						.Font(Font(36, true))
+						.Font(HeadFont(52))
 						.ColorAndOpacity(TextColor)
-						.Text_Lambda([Shown]() { return Shown->Title; })
+						.Text_Lambda([Shown]() { return Shown->Title.ToUpper(); })
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)
 					[
@@ -87,7 +87,6 @@ void SDCLoadingScreen::Construct(const FArguments& InArgs)
 						SNew(SBox)
 						.WidthOverride(520.f)
 						.HeightOverride(4.f)
-						.HAlign(HAlign_Left)
 						[
 							SNew(SProgressBar)
 							.Style(&LoadingBarStyle())

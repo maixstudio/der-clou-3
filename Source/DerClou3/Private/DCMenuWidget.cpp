@@ -33,43 +33,17 @@ namespace
 	const FLinearColor MenuDisabledText(0.42f, 0.44f, 0.48f);
 	const FLinearColor MenuRowSelectedColor(0.05f, 0.045f, 0.028f);
 
-	/** Big menu entries: no box, a light wash under the mouse. */
-	const FButtonStyle& MenuFlatButtonStyle()
-	{
-		static const FButtonStyle Style = FButtonStyle()
-			.SetNormal(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.f)))
-			.SetHovered(FSlateColorBrush(FLinearColor(1.f, 1.f, 1.f, 0.07f)))
-			.SetPressed(FSlateColorBrush(FLinearColor(1.f, 1.f, 1.f, 0.13f)))
-			.SetDisabled(FSlateColorBrush(FLinearColor(0.f, 0.f, 0.f, 0.f)))
-			.SetNormalPadding(FMargin(0.f))
-			.SetPressedPadding(FMargin(0.f));
-		return Style;
-	}
-
-	/** Rows of a list (heists, saves): a surface, lighter under the mouse. */
-	const FButtonStyle& MenuRowButtonStyle()
-	{
-		static const FButtonStyle Style = FButtonStyle()
-			.SetNormal(FSlateColorBrush(ZoneColor))
-			.SetHovered(FSlateColorBrush(FLinearColor(0.11f, 0.115f, 0.14f)))
-			.SetPressed(FSlateColorBrush(FLinearColor(0.14f, 0.15f, 0.19f)))
-			.SetDisabled(FSlateColorBrush(ZoneColor))
-			.SetNormalPadding(FMargin(0.f))
-			.SetPressedPadding(FMargin(0.f));
-		return Style;
-	}
-
 	/** A narrow bar in the focus colour on the left of the chosen entry (transparent otherwise). */
 	TSharedRef<SWidget> MenuAccent(bool bOn)
 	{
 		return SNew(SBox)
 			.WidthOverride(4.f)
 			[
-				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bOn ? TitleColor : FLinearColor::Transparent)
+				SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(bOn ? TitleColor : FLinearColor::Transparent)
 			];
 	}
 
-	/** An entry of the menu column: large label, optional line below. */
+	/** An entry of the menu column: large label, optional line below; no box of its own (the column is the surface). */
 	TSharedRef<SWidget> MenuColumnButton(const FText& Label, const FText& Sub, TFunction<void()> OnClick, bool bEnabled, bool bPrimary, bool bActive,
 		const FText& Tip = FText::GetEmpty())
 	{
@@ -77,7 +51,7 @@ namespace
 		const FLinearColor LabelColor = bFilled ? DarkTextColor : !bEnabled ? MenuDisabledText : bActive ? TitleColor : TextColor;
 		const FLinearColor SubColor = bFilled ? FLinearColor(0.22f, 0.18f, 0.06f) : MutedColor;
 		return SNew(SButton)
-			.ButtonStyle(bFilled ? &PrimaryButtonStyle() : &MenuFlatButtonStyle())
+			.ButtonStyle(bFilled ? &PrimaryButtonStyle() : &FlatButtonStyle())
 			.IsFocusable(false)
 			.IsEnabled(bEnabled)
 			.ToolTipText(Tip)
@@ -86,14 +60,14 @@ namespace
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().AutoWidth()[MenuAccent(bActive && !bFilled)]
-				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(18.f, 10.f, 16.f, 10.f))
+				+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(18.f, 9.f, 16.f, 9.f))
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
-						SNew(STextBlock).Text(Label).Font(Font(18, true)).ColorAndOpacity(LabelColor)
+						SNew(STextBlock).Text(Label.ToUpper()).Font(HeadFont(22)).ColorAndOpacity(LabelColor)
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)
 					[
 						SNew(STextBlock)
 						.Visibility(Sub.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
@@ -112,12 +86,14 @@ namespace
 		Danger
 	};
 
-	/** A button on a page (Zurück, Laden, a choice in the options). */
+	/** A button on a page (Zurück, Laden, Löschen) in one of the three styles of the UI guide. */
 	TSharedRef<SWidget> MenuPageButton(const FText& Label, TFunction<void()> OnClick, EMenuButtonKind Kind = EMenuButtonKind::Normal, bool bEnabled = true,
 		const FText& Tip = FText::GetEmpty(), int32 Size = 14)
 	{
-		const FLinearColor Color = !bEnabled ? MenuDisabledText : Kind == EMenuButtonKind::Primary ? DarkTextColor : Kind == EMenuButtonKind::Danger ? MessageColor : TextColor;
-		TSharedRef<SButton> Button = SNew(SButton)
+		const bool bFilled = Kind == EMenuButtonKind::Primary && bEnabled;
+		const FLinearColor Color = !bEnabled ? MenuDisabledText : bFilled ? DarkTextColor : Kind == EMenuButtonKind::Danger ? MessageColor : TextColor;
+		return SNew(SButton)
+			.ButtonStyle(bFilled ? &PrimaryButtonStyle() : Kind == EMenuButtonKind::Danger ? &DangerButtonStyle() : &NormalButtonStyle())
 			.IsFocusable(false)
 			.IsEnabled(bEnabled)
 			.ToolTipText(Tip)
@@ -126,33 +102,12 @@ namespace
 			[
 				SNew(STextBlock).Text(Label).Font(Font(Size, true)).ColorAndOpacity(Color)
 			];
-		if (Kind == EMenuButtonKind::Primary && bEnabled)
-		{
-			Button->SetButtonStyle(&PrimaryButtonStyle());
-		}
-		return Button;
 	}
 
-	/** Several buttons, the chosen one filled. */
+	/** Several segments, the chosen one filled (the shared switch). */
 	TSharedRef<SWidget> MenuChoice(const TArray<FText>& Labels, int32 Chosen, TFunction<void(int32)> OnChoose)
 	{
-		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
-		for (int32 Index = 0; Index < Labels.Num(); ++Index)
-		{
-			Row->AddSlot().AutoWidth().Padding(0.f, 0.f, 4.f, 0.f)
-			[
-				MenuPageButton(Labels[Index], [OnChoose, Index]() { OnChoose(Index); }, Index == Chosen ? EMenuButtonKind::Primary : EMenuButtonKind::Normal, true,
-					FText::GetEmpty(), 13)
-			];
-		}
-		return Row;
-	}
-
-	TSharedRef<SWidget> MenuSectionTitle(const FText& Text)
-	{
-		FSlateFontInfo SectionFont = Font(12, true);
-		SectionFont.LetterSpacing = 160;
-		return SNew(STextBlock).Text(Text.ToUpper()).Font(SectionFont).ColorAndOpacity(MutedColor);
+		return MakeSegments(Labels, TArray<FText>(), [Chosen](int32 Index) { return Index == Chosen; }, OnChoose);
 	}
 
 	/** Label on the left, the choice next to it, one sentence below. */
@@ -179,41 +134,36 @@ namespace
 			];
 	}
 
-	/** A row of a list: accent, title, line below. */
+	/** A row of a list (heists, saves): faint outline, the chosen one with the focus outline. */
 	TSharedRef<SWidget> MenuListRow(const FText& Title, const FText& Line, const FText& Extra, bool bSelected, TFunction<void()> OnClick)
 	{
-		return SNew(SButton)
-			.ButtonStyle(&MenuRowButtonStyle())
-			.IsFocusable(false)
-			.ContentPadding(FMargin(0.f))
-			.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
+		return SNew(SBorder)
+			.BorderImage(bSelected ? FocusFramedBrush() : SoftFramedBrush())
+			.BorderBackgroundColor(bSelected ? MenuRowSelectedColor : ZoneColor)
+			.Padding(0.f)
 			[
-				SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor(bSelected ? MenuRowSelectedColor : FLinearColor::Transparent)
-				.Padding(0.f)
+				SNew(SButton)
+				.ButtonStyle(&FlatButtonStyle())
+				.IsFocusable(false)
+				.ContentPadding(FMargin(14.f, 9.f))
+				.OnClicked_Lambda([OnClick]() { OnClick(); return FReply::Handled(); })
 				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[MenuAccent(bSelected)]
-					+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(14.f, 9.f))
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
 					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().AutoHeight()
-						[
-							SNew(STextBlock).Text(Title).Font(Font(15, true)).ColorAndOpacity(bSelected ? TitleColor : TextColor)
-						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
-						[
-							SNew(STextBlock).Text(Line).Font(Font(12)).ColorAndOpacity(MutedColor).AutoWrapText(true)
-						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 0.f)
-						[
-							SNew(STextBlock)
-							.Visibility(Extra.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
-							.Text(Extra)
-							.Font(Font(12))
-							.ColorAndOpacity(TextColor)
-						]
+						SNew(STextBlock).Text(Title).Font(Font(15, true)).ColorAndOpacity(bSelected ? TitleColor : TextColor)
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+					[
+						SNew(STextBlock).Text(Line).Font(Font(12)).ColorAndOpacity(MutedColor).AutoWrapText(true)
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 0.f)
+					[
+						SNew(STextBlock)
+						.Visibility(Extra.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible)
+						.Text(Extra)
+						.Font(Font(12))
+						.ColorAndOpacity(TextColor)
 					]
 				]
 			];
@@ -331,6 +281,10 @@ TSharedRef<SWidget> UDCMenuWidget::RebuildWidget()
 			[
 				SAssignNew(ColumnHost, SBox).WidthOverride(MenuColumnWidth)
 			]
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				MakeRule(false, true)
+			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(FMargin(40.f, 48.f))
 			[
 				SAssignNew(PageHost, SBox).WidthOverride(MenuPageWidth)
@@ -440,8 +394,8 @@ TSharedRef<SWidget> UDCMenuWidget::MakeColumn()
 			true, false, false, LOCTEXT("QuitGameTip", "Der Plan ist automatisch gespeichert")));
 	}
 
-	FSlateFontInfo TitleFont = Font(40, true);
-	TitleFont.LetterSpacing = 240;
+	FSlateFontInfo TitleFont = HeadFont(50);
+	TitleFont.LetterSpacing = 110;
 	return SNew(SBorder)
 		.BorderImage(Brush())
 		.BorderBackgroundColor(bInGame ? MenuColumnGameColor : MenuColumnColor)
@@ -496,14 +450,14 @@ TSharedRef<SWidget> UDCMenuWidget::MakePage()
 TSharedRef<SWidget> UDCMenuWidget::MakeWindow(const FText& Title, TSharedRef<SWidget> Body, TSharedRef<SWidget> Buttons)
 {
 	return SNew(SBorder)
-		.BorderImage(Brush())
+		.BorderImage(FramedBrush())
 		.BorderBackgroundColor(PanelColor)
 		.Padding(FMargin(28.f, 24.f))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 16.f)
 			[
-				SNew(STextBlock).Text(Title).Font(Font(20, true)).ColorAndOpacity(TextColor)
+				MakeTitle(Title, 22)
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -536,7 +490,7 @@ TSharedRef<SWidget> UDCMenuWidget::MakeHeistsPage()
 		if (Heist.bPractice && !bPracticeTitle)
 		{
 			bPracticeTitle = true;
-			List->AddSlot().AutoHeight().Padding(0.f, 14.f, 0.f, 6.f)[MenuSectionTitle(LOCTEXT("Practice", "Übung"))];
+			List->AddSlot().AutoHeight().Padding(0.f, 14.f, 0.f, 6.f)[MakeSectionTitle(LOCTEXT("Practice", "Übung"))];
 		}
 		const FDCSaveInfo* Auto = AutosaveOf(Heist.Id);
 		const FName Id = Heist.Id;
@@ -725,7 +679,7 @@ TSharedRef<SWidget> UDCMenuWidget::MakeOptionsPage()
 	};
 
 	TSharedRef<SVerticalBox> Body = SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)[MenuSectionTitle(LOCTEXT("Graphics", "Grafik"))]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)[MakeSectionTitle(LOCTEXT("Graphics", "Grafik"))]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			MenuOptionRow(LOCTEXT("Quality", "Qualität"),
@@ -755,7 +709,7 @@ TSharedRef<SWidget> UDCMenuWidget::MakeOptionsPage()
 				]
 				+ SHorizontalBox::Slot().AutoWidth()[MenuPageButton(LOCTEXT("Larger", "▶"), [StepSize]() { StepSize(1); }, EMenuButtonKind::Normal, SizeIndex + 1 < Sizes.Num())])
 		]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 16.f, 0.f, 4.f)[MenuSectionTitle(LOCTEXT("Controls", "Steuerung"))]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 16.f, 0.f, 4.f)[MakeSectionTitle(LOCTEXT("Controls", "Steuerung"))]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			MenuOptionRow(LOCTEXT("Camera", "Kameratempo"),
@@ -763,7 +717,7 @@ TSharedRef<SWidget> UDCMenuWidget::MakeOptionsPage()
 					[Edit](int32 Index) { Edit([Index](FDCOptionValues& Values) { Values.CameraSpeed = Index; }); }),
 				LOCTEXT("CameraSentence", "Wie schnell die Planungskamera mit WASD fährt und mit Q/E dreht."))
 		]
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 16.f, 0.f, 4.f)[MenuSectionTitle(LOCTEXT("Planning", "Planung"))]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 16.f, 0.f, 4.f)[MakeSectionTitle(LOCTEXT("Planning", "Planung"))]
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			MenuOptionRow(LOCTEXT("Ghost", "Geist"),
