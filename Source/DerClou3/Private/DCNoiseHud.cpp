@@ -92,6 +92,13 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 				.Padding(FMargin(14.f, 3.f))
 				[
 					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 7.f, 0.f)
+					[
+						MakeIcon(TEXT("ear"), 17.f, TAttribute<FSlateColor>::CreateLambda([WeakThis]() -> FSlateColor
+						{
+							return SuspicionColor(HighestSuspicion(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr), MutedColor);
+						}))
+					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 					SNew(STextBlock)
@@ -134,15 +141,23 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 					return Noise && Noise->IsAlarm() ? EVisibility::Visible : EVisibility::Collapsed;
 				})
 				[
-					SNew(STextBlock)
-					.Text_Lambda([GetNoise]()
-					{
-						const UDCNoiseSubsystem* Noise = GetNoise();
-						return Noise ? FText::Format(LOCTEXT("Alarm", "ALARM – {0}"), Noise->GetAlarmText()) : FText::GetEmpty();
-					})
-					.Font(HeadFont(22))
-					.TransformPolicy(ETextTransformPolicy::ToUpper)
-					.ColorAndOpacity(FLinearColor::White)
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+					[
+						MakeIcon(TEXT("siren"), 24.f, FLinearColor::White)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text_Lambda([GetNoise]()
+						{
+							const UDCNoiseSubsystem* Noise = GetNoise();
+							return Noise ? FText::Format(LOCTEXT("Alarm", "ALARM – {0}"), Noise->GetAlarmText()) : FText::GetEmpty();
+						})
+						.Font(HeadFont(22))
+						.TransformPolicy(ETextTransformPolicy::ToUpper)
+						.ColorAndOpacity(FLinearColor::White)
+					]
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 6.f, 0.f, 0.f)
@@ -153,6 +168,17 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 				.Padding(FMargin(14.f, 5.f))
 				.Visibility_Lambda([IsRecent]() { return IsRecent() ? EVisibility::Visible : EVisibility::Collapsed; })
 				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 7.f, 0.f)
+					[
+						MakeIcon(TEXT("volume-2"), 16.f, TAttribute<FSlateColor>::CreateLambda([GetNoise]() -> FSlateColor
+						{
+							const UDCNoiseSubsystem* Noise = GetNoise();
+							return FSlateColor(Noise ? UDCNoiseSubsystem::ColorFor(Noise->GetLastLoudNoise().Range) : FLinearColor::White);
+						}))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
 					SNew(STextBlock)
 					.Text_Lambda([GetNoise]()
 					{
@@ -170,6 +196,7 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						return FSlateColor(Noise ? UDCNoiseSubsystem::ColorFor(Noise->GetLastLoudNoise().Range) : FLinearColor::White);
 					})
 					.Font(Font(13, true))
+					]
 				]
 			]
 		];

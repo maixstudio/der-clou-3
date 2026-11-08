@@ -19,6 +19,8 @@ enum class EDCOptionTone : uint8
 struct FDCRadialOption
 {
 	FText Label;
+	/** Line icon before the label (file name in Content/Slate/Icons, see DCItemWidgets::Icon); None = no icon. */
+	FName Icon;
 	/** Second, smaller line: duration and chance ("ca. 3 s · Erfolg 75 %") or why it is not possible. */
 	FText Detail;
 	/** Shown when hovering (the long form of Detail). */
@@ -46,6 +48,8 @@ public:
 	const FText& GetTitle() const { return ShownTitle; }
 	/** Self-tests: picks the open menu's first entry whose label contains the text (as a click would). False if there is none. */
 	bool ChooseOption(const FString& LabelPart);
+	/** Self-tests: open in the middle of the screen, not at the cursor (which may be outside the window). */
+	bool bOpenAtCentreForTests = false;
 
 protected:
 	virtual TSharedRef<SWidget> RebuildWidget() override;

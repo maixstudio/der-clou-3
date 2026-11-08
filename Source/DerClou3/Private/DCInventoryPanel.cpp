@@ -476,9 +476,13 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSkills()
 		[
 			SNew(SHorizontalBox)
 			.ToolTipText(bUnused ? LOCTEXT("SkillUnused", "Wird noch nicht gebraucht.") : FText::GetEmpty())
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 5.f, 0.f)
+			[
+				MakeIcon(IconForSkill(Skill), 14.f, MutedColor)
+			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SBox).WidthOverride(94.f)
+				SNew(SBox).WidthOverride(88.f)
 				[
 					SNew(STextBlock).Text(DCSkills::Name(Skill)).Font(Font(12, !bUnused)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
 				]

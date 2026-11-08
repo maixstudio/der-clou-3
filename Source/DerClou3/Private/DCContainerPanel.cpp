@@ -124,6 +124,13 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 8.f, 0.f)
+							[
+								MakeIcon(TEXT("search"), 20.f, TAttribute<FSlateColor>::CreateLambda([WeakThis]()
+								{
+									return FSlateColor(WeakThis.IsValid() && WeakThis->IsFindMode() ? LootColor : BrassColor);
+								}))
+							]
 							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 							[
 								MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]()
@@ -142,7 +149,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 								SNew(SButton)
 								.IsFocusable(false)
 								.ButtonStyle(&NormalButtonStyle())
-								.ContentPadding(FMargin(7.f, 0.f))
+								.ContentPadding(FMargin(5.f, 4.f))
 								.Visibility_Lambda([WeakThis]() { return WeakThis.IsValid() && WeakThis->IsFindMode() ? EVisibility::Collapsed : EVisibility::Visible; })
 								.ToolTipText(LOCTEXT("CloseTip", "Schließen"))
 								.OnClicked_Lambda([WeakThis]()
@@ -154,7 +161,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 									return FReply::Handled();
 								})
 								[
-									SNew(STextBlock).Text(FText::FromString(TEXT("×"))).Font(Font(13, true))
+									MakeIcon(TEXT("x"), 14.f, FSlateColor::UseForeground())
 								]
 							]
 						]

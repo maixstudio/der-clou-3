@@ -20,6 +20,7 @@
 #include "DCInventoryPanel.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCItemWidgets.h"
 #include "DCNoise.h"
 #include "DCNoiseHud.h"
 #include "DCNoiseListener.h"
@@ -483,6 +484,7 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 	TWeakObjectPtr<ADCDoor> WeakDoor = Door;
 	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
 	Info.Label = LOCTEXT("Info", "Info");
+	Info.Icon = TEXT("info");
 	Info.OnSelected = [WeakPanel, WeakDoor]()
 	{
 		if (WeakPanel.IsValid() && WeakDoor.IsValid())
@@ -636,7 +638,11 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		LootCheck.bPossible = !bGoneInPlan;
 		LootCheck.Reason = GoneReason;
 		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, Task);
-		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "Inhalt unbekannt · Funde entscheidest du live");
+		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "Inhalt unbekannt · Funde live wählen");
+		if (!bGoneInPlan)
+		{
+			Option.Tooltip = LOCTEXT("LootTip", "Der Inhalt ist noch unbekannt. Beim Einbruch hält das Spiel bei jedem Fund an, dann wird entschieden, was mitkommt.");
+		}
 		Options.Add(Option);
 	}
 	if (Root->GetDef().bMovable)
@@ -657,6 +663,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
 		FDCRadialOption& Search = Options.AddDefaulted_GetRef();
 		Search.Label = LOCTEXT("Search", "Durchsuchen");
+		Search.Icon = TEXT("search");
 		Search.Detail = LOCTEXT("SearchDetail", "hingehen und selbst umpacken");
 		Search.OnSelected = [WeakPickup, WeakCrew]()
 		{
@@ -672,6 +679,7 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 	TWeakObjectPtr<ADCItemPickup> WeakInfo = Pickup;
 	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
 	Info.Label = LOCTEXT("Info", "Info");
+	Info.Icon = TEXT("info");
 	Info.OnSelected = [WeakPanel, WeakInfo]()
 	{
 		if (WeakPanel.IsValid() && WeakInfo.IsValid())
@@ -687,6 +695,7 @@ FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FD
 {
 	FDCRadialOption Option;
 	Option.Label = Label;
+	Option.Icon = DCItemWidgets::IconForTask(Task);
 	Option.Detail = Check.DescribeShort();
 	Option.Tooltip = Check.Describe();
 	Option.bEnabled = Check.bPossible;
@@ -1570,10 +1579,12 @@ bool ADCPlayerController::CheckPlanAfterEdit(const TArray<TPair<FName, FGuid>>& 
 			TArray<FDCRadialOption> Options;
 			FDCRadialOption& Back = Options.AddDefaulted_GetRef();
 			Back.Label = LOCTEXT("HelpMenuUndo", "Rückgängig");
+			Back.Icon = TEXT("undo-2");
 			Back.Detail = LOCTEXT("HelpMenuUndoDetail", "den Klick zurücknehmen");
 			Back.OnSelected = [WeakThis]() { if (WeakThis.IsValid()) { WeakThis->DismissPlanHelp(); WeakThis->UndoPlan(); } };
 			FDCRadialOption& Later = Options.AddDefaulted_GetRef();
 			Later.Label = LOCTEXT("HelpMenuLater", "Später");
+			Later.Icon = TEXT("x");
 			Later.Detail = LOCTEXT("HelpMenuLaterDetail", "oben steht weiter, was hängt");
 			Later.OnSelected = [WeakThis]() { if (WeakThis.IsValid()) { WeakThis->DismissPlanHelp(); } };
 			RadialMenu->Open(FText::Format(LOCTEXT("HelpMenuTitle", "Geht so nicht\n{0}"), Problem.ShortReason), MoveTemp(Options));
@@ -2355,6 +2366,8 @@ void ADCPlayerController::StartTimelineSelfTest()
 	{
 		UDCPlanSubsystem::Get(this)->SetMode(EDCPlanMode::Planning);
 		Select(CrewNamed(TEXT("Rosa")));
+		// So the screenshots show the menu (the cursor of a test run is anywhere).
+		RadialMenu->bOpenAtCentreForTests = true;
 		OpenPickupMenu(FindPickup(TEXT("safe")));
 		return true;
 	});
@@ -2379,6 +2392,7 @@ void ADCPlayerController::StartTimelineSelfTest()
 	SelfTestSteps.Add([this]()
 	{
 		RadialMenu->Close();
+		RadialMenu->bOpenAtCentreForTests = false;
 		return true;
 	});
 	SelfTestSteps.Add(Wait(0.3f));

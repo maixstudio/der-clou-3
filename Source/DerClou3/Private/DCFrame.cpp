@@ -54,13 +54,13 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 	TWeakObjectPtr<UDCFrame> WeakThis = this;
 	const auto LineColor = [WeakThis]() -> FSlateColor { return ModeColor(FrameMode(WeakThis.Get())); };
 	// Up / down one storey; greyed out at the top and bottom storey.
-	const auto FloorButton = [WeakThis](int32 Delta, const FText& Label, const FText& Tip) -> TSharedRef<SWidget>
+	const auto FloorButton = [WeakThis](int32 Delta, FName IconName, const FText& Tip) -> TSharedRef<SWidget>
 	{
 		return SNew(SButton)
 			.IsFocusable(false)
 			.ButtonStyle(&NormalButtonStyle())
 			.ToolTipText(Tip)
-			.ContentPadding(FMargin(9.f, 1.f))
+			.ContentPadding(FMargin(6.f, 4.f))
 			.IsEnabled_Lambda([WeakThis, Delta]()
 			{
 				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
@@ -75,7 +75,8 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Font(Font(14, true)).Text(Label)
+				// The button's foreground: dims at the top and bottom storey.
+				MakeIcon(IconName, 16.f, FSlateColor::UseForeground())
 			];
 	};
 
@@ -197,7 +198,7 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Font(Font(13, true)).Text(LOCTEXT("Menu", "Menü"))
+				MakeIconText(TEXT("menu"), LOCTEXT("Menu", "Menü"), Font(13, true), FSlateColor::UseForeground())
 			]
 		]
 		// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
@@ -209,6 +210,10 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
 				return Floors && Floors->HasSeveralFloors() ? EVisibility::Visible : EVisibility::Collapsed;
 			})
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
+			[
+				MakeIcon(TEXT("layers"), 18.f, MutedColor)
+			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
 			[
 				SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor).TransformPolicy(ETextTransformPolicy::ToUpper)
@@ -228,11 +233,11 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
 			[
-				FloorButton(1, LOCTEXT("FloorUp", "↑"), LOCTEXT("FloorUpTip", "Eine Ebene höher zeigen (Bild ↑)"))
+				FloorButton(1, TEXT("chevron-up"), LOCTEXT("FloorUpTip", "Eine Ebene höher zeigen (Bild ↑)"))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
 			[
-				FloorButton(-1, LOCTEXT("FloorDown", "↓"), LOCTEXT("FloorDownTip", "Eine Ebene tiefer zeigen (Bild ↓)"))
+				FloorButton(-1, TEXT("chevron-down"), LOCTEXT("FloorDownTip", "Eine Ebene tiefer zeigen (Bild ↓)"))
 			]
 		];
 	return Root.ToSharedRef();

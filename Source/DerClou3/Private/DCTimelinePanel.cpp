@@ -9,6 +9,7 @@
 #include "DCPlan.h"
 #include "DCPlanRunner.h"
 #include "DCPlayerController.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -89,11 +90,37 @@ namespace
 		Coordination
 	};
 
+	/** The icon in front of the plan status: works out, hangs, runs, done. */
+	FName StatusIcon(const UDCTimelinePanel* Panel)
+	{
+		const UDCHeistStateSubsystem* State = Panel ? UDCHeistStateSubsystem::Get(Panel) : nullptr;
+		if (!State)
+		{
+			return NAME_None;
+		}
+		switch (GetPlanMode(Panel))
+		{
+		case EDCPlanMode::Planning:
+			if (!State->GetSchedule().FindProblems().IsEmpty())
+			{
+				return TEXT("triangle-exclamation-point");
+			}
+			return State->GetSchedule().Duration > 0.f ? FName(TEXT("circle-check")) : NAME_None;
+		case EDCPlanMode::Playing:
+			return State->IsPlaybackFinished() ? TEXT("circle-check") : TEXT("play");
+		default:
+			return NAME_None;
+		}
+	}
+
 	/** A flat button that calls the controller. */
 	TSharedRef<SWidget> PanelButton(TWeakObjectPtr<UDCTimelinePanel> Panel, const TAttribute<FText>& Label, const TAttribute<FText>& Tip,
-		TFunction<void(ADCPlayerController*)> OnClick, int32 FontSize = 12, const FMargin& Padding = FMargin(10.f, 3.f), EPanelButton Kind = EPanelButton::Normal)
+		TFunction<void(ADCPlayerController*)> OnClick, int32 FontSize = 12, const FMargin& Padding = FMargin(10.f, 3.f), EPanelButton Kind = EPanelButton::Normal,
+		const TAttribute<FName>& IconName = TAttribute<FName>())
 	{
 		using namespace DCItemWidgets;
+		const FLinearColor Ink = Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : Kind == EPanelButton::Coordination ? CoordinationColor : TextColor;
+		const float IconSize = IconSizeFor(FontSize);
 		TSharedRef<SButton> Button = SNew(SButton)
 			.IsFocusable(false)
 			.ToolTipText(Tip)
@@ -107,10 +134,26 @@ namespace
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock)
-				.Text(Label)
-				.Font(Font(FontSize, true))
-				.ColorAndOpacity(Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : Kind == EPanelButton::Coordination ? CoordinationColor : TextColor)
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(SBox)
+					.Padding(FMargin(0.f, 0.f, 6.f, 0.f))
+					.Visibility_Lambda([IconName]() { return Icon(IconName.Get()) ? EVisibility::Visible : EVisibility::Collapsed; })
+					[
+						SNew(SBox).WidthOverride(IconSize).HeightOverride(IconSize)
+						[
+							SNew(SImage).Image_Lambda([IconName]() { return Icon(IconName.Get()); }).ColorAndOpacity(Ink)
+						]
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(Label)
+					.Font(Font(FontSize, true))
+					.ColorAndOpacity(Ink)
+				]
 			];
 		Button->SetButtonStyle(Kind == EPanelButton::Primary ? &PrimaryButtonStyle() : Kind == EPanelButton::Danger ? &DangerButtonStyle() : &NormalButtonStyle());
 		return Button;
@@ -204,7 +247,34 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 						})
 					]
 				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(14.f, 7.f, 18.f, 7.f))
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(12.f, 0.f, 0.f, 0.f))
+				[
+					SNew(SBox).WidthOverride(18.f).HeightOverride(18.f)
+					[
+						SNew(SImage)
+						.Image_Lambda([WeakThis]()
+						{
+							const ADCPlayerController* Controller = GetController(WeakThis.Get());
+							bool bProblem = false;
+							if (Controller)
+							{
+								Controller->GetToast(bProblem);
+							}
+							return Icon(bProblem ? TEXT("triangle-exclamation-point") : TEXT("crosshair"));
+						})
+						.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
+						{
+							const ADCPlayerController* Controller = GetController(WeakThis.Get());
+							bool bProblem = false;
+							if (Controller)
+							{
+								Controller->GetToast(bProblem);
+							}
+							return bProblem ? MessageColor : TitleColor;
+						})
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(10.f, 7.f, 18.f, 7.f))
 				[
 					SNew(STextBlock)
 					.Font(Font(14, true))
@@ -233,6 +303,10 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 				.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 				[
 					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+					[
+						MakeIcon(TEXT("triangle-exclamation-point"), 18.f, MessageColor)
+					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 12.f, 0.f)
 					[
 						SNew(SBox)
@@ -252,7 +326,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
 					[
 						PanelButton(WeakThis, LOCTEXT("HelpUndo", "Rückgängig"), LOCTEXT("HelpUndoTip", "Die letzte Änderung zurücknehmen (Strg+Z)"),
-							[](ADCPlayerController* C) { C->DismissPlanHelp(); C->UndoPlan(); }, 12, FMargin(10.f, 3.f))
+							[](ADCPlayerController* C) { C->DismissPlanHelp(); C->UndoPlan(); }, 12, FMargin(10.f, 3.f), EPanelButton::Normal, FName(TEXT("undo-2")))
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
 					[
@@ -302,10 +376,30 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 											const FText Label = Controller ? Controller->DescribeDeleteStep() : FText::GetEmpty();
 											return Label.IsEmpty() ? LOCTEXT("DeleteNone", "Letzten Schritt löschen") : Label;
 										}), LOCTEXT("DeleteTip", "Löscht den gewählten Schritt der Figur, sonst ihren letzten (Entf)"),
-										[](ADCPlayerController* C) { C->DeleteStep(); }, 12, FMargin(10.f, 3.f))
+										[](ADCPlayerController* C) { C->DeleteStep(); }, 12, FMargin(10.f, 3.f), EPanelButton::Normal, FName(TEXT("trash")))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SBox)
+									.WidthOverride(17.f)
+									.HeightOverride(17.f)
+									.Visibility_Lambda([WeakThis]() { return Icon(StatusIcon(WeakThis.Get())) ? EVisibility::Visible : EVisibility::Collapsed; })
+									[
+										SNew(SImage)
+										.Image_Lambda([WeakThis]() { return Icon(StatusIcon(WeakThis.Get())); })
+										.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
+										{
+											const UDCHeistStateSubsystem* State = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+											if (State && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning && !State->GetSchedule().FindProblems().IsEmpty())
+											{
+												return StepBlockedTextColor;
+											}
+											return GetPlanMode(WeakThis.Get()) == EDCPlanMode::Playing && !(State && State->IsPlaybackFinished()) ? TextColor : OkColor;
+										})
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(7.f, 0.f, 0.f, 0.f)
 								[
 									SNew(STextBlock)
 									.Font(Font(14, true))
@@ -354,7 +448,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 									SNew(SBox).Visibility(PlanHangs(true))
 									[
 										PanelButton(WeakThis, LOCTEXT("Solve", "Lösen …"), LOCTEXT("SolveTip", "Den Schritt zeigen, der nicht geht, und sagen, warum"),
-											[](ADCPlayerController* C) { C->ShowPlanProblem(); }, 11, FMargin(8.f, 2.f))
+											[](ADCPlayerController* C) { C->ShowPlanProblem(); }, 11, FMargin(8.f, 2.f), EPanelButton::Normal, FName(TEXT("crosshair")))
 									]
 								]
 								+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
@@ -362,8 +456,8 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 								[
 									SNew(SBox).Visibility(PlanHangs(false))
 									[
-										PanelButton(WeakThis, LOCTEXT("Play", "▶  Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
-											[](ADCPlayerController* C) { C->StartPlayback(); }, 14, FMargin(22.f, 4.f), EPanelButton::Primary)
+										PanelButton(WeakThis, LOCTEXT("Play", "Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
+											[](ADCPlayerController* C) { C->StartPlayback(); }, 14, FMargin(20.f, 4.f), EPanelButton::Primary, FName(TEXT("play")))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -371,7 +465,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 									SNew(SBox).Visibility(PlanHangs(true))
 									[
 										PanelButton(WeakThis, LOCTEXT("PlayAnyway", "Trotzdem abspielen"), LOCTEXT("PlayAnywayTip", "Der Plan hängt irgendwo – trotzdem abspielen (Leertaste)"),
-											[](ADCPlayerController* C) { C->StartPlayback(); }, 12, FMargin(14.f, 3.f))
+											[](ADCPlayerController* C) { C->StartPlayback(); }, 12, FMargin(14.f, 3.f), EPanelButton::Normal, FName(TEXT("play")))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -386,14 +480,23 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 												return LOCTEXT("FindOpen", "Fund offen");
 											}
 											return Controller && Controller->IsPlaybackPaused() ? LOCTEXT("Resume", "Weiter") : LOCTEXT("Pause", "Pause");
-										}), LOCTEXT("PauseTip", "Anhalten / weiter (Leertaste)"), [](ADCPlayerController* C) { C->TogglePause(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
+										}), LOCTEXT("PauseTip", "Anhalten / weiter (Leertaste)"), [](ADCPlayerController* C) { C->TogglePause(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary,
+											TAttribute<FName>::CreateLambda([WeakThis]()
+											{
+												const ADCPlayerController* Controller = GetController(WeakThis.Get());
+												if (Controller && Controller->IsDecidingFind())
+												{
+													return FName(TEXT("search"));
+												}
+												return FName(Controller && Controller->IsPlaybackPaused() ? TEXT("play") : TEXT("pause"));
+											}))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
 								[
 									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Playing }))
 									[
-										PanelButton(WeakThis, LOCTEXT("Back", "Zurück zur Planung"), LOCTEXT("BackTip", "Raum zurücksetzen, der Plan bleibt"), [](ADCPlayerController* C) { C->ReturnToPlanning(); })
+										PanelButton(WeakThis, LOCTEXT("Back", "Zurück zur Planung"), LOCTEXT("BackTip", "Raum zurücksetzen, der Plan bleibt"), [](ADCPlayerController* C) { C->ReturnToPlanning(); }, 12, FMargin(10.f, 3.f), EPanelButton::Normal, FName(TEXT("undo-2")))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -667,7 +770,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			[
 				PanelButton(WeakThis, LOCTEXT("WaitDialogButton", "Warten …"),
 					FText::Format(LOCTEXT("WaitDialogTip", "{0} warten lassen: eine feste Zeit, bis eine andere Figur einen Schritt erledigt hat, oder bis sie fertig ist"), Crew->Name),
-					[](ADCPlayerController* C) { C->OpenWaitDialog(); }, 12, FMargin(10.f, 2.f))
+					[](ADCPlayerController* C) { C->OpenWaitDialog(); }, 12, FMargin(10.f, 2.f), EPanelButton::Normal, FName(TEXT("hourglass")))
 			]
 		]
 	];
@@ -698,7 +801,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				[
 					PanelButton(WeakThis, LOCTEXT("DropButton", "ablegen"),
 						FText::Format(LOCTEXT("DropTip", "Als nächsten Schritt: {0} auf den Boden legen (macht die Hand frei)"), Item->GetDisplayName()),
-						[ItemId](ADCPlayerController* C) { C->PlanDrop(ItemId); }, 11, FMargin(6.f, 0.f))
+						[ItemId](ADCPlayerController* C) { C->PlanDrop(ItemId); }, 11, FMargin(6.f, 0.f), EPanelButton::Normal, FName(TEXT("arrow-down-to-line")))
 				];
 			}
 			else
@@ -727,9 +830,12 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		return;
 	}
 
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	const TArray<FDCPlanTask>* PlanTasks = Plans ? &Plans->GetTasks(Focus) : nullptr;
 	for (const FDCScheduledTask& Task : Crew->Tasks)
 	{
 		const int32 Index = Task.Index;
+		const FName StepIcon = PlanTasks && PlanTasks->IsValidIndex(Index) ? IconForTask((*PlanTasks)[Index]) : NAME_None;
 		const bool bPicked = State->GetFocusCrew() == Focus && State->GetFocusStep() == Index;
 		const bool bCoordination = Task.Type == EDCPlanTaskType::WaitFor || Task.Type == EDCPlanTaskType::Signal;
 
@@ -830,6 +936,10 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, StepIcon.IsNone() ? 0.f : 6.f, 0.f)
+				[
+					MakeIcon(StepIcon, 14.f, Task.bAfterBlocked ? MutedColor : Task.bBlocked ? StepBlockedTextColor : bCoordination ? CoordinationColor : MutedColor)
+				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)

@@ -6,6 +6,8 @@
 
 class SWidget;
 class UDCItem;
+struct FDCPlanTask;
+enum class EDCSkill : uint8;
 
 /** What the item grids and headers in a window do when the player drags or clicks something. */
 struct FDCItemTreeContext
@@ -104,6 +106,23 @@ namespace DCItemWidgets
 	DERCLOU3_API TSharedRef<SWidget> MakeSectionTitle(const FText& Text);
 	/** A 1 px brass line (horizontal or vertical) to separate areas. */
 	DERCLOU3_API TSharedRef<SWidget> MakeRule(bool bHorizontal = true, bool bDim = true);
+
+	/**
+	 * A line icon (Lucide, white SVG in Content/Slate/Icons/<Name>.svg). Slate rasterises it crisp at the size it is
+	 * drawn; the image colour tints it. Null (and a warning in the log) if the file is missing.
+	 */
+	DERCLOU3_API const FSlateBrush* Icon(FName Name);
+	/** The icon in a square of Size units, tinted. Nothing if Name is None or the file is missing. */
+	DERCLOU3_API TSharedRef<SWidget> MakeIcon(FName Name, float Size, const TAttribute<FSlateColor>& Color = FSlateColor(FLinearColor::White));
+	/** Icon and text in a row, the icon matched to the font size and centred on the text. */
+	DERCLOU3_API TSharedRef<SWidget> MakeIconText(FName IconName, const TAttribute<FText>& Text, const FSlateFontInfo& InFont,
+		const TAttribute<FSlateColor>& Color, float Gap = 6.f);
+	/** Icon size that sits well next to text of this font size. */
+	DERCLOU3_API float IconSizeFor(int32 FontSize);
+	/** The icon of a plan step (footprints for walking, key for picking a lock …). */
+	DERCLOU3_API FName IconForTask(const FDCPlanTask& Task);
+	/** The icon of a skill (key for locks, vault for safes …). */
+	DERCLOU3_API FName IconForSkill(EDCSkill Skill);
 
 	/**
 	 * Takes dropped items; Check decides green or red while hovering, and the reason shows next to

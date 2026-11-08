@@ -22,7 +22,7 @@ namespace
 	const FVector2D ButtonSize(170.0, 44.0);
 	const FVector2D DetailButtonSize(260.0, 56.0);
 	const FLinearColor DetailColor(0.4851f, 0.5089f, 0.5457f); // #B8BCC3
-	const FVector2D TitleSize(220.0, 38.0);
+	const FVector2D TitleSize(220.0, 50.0);
 
 	FSlateFontInfo RadialFont(int32 Size, bool bBold)
 	{
@@ -89,8 +89,14 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 	bOpen = true;
 	Current = Options;
 
-	const FVector2D Centre = LastGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
+	const FVector2D Centre = bOpenAtCentreForTests ? FVector2D(LastGeometry.GetLocalSize()) * 0.5
+		: LastGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
 
+	// The title has the object on the first line and who plans on the second ("Wandtresor" / "plant: Rosa").
+	const FString FullTitle = Title.ToString();
+	FString TitleName = FullTitle;
+	FString TitleRest;
+	FullTitle.Split(TEXT("\n"), &TitleName, &TitleRest);
 	Canvas->AddSlot()
 		.Position(Centre)
 		.Size(TitleSize)
@@ -105,18 +111,32 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 			.Padding(FMargin(10.f, 2.f))
 			.Visibility(EVisibility::HitTestInvisible)
 			[
-				SNew(STextBlock).Text(Title).Font(DCItemWidgets::HeadFont(15)).ColorAndOpacity(DCItemWidgets::TextColor)
-				.TransformPolicy(ETextTransformPolicy::ToUpper).Justification(ETextJustify::Center)
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+				[
+					SNew(STextBlock).Text(FText::FromString(TitleName)).Font(DCItemWidgets::HeadFont(15)).ColorAndOpacity(DCItemWidgets::TextColor)
+					.TransformPolicy(ETextTransformPolicy::ToUpper).Justification(ETextJustify::Center)
+				]
+				// "plant: Rosa" smaller underneath.
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+				[
+					SNew(STextBlock).Text(FText::FromString(TitleRest)).Font(DCItemWidgets::Font(11)).ColorAndOpacity(DCItemWidgets::MutedColor)
+					.Justification(ETextJustify::Center)
+					.Visibility(TitleRest.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
+				]
 			]
 		];
 
 	// Options on an ellipse around the cursor, starting at the top.
 	const bool bDetails = Options.ContainsByPredicate([](const FDCRadialOption& Option) { return !Option.Detail.IsEmpty(); });
 	const float Grow = FMath::Max(0, Options.Num() - 4) * GrowPerOption + (bDetails ? 60.f : 0.f);
+	// Wide enough that the options left and right of the title never cover it.
+	const FVector2D OptionSize = bDetails ? DetailButtonSize : ButtonSize;
+	const float SpreadX = FMath::Max(RadiusX + Grow, static_cast<float>(TitleSize.X + OptionSize.X) * 0.5f + 12.f);
 	for (int32 Index = 0; Index < Options.Num(); ++Index)
 	{
 		const float Angle = -UE_HALF_PI + UE_TWO_PI * static_cast<float>(Index) / static_cast<float>(Options.Num());
-		const FVector2D Position = Centre + FVector2D(FMath::Cos(Angle) * (RadiusX + Grow), FMath::Sin(Angle) * (RadiusY + Grow * 0.6f));
+		const FVector2D Position = Centre + FVector2D(FMath::Cos(Angle) * SpreadX, FMath::Sin(Angle) * (RadiusY + Grow * 0.6f));
 		TFunction<void()> OnSelected = MoveTemp(Options[Index].OnSelected);
 		const FDCRadialOption& Option = Options[Index];
 		Canvas->AddSlot()
@@ -146,9 +166,17 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 						[
-							SNew(STextBlock).Text(Option.Label).Font(DCItemWidgets::HeadFont(16))
-							.TransformPolicy(ETextTransformPolicy::ToUpper)
-							.ColorAndOpacity(Option.bEnabled ? DCItemWidgets::TextColor : DCItemWidgets::MutedColor)
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, Option.Icon.IsNone() ? 0.f : 7.f, 1.f)
+							[
+								DCItemWidgets::MakeIcon(Option.Icon, 18.f, Option.bEnabled ? DCItemWidgets::TextColor : DCItemWidgets::MutedColor)
+							]
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(STextBlock).Text(Option.Label).Font(DCItemWidgets::HeadFont(16))
+								.TransformPolicy(ETextTransformPolicy::ToUpper)
+								.ColorAndOpacity(Option.bEnabled ? DCItemWidgets::TextColor : DCItemWidgets::MutedColor)
+							]
 						]
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 						[

@@ -147,6 +147,13 @@ TSharedRef<SWidget> UDCWaitDialog::RebuildWidget()
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 9.f, 0.f)
+						[
+							MakeIcon(TEXT("hourglass"), 21.f, CoordinationColor)
+						]
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+						[
 						SNew(STextBlock)
 						.Font(Font(18, true))
 						.ColorAndOpacity(TextColor)
@@ -155,6 +162,7 @@ TSharedRef<SWidget> UDCWaitDialog::RebuildWidget()
 							const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
 							return FText::Format(LOCTEXT("Title", "Worauf soll {0} warten?"), Member ? Member->GetCrewName() : FText::GetEmpty());
 						})
+						]
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 10.f)
 					[

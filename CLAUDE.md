@@ -492,6 +492,24 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Als Nächstes (mit dem User vereinbart): 2 Icons (Lucide-SVG), 3 Porträts (der User erzeugt sie mit der Bild-KI),
     4 Gegenstands-Icons aus Blender, 5 Feinschliff der Zeitleiste (schraffiertes Warten, Zeitmarke), 6 Punktlinien und Schilder
     in der Welt.
+- **Professioneller Look, Schritt 2 von 6: Icons (Schritt 30, 2026-11-08).** 33 Linien-Icons von Lucide 1.70.0 (ISC) als SVG in
+  `Content/Slate/Icons` (Strich weiß statt `currentColor`, weil nanosvg das nicht kennt), zur Laufzeit geladen wie die Schriften.
+  - `DCItemWidgets::Icon(Name)` (ein `FSlateVectorImageBrush` je Datei, Slate rasterisiert ihn in der gezeichneten Größe),
+    `MakeIcon`, `MakeIconText`, `IconSizeFor`, `IconForTask` (Schritt-Art), `IconForSkill`. Die Zuordnung steht als Tabelle in
+    `Docs/UI-Leitfaden.md` (Abschnitt 5).
+  - `FDCRadialOption::Icon`: Radialmenü mit Icon vor jeder Aktion (`MakeTaskOption` nimmt `IconForTask`, Info/Durchsuchen/
+    Rückgängig/Später von Hand). Dabei behoben: die seitlichen Einträge verdeckten den Titel in der Mitte (Abstand jetzt
+    mindestens halbe Titel- plus halbe Knopfbreite), der Titel ist zweizeilig (Objekt groß, „plant: Rosa“ klein darunter).
+    `UDCRadialMenu::bOpenAtCentreForTests` öffnet das Menü im Test in der Bildmitte (sonst am Mauszeiger außerhalb des
+    Fensters); der Timeline-Test zeigt es so in `radial_safe_rosa/vic.png`.
+  - Planungsleiste: `PanelButton(…, IconName)` (auch wechselnd: Pause/Weiter/Fund), Icons bei Löschen, Abspielen, Lösen,
+    Zurück, Warten …, ablegen, Rückgängig. Status mit Häkchen bzw. Warnzeichen, Meldungen mit Fadenkreuz bzw. Warnzeichen,
+    jede Schrittzeile mit dem Icon ihrer Art.
+  - Profilkarten: Plan-Stand direkt unter dem Namen (bei Problem rot mit Warnzeichen), dann zwei Fähigkeiten als Zeilen mit
+    Icon und Wert (wie im Mockup). Profil: Icon vor jeder Fähigkeit.
+  - Oben: Ohr vor „Nachbar: Misstrauen“ (färbt sich mit), Sirene im Alarm, Lautsprecher vor dem Lärm; Ebene mit Ebenen-Icon
+    und Pfeilknöpfen, „Menü“ mit Icon. Info und Durchsuchen/Fund mit Icon im Titel und x zum Schließen, Warten-Dialog mit
+    Sanduhr.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -518,6 +536,7 @@ Neu (Schritt 28): Startmenü, Ladebildschirm, Pausemenü, Spielstände und Optio
 Fenstermodus (im Selbsttest nicht umgeschaltet) und das Namensfeld beim Speichern.
 Neu (Schritt 29): der neue Look im Ganzen, also Schriften, Farben, Rahmen, Knöpfe und Hover-Zustände mit der Maus
 (die Selbsttests zeigen nur Standbilder).
+Neu (Schritt 30): die Icons – passen sie, sind sie groß genug, fehlt irgendwo eins oder ist eins zu viel?
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),

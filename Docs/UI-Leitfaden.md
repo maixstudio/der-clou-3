@@ -125,6 +125,38 @@ gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neu
 - Nicht möglich → ausgegraut, Tooltip und Klick sagen warum. Feste Plätze, auch wenn ausgegraut.
 - Zeilen-Knöpfe (↑ ↓ ×, ablegen, nehmen) nur in der gewählten oder überfahrenen Zeile zeigen.
 
+**Icons** – Linien-Icons von [Lucide](https://lucide.dev) (ISC-Lizenz, `LICENSE-Lucide.txt`), Version 1.70.0,
+als SVG in `Content/Slate/Icons/<name>.svg`. Die Strichfarbe ist dort von `currentColor` auf Weiß gesetzt
+(nanosvg kennt `currentColor` nicht), eingefärbt wird im Code. Slate rasterisiert jedes SVG in der Größe, in der
+es gezeichnet wird, deshalb sind die Icons auch skaliert scharf. Wie die Schriften werden sie als Dateien geladen,
+nicht als Assets.
+- `Icon(Name)` gibt den Pinsel zurück, `MakeIcon(Name, Größe, Farbe)` das Bild. `MakeIconText(Name, Text, Schrift,
+  Farbe)` setzt Icon und Text in eine Zeile, `IconSizeFor(Schriftgröße)` passt die Größe an (12 → 14, 14 → 17).
+  In Knöpfen ist die Farbe `FSlateColor::UseForeground()`, dann dimmt das Icon mit, wenn der Knopf ausgegraut ist.
+- Feste Zuordnung, ein Icon = eine Bedeutung: `IconForTask` (Schritt-Art) und `IconForSkill` (Fähigkeit).
+
+| Bedeutung | Icon | | Bedeutung | Icon |
+|---|---|---|---|---|
+| Gehen, Durchgehen | `footprints` | | Schlösser / knacken | `key-round` |
+| Tür öffnen / schließen | `door-open` / `door-closed` | | Tresore | `vault` |
+| Aufbrechen, Einschlagen | `hammer` | | Elektronik | `cpu` |
+| Aufheben, Nehmen | `hand-grab` | | Sprengstoff | `bomb` |
+| Durchsuchen, Fund | `search` | | Fahren | `car` |
+| Ablegen | `arrow-down-to-line` | | Kampf | `swords` |
+| Warten, Warten auf … | `hourglass` | | Aufpassen | `eye` |
+| Zeichen geben | `radio` | | Kraft | `biceps-flexed` |
+| Info | `info` | | Abspielen / Pause | `play` / `pause` |
+| Geht nicht, Plan hängt | `triangle-exclamation-point` | | Plan geht auf, fertig | `circle-check` |
+| Neuer Schritt (Meldung), Lösen | `crosshair` | | Rückgängig, Zurück zur Planung | `undo-2` |
+| Schritt löschen | `trash` | | Schließen, Später | `x` |
+| Nachbar / Misstrauen | `ear` | | Lärm | `volume-2` |
+| Alarm | `siren` | | Ebene, höher / tiefer | `layers`, `chevron-up` / `chevron-down` |
+| Menü | `menu` | | | |
+
+Ein neues Icon: die SVG-Datei aus derselben Lucide-Version holen, `currentColor` durch `#ffffff` ersetzen, in die Tabelle
+eintragen. Icons stehen vor dem Text, nie allein (Ausnahme: Pfeile, Schließen – mit Tooltip). Farbe wie der Text daneben,
+Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
+
 **Dialoge** – nur für mehrteilige Entscheidungen oder Zerstörendes; keine Dialoge im Dialog.
 - Titel als Frage („Worauf soll Vic warten?“), Optionen als Auswahlliste mit sinnvoller Vorauswahl.
 - **Ein** Vorschau-Satz in Klartext („Vic wartet, bis Rosa ‚Wandtresor knacken‘ erledigt hat – ca. 19 s.“).
@@ -138,7 +170,8 @@ gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neu
 
 **Profilkarten** – pro Figur eine, feste Reihenfolge, Taste 1–n auf der Karte.
 - Farbstreifen links (Crew-Farbe = Identität), Porträt (bis es Bilder gibt: Initiale auf der Crew-Farbe),
-  Tastennummer als Abzeichen vor dem Namen, Name in Großbuchstaben, darunter beste Fähigkeiten und Plan-Stand.
+  Tastennummer als Abzeichen vor dem Namen, Name in Großbuchstaben, darunter der Plan-Stand (hängt der Plan: rot mit
+  Warnzeichen) und die zwei besten Fähigkeiten als Zeilen mit Icon, Name und Wert.
 - Gewählt: 2 px Bernstein-Rahmen und hellerer Grund. Klick = wählen + Kamera hin.
 
 **Tooltips**: nach ca. 0,4 s; höchstens vier Zeilen: was es tut · Kürzel · warum nicht · Zahlen.
@@ -177,6 +210,7 @@ Nichts, was man zum Spielen *braucht*, steht nur im Tooltip.
 - [ ] Welche Spieleraufgabe bedient es – und hat die Aktion keinen zweiten Einstieg?
 - [ ] Richtige Zone, verdeckt nichts aus einer anderen? Genau eine hervorgehobene Hauptaktion?
 - [ ] Schrift ≥ 12 für Sätze, höchstens drei Größen, Farben nur aus Abschnitt 4, nie nur Farbe?
+- [ ] Icons nur aus der Tabelle in Abschnitt 5 (gleiche Bedeutung = gleiches Icon), immer mit Text oder Tooltip?
 - [ ] Knöpfe ≥ 28 hoch, `.IsFocusable(false)`, Kürzel im Tooltip, „warum nicht“ bei ausgegraut?
 - [ ] Springt nichts, wenn Modus oder Inhalt wechseln? Lange Texte gekürzt statt abgeschnitten?
 - [ ] Rückmeldung sofort sichtbar? Zerstörendes mit Rückfrage oder Rückgängig?

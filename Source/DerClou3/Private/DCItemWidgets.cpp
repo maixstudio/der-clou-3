@@ -1,9 +1,13 @@
 #include "DCItemWidgets.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateImageBrush.h"
 #include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
+#include "DCDoor.h"
 #include "DCItem.h"
+#include "DCPlan.h"
+#include "DCSkills.h"
 #include "DerClou3.h"
 #include "Fonts/CompositeFont.h"
 #include "Input/DragAndDrop.h"
@@ -14,6 +18,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/SCanvas.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SNullWidget.h"
@@ -281,6 +286,150 @@ namespace DCItemWidgets
 			[
 				MakeRule(true, true)
 			];
+	}
+
+	const FSlateBrush* Icon(FName Name)
+	{
+		// One brush per icon; Slate rasterises the SVG anew for every size it is drawn at.
+		static TMap<FName, TUniquePtr<FSlateVectorImageBrush>> Cache;
+		if (Name.IsNone())
+		{
+			return nullptr;
+		}
+		if (const TUniquePtr<FSlateVectorImageBrush>* Found = Cache.Find(Name))
+		{
+			return Found->Get();
+		}
+		const FString Path = FPaths::ProjectContentDir() / TEXT("Slate/Icons") / (Name.ToString() + TEXT(".svg"));
+		TUniquePtr<FSlateVectorImageBrush>& Entry = Cache.Add(Name);
+		if (FPaths::FileExists(Path))
+		{
+			Entry = MakeUnique<FSlateVectorImageBrush>(Path, FVector2f(24.f, 24.f));
+		}
+		else
+		{
+			UE_LOG(LogDerClou, Warning, TEXT("UI icon %s missing (%s)"), *Name.ToString(), *Path);
+		}
+		return Entry.Get();
+	}
+
+	TSharedRef<SWidget> MakeIcon(FName Name, float Size, const TAttribute<FSlateColor>& Color)
+	{
+		const FSlateBrush* IconBrush = Icon(Name);
+		if (!IconBrush)
+		{
+			return SNullWidget::NullWidget;
+		}
+		return SNew(SBox)
+			.WidthOverride(Size)
+			.HeightOverride(Size)
+			[
+				SNew(SImage)
+				.Image(IconBrush)
+				.ColorAndOpacity(Color)
+			];
+	}
+
+	float IconSizeFor(int32 FontSize)
+	{
+		// Lucide draws inside 20 of its 24 units, so this lines up with the cap height of Barlow.
+		return FMath::RoundToFloat(FontSize * 1.2f);
+	}
+
+	TSharedRef<SWidget> MakeIconText(FName IconName, const TAttribute<FText>& Text, const FSlateFontInfo& InFont, const TAttribute<FSlateColor>& Color, float Gap)
+	{
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+		if (Icon(IconName))
+		{
+			Row->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, Gap, 0.f)
+			[
+				MakeIcon(IconName, IconSizeFor(InFont.Size), Color)
+			];
+		}
+		Row->AddSlot().AutoWidth().VAlign(VAlign_Center)
+		[
+			SNew(STextBlock)
+			.Text(Text)
+			.Font(InFont)
+			.ColorAndOpacity(Color)
+		];
+		return Row;
+	}
+
+	FName IconForTask(const FDCPlanTask& Task)
+	{
+		switch (Task.Type)
+		{
+		case EDCPlanTaskType::Move:
+			return TEXT("footprints");
+		case EDCPlanTaskType::Wait:
+		case EDCPlanTaskType::WaitFor:
+			return TEXT("hourglass");
+		case EDCPlanTaskType::Signal:
+			return TEXT("radio");
+		case EDCPlanTaskType::PickUp:
+			return TEXT("hand-grab");
+		case EDCPlanTaskType::Loot:
+			return TEXT("search");
+		case EDCPlanTaskType::Drop:
+			return TEXT("arrow-down-to-line");
+		case EDCPlanTaskType::Door:
+			switch (static_cast<EDCDoorAction>(Task.Action))
+			{
+			case EDCDoorAction::Open:
+				return TEXT("door-open");
+			case EDCDoorAction::Close:
+				return TEXT("door-closed");
+			case EDCDoorAction::PickLock:
+				return TEXT("key-round");
+			default:
+				return TEXT("footprints");
+			}
+		case EDCPlanTaskType::Item:
+			switch (static_cast<EDCItemAction>(Task.Action))
+			{
+			case EDCItemAction::PickLock:
+				return TEXT("key-round");
+			case EDCItemAction::Force:
+			case EDCItemAction::Smash:
+				return TEXT("hammer");
+			case EDCItemAction::Take:
+				return TEXT("hand-grab");
+			case EDCItemAction::Drop:
+				return TEXT("arrow-down-to-line");
+			case EDCItemAction::Close:
+				return TEXT("door-closed");
+			default:
+				return TEXT("door-open");
+			}
+		default:
+			return NAME_None;
+		}
+	}
+
+	FName IconForSkill(EDCSkill Skill)
+	{
+		switch (Skill)
+		{
+		case EDCSkill::Locks:
+			return TEXT("key-round");
+		case EDCSkill::Safes:
+			return TEXT("vault");
+		case EDCSkill::Electronics:
+			return TEXT("cpu");
+		case EDCSkill::Explosives:
+			return TEXT("bomb");
+		case EDCSkill::Driving:
+			return TEXT("car");
+		case EDCSkill::Fighting:
+			return TEXT("swords");
+		case EDCSkill::Lookout:
+			return TEXT("eye");
+		case EDCSkill::Strength:
+			return TEXT("biceps-flexed");
+		default:
+			return NAME_None;
+		}
 	}
 }
 

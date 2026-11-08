@@ -55,6 +55,10 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 8.f, 0.f)
+						[
+							DCItemWidgets::MakeIcon(TEXT("info"), 20.f, DCItemWidgets::BrassColor)
+						]
 						+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 						[
 							DCItemWidgets::MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetTitle() : FText::GetEmpty(); }), 20)
@@ -64,7 +68,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 							SNew(SButton)
 							.IsFocusable(false)
 							.ButtonStyle(&DCItemWidgets::NormalButtonStyle())
-							.ContentPadding(FMargin(7.f, 0.f))
+							.ContentPadding(FMargin(5.f, 4.f))
 							.ToolTipText(LOCTEXT("CloseTip", "Schließen"))
 							.OnClicked_Lambda([WeakThis]()
 							{
@@ -75,7 +79,7 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 								return FReply::Handled();
 							})
 							[
-								SNew(STextBlock).Text(FText::FromString(TEXT("×"))).Font(InfoFont(13, true))
+								DCItemWidgets::MakeIcon(TEXT("x"), 14.f, FSlateColor::UseForeground())
 							]
 						]
 					]

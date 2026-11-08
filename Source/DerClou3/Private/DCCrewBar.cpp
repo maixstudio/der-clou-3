@@ -31,16 +31,38 @@ namespace
 	}
 
 	/** "Schlösser 6 · Kraft 6": the two best skills. */
-	FText BestSkills(const FDCSkills& Skills)
+	/** The two best skills as rows: icon, name, value. */
+	TSharedRef<SWidget> MakeBestSkills(const FDCSkills& Skills)
 	{
+		using namespace DCItemWidgets;
 		TArray<EDCSkill> Order;
 		for (int32 Index = 0; Index < static_cast<int32>(EDCSkill::Count); ++Index)
 		{
 			Order.Add(static_cast<EDCSkill>(Index));
 		}
 		Order.StableSort([&Skills](EDCSkill A, EDCSkill B) { return Skills.Get(A) > Skills.Get(B); });
-		return FText::Format(LOCTEXT("BestSkills", "{0} {1} · {2} {3}"), DCSkills::Name(Order[0]), FText::AsNumber(Skills.Get(Order[0])),
-			DCSkills::Name(Order[1]), FText::AsNumber(Skills.Get(Order[1])));
+		TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			const EDCSkill Skill = Order[Index];
+			Rows->AddSlot().AutoHeight().Padding(0.f, 1.f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 7.f, 0.f)
+				[
+					MakeIcon(IconForSkill(Skill), 15.f, MutedColor)
+				]
+				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock).Text(DCSkills::Name(Skill)).Font(Font(12)).ColorAndOpacity(TextColor)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(6.f, 0.f, 2.f, 0.f)
+				[
+					SNew(STextBlock).Text(FText::AsNumber(Skills.Get(Skill))).Font(Font(12, true)).ColorAndOpacity(TextColor)
+				]
+			];
+		}
+		return Rows;
 	}
 }
 
@@ -206,17 +228,30 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 									.ColorAndOpacity_Lambda([IsSelected]() -> FSlateColor { return IsSelected() ? FLinearColor::White : TextColor; })
 								]
 							]
+							// What the plan says (red with a warning sign if it hangs), then the two best skills.
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
 							[
-								SNew(STextBlock).Text(BestSkills(Member->GetSkills())).Font(Font(12)).ColorAndOpacity(MutedColor)
+								SNew(SHorizontalBox)
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 1.f, 5.f, 0.f)
+								[
+									SNew(SBox)
+									.Visibility_Lambda([Status]() { bool bProblem = false; Status(bProblem); return bProblem ? EVisibility::Visible : EVisibility::Collapsed; })
+									[
+										MakeIcon(TEXT("triangle-exclamation-point"), 14.f, MessageColor)
+									]
+								]
+								+ SHorizontalBox::Slot().FillWidth(1.f)
+								[
+									SNew(STextBlock)
+									.Font(Font(12, true))
+									.AutoWrapText(true)
+									.Text_Lambda([Status]() { bool bProblem = false; return Status(bProblem); })
+									.ColorAndOpacity_Lambda([Status]() -> FSlateColor { bool bProblem = false; Status(bProblem); return bProblem ? MessageColor : MutedColor; })
+								]
 							]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 4.f, 0.f, 0.f)
 							[
-								SNew(STextBlock)
-								.Font(Font(12, true))
-								.AutoWrapText(true)
-								.Text_Lambda([Status]() { bool bProblem = false; return Status(bProblem); })
-								.ColorAndOpacity_Lambda([Status]() -> FSlateColor { bool bProblem = false; Status(bProblem); return bProblem ? MessageColor : TextColor; })
+								MakeBestSkills(Member->GetSkills())
 							]
 						]
 					]
