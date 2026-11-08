@@ -335,6 +335,30 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     wann, vorher/nachher; Schwenkrichtung in `FDCSimDoor::Swing`, `ADCDoor::SwingSignFor`), dazu `GetDoorAt`.
     Der Menütitel lautet dann z. B. „Hintertür · offen (Rosa öffnet 0:05)“.
   - Selbsttest `-DCSelfTest=PlanLook` (L_House01, Screenshots `plan_look_end.png`, `plan_look_step1.png`).
+- **Warten am Schritt, Einfügen, Geist (Schritt 22 = Bauschritte 6–8, vereinfacht):**
+  - Wählt man einen Schritt in der Liste, gibt es dort cyan „Rosa wartet hierauf“ (`ToggleWaitOn`). Rosa
+    bekommt dann „warten, bis Vic „Bürotür knacken“ erledigt hat“ vor ihren ersten Schritt, der sonst zu früh
+    anfinge. Eine Zeichen-Zeile bei Vic gibt es dafür nicht mehr (`Wait.Ref` = Schritt-Id). Ein zweiter Klick
+    zeigt „… wartet nicht mehr“. Live sagt Vic „Zeichen an Rosa“. Der Dialog „Warten …“ bleibt wie bisher
+    (mit Zeichen-Schritt).
+  - Wer einen Schritt löscht, löscht das Warten darauf mit (`RemoveTask` gibt die Anzahl zurück). Die Meldung
+    sagt das, und ein „Rückgängig“ holt beides zurück.
+  - Einfügen: Ist ein Schritt gewählt, kommen neue Schritte direkt dahinter (`GetInsertIndex`). Das gilt für
+    Boden, Tür, Gegenstand, Paare, „Warten …“ und „ablegen“. Der neue Schritt ist danach der gewählte. Eine
+    gelbe Zeile zeigt „+ Neue Schritte kommen hierhin“ mit „ans Ende“. Esc hängt wieder ans Ende an, Entf und
+    Rücktaste löschen den gewählten Schritt (sonst den letzten). Die Meldung lautet „Rosa, neuer Schritt 2:
+    … (nach „gehen (Flur)“)“.
+  - Ein Klick auf eine Zeile wählt den Schritt. Der Raum zeigt dann den Moment danach (Türen, Geist), ohne
+    Stecknadeln.
+  - Geist (`ADCPlanGhost`): Ohne Zeitleisten-Vorschau steht eine abgedunkelte, etwas kleinere Figur der
+    gewählten Figur mit hellem Ring dort, wo ihr nächster Schritt beginnt („Rosa danach“, „Vic nach 1“). Hängt
+    die Figur vorher, steht der Geist rot an dieser Stelle („Rosa hängt: Hintertür bleibt verschlossen“). Ein
+    Klick auf ihn wählt die Figur. Der Geist ist nicht im NavMesh und blockiert nichts. Variante als Stecknadel
+    über `UDCPlanSubsystem::bGhostAsPin` (Schalter kommt mit den Varianten).
+  - Noch nicht: Menüs und „Hände danach“ rechnen weiter mit dem Stand am Planende statt an der Einfügestelle.
+    Schritte mit der Maus ziehen (Bauschritt 9), Lösungen per Klick (10), Vorhersage im Menü (11) und das
+    Varianten-Fenster (12) fehlen ebenfalls.
+  - Selbsttest `-DCSelfTest=Insert` (L_House01). PlanLook prüft den Geist mit.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -356,7 +380,7 @@ Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem U
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook` (beide L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert` (alle drei L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

@@ -788,6 +788,26 @@ void UDCPlanRunnerComponent::FinishTask(EDCTaskStatus Status)
 	LastPassDoor.Reset();
 	PassTries = 0;
 	DoorSettleTime = 0.f;
+	// Someone waits for this step: say so ("Zeichen an Rosa").
+	if (Status == EDCTaskStatus::Done && Crew && Tasks.IsValidIndex(Index))
+	{
+		TArray<FString> Waiting;
+		const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		for (const FDCCrewPlan& Plan : Plans ? Plans->GetPlans() : TArray<FDCCrewPlan>())
+		{
+			const ADCCrewCharacter* Other = Heist ? Heist->FindCrew(Plan.Crew) : nullptr;
+			const FGuid Id = Tasks[Index].Id;
+			if (Other && Other != Crew && Plan.Tasks.ContainsByPredicate([&Id](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Id; }))
+			{
+				Waiting.Add(Other->GetCrewName().ToString());
+			}
+		}
+		if (!Waiting.IsEmpty())
+		{
+			Crew->Say(FText::Format(LOCTEXT("SignalTo", "Zeichen an {0}"), FText::FromString(FString::Join(Waiting, TEXT(", ")))));
+		}
+	}
 	if (Statuses.IsValidIndex(Index))
 	{
 		Statuses[Index] = Status;

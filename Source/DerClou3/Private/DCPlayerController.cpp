@@ -6,6 +6,7 @@
 #include "DCPlanRunner.h"
 #include "DCTimelinePanel.h"
 #include "DCCameraPawn.h"
+#include "DCPlanGhost.h"
 #include "Misc/ScopeExit.h"
 #include "DCCrewBar.h"
 #include "DCWaitDialog.h"
@@ -189,6 +190,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartPlanLookSelfTest();
 	}
+	else if (SelfTest == TEXT("Insert"))
+	{
+		StartInsertSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -266,9 +271,10 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	{
 		GetMode() == EDCPlanMode::Planning ? StartPlayback() : TogglePause();
 	}
-	if (WasInputKeyJustPressed(EKeys::BackSpace))
+	if (WasInputKeyJustPressed(EKeys::BackSpace) || WasInputKeyJustPressed(EKeys::Delete))
 	{
-		RemoveLastStep();
+		const int32 Insert = GetInsertIndex();
+		Insert != INDEX_NONE ? RemoveStep(Insert - 1) : RemoveLastStep();
 	}
 	// Strg+Z takes back, Strg+Y or Strg+Umschalt+Z brings back.
 	const bool bControl = IsInputKeyDown(EKeys::LeftControl) || IsInputKeyDown(EKeys::RightControl);
@@ -304,6 +310,12 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (!bMenuOpen && InfoPanel && InfoPanel->IsShown() && WasInputKeyJustPressed(EKeys::Escape))
 	{
 		InfoPanel->Hide();
+		return;
+	}
+	// Esc: no step picked any more - new steps go to the end again.
+	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape) && GetInsertIndex() != INDEX_NONE)
+	{
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
 		return;
 	}
 	// Clicks on the menu buttons are handled by the UI and never arrive here.
@@ -710,6 +722,15 @@ void ADCPlayerController::HandleClick()
 		Select(Crew);
 		return;
 	}
+	// The ghost of a crew member stands for them: clicking it selects them.
+	if (const ADCPlanGhost* Ghost = Cast<ADCPlanGhost>(Hit.GetActor()))
+	{
+		if (ADCCrewCharacter* Crew = UDCHeistStateSubsystem::Get(this)->FindCrew(Ghost->GetCrew()))
+		{
+			Select(Crew);
+		}
+		return;
+	}
 	// People who listen: clicking them shows how suspicious they are.
 	if (ADCNoiseListener* Listener = Cast<ADCNoiseListener>(Hit.GetActor()))
 	{
@@ -796,7 +817,8 @@ void ADCPlayerController::IssueTasks(const TArray<FDCPlanTask>& Tasks)
 	case EDCPlanMode::Planning:
 	{
 		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
-		const int32 First = Plans->GetTasks(Selected->GetFName()).Num() + 1;
+		const int32 At = GetInsertIndex();
+		const int32 First = (At == INDEX_NONE ? Plans->GetTasks(Selected->GetFName()).Num() : At) + 1;
 		TArray<FString> Names;
 		for (const FDCPlanTask& Task : Tasks)
 		{
@@ -806,7 +828,11 @@ void ADCPlayerController::IssueTasks(const TArray<FDCPlanTask>& Tasks)
 		{
 			// One click, one undo step.
 			FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoAddSeveral", "{0}: \u201e{1}\u201c angelegt"), Selected->GetCrewName(), FText::FromString(FString::Join(Names, TEXT(", ")))));
-			Plans->InsertTasks(Selected->GetFName(), TNumericLimits<int32>::Max(), Tasks);
+			Plans->InsertTasks(Selected->GetFName(), At == INDEX_NONE ? TNumericLimits<int32>::Max() : At, Tasks);
+		}
+		if (At != INDEX_NONE)
+		{
+			UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName(), First - 1 + Tasks.Num() - 1);
 		}
 		ShowToast(FText::Format(LOCTEXT("StepsAdded", "{0}, Schritte {1}–{2}: {3}"), Selected->GetCrewName(), FText::AsNumber(First),
 			FText::AsNumber(First + Tasks.Num() - 1), FText::FromString(FString::Join(Names, TEXT(", dann ")))));
@@ -833,17 +859,27 @@ void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
 	case EDCPlanMode::Planning:
 	{
 		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
 		const TArray<TPair<FName, FGuid>> Before = CollectProblems();
+		const int32 At = GetInsertIndex();
+		const FName Own = Selected->GetFName();
+		const int32 NewIndex = At == INDEX_NONE ? Plans->GetTasks(Own).Num() : At;
+		const FText After = At > 0 && Plans->GetTasks(Own).IsValidIndex(At - 1) ? Heist->DescribeTask(Plans->GetTasks(Own)[At - 1]) : FText::GetEmpty();
 		{
-			FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoAdd", "{0}: \u201e{1}\u201c angelegt"), Selected->GetCrewName(), UDCHeistStateSubsystem::Get(this)->DescribeTask(Task)));
-			Plans->AddTask(Selected->GetFName(), Task);
+			FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoAdd", "{0}: \u201e{1}\u201c angelegt"), Selected->GetCrewName(), Heist->DescribeTask(Task)));
+			Plans->InsertTask(Own, NewIndex, Task);
+		}
+		if (At != INDEX_NONE)
+		{
+			Heist->SetFocus(Own, NewIndex);
 		}
 		ON_SCOPE_EXIT
 		{
-			bLastEditProblem = CheckPlanAfterEdit(Before, Selected->GetFName(), Plans->GetTasks(Selected->GetFName()).Num() - 1);
+			bLastEditProblem = CheckPlanAfterEdit(Before, Own, NewIndex);
 		};
-		ShowToast(FText::Format(LOCTEXT("StepAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(),
-			FText::AsNumber(Plans->GetTasks(Selected->GetFName()).Num()), UDCHeistStateSubsystem::Get(this)->DescribeTask(Task)));
+		ShowToast(At == INDEX_NONE
+			? FText::Format(LOCTEXT("StepAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(), FText::AsNumber(NewIndex + 1), Heist->DescribeTask(Task))
+			: FText::Format(LOCTEXT("StepInserted", "{0}, neuer Schritt {1}: {2} (nach \u201e{3}\u201c)"), Selected->GetCrewName(), FText::AsNumber(NewIndex + 1), Heist->DescribeTask(Task), After));
 		UE_LOG(LogDerClou, Display, TEXT("Plan %s: step %d %s"), *Selected->GetCrewName().ToString(), Plans->GetTasks(Selected->GetFName()).Num(),
 			*UDCHeistStateSubsystem::Get(this)->DescribeTask(Task).ToString());
 		return;
@@ -1069,11 +1105,15 @@ void ADCPlayerController::RemoveStep(int32 Index)
 	{
 		const FText Label = UDCHeistStateSubsystem::Get(this)->DescribeTask(Plans->GetTasks(Selected->GetFName())[Index]);
 		const TArray<TPair<FName, FGuid>> Before = CollectProblems();
+		int32 Followers = 0;
 		{
 			FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoRemove", "{0}: \u201e{1}\u201c gelöscht"), Selected->GetCrewName(), Label));
-			Plans->RemoveTask(Selected->GetFName(), Index);
+			Followers = Plans->RemoveTask(Selected->GetFName(), Index);
 		}
 		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
+		ShowToast(Followers > 0
+			? FText::Format(LOCTEXT("RemovedWithWaits", "{0}: \u201e{1}\u201c gelöscht – das Warten darauf auch (\u201eRückgängig\u201c holt beides zurück)"), Selected->GetCrewName(), Label)
+			: FText::Format(LOCTEXT("Removed", "{0}: \u201e{1}\u201c gelöscht"), Selected->GetCrewName(), Label));
 		CheckPlanAfterEdit(Before);
 	}
 }
@@ -1170,7 +1210,12 @@ void ADCPlayerController::ApplyWaitChoice(const FDCWaitChoice& Choice)
 		break;
 	}
 	}
-	Plans->AddTask(Own, Wait);
+	const int32 At = GetInsertIndex();
+	Plans->InsertTask(Own, At == INDEX_NONE ? TNumericLimits<int32>::Max() : At, Wait);
+	if (At != INDEX_NONE)
+	{
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Own, At);
+	}
 	}
 	ShowToast(FText::Format(LOCTEXT("WaitAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(), FText::AsNumber(Plans->GetTasks(Own).Num()),
 		UDCHeistStateSubsystem::Get(this)->DescribeTask(Wait)));
@@ -1330,6 +1375,82 @@ void ADCPlayerController::ShowPlanProblem()
 	}
 	PlanHelp = FPlanHelp{ First.Crew, Plans->GetTasks(First.Crew)[First.Index].Id, FText::Format(LOCTEXT("PlanHelpText", "Geht so nicht: {0}, Schritt {1} \u201e{2}\u201c – {3}"),
 		First.CrewName, FText::AsNumber(First.Index + 1), First.Label, First.Reason) };
+}
+
+int32 ADCPlayerController::GetInsertIndex() const
+{
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Heist || !Plans || !Selected || GetMode() != EDCPlanMode::Planning || Heist->GetFocusCrew() != Selected->GetFName())
+	{
+		return INDEX_NONE;
+	}
+	const int32 Picked = Heist->GetFocusStep();
+	return Plans->GetTasks(Selected->GetFName()).IsValidIndex(Picked) ? Picked + 1 : INDEX_NONE;
+}
+
+void ADCPlayerController::ToggleWaitOn(FName Giver, int32 StepIndex, FName Waiter)
+{
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Plans || !Heist || GetMode() != EDCPlanMode::Planning || Giver == Waiter || !Plans->GetTasks(Giver).IsValidIndex(StepIndex))
+	{
+		return;
+	}
+	const FDCPlanTask Step = Plans->GetTasks(Giver)[StepIndex];
+	const ADCCrewCharacter* GiverMember = Heist->FindCrew(Giver);
+	const ADCCrewCharacter* WaiterMember = Heist->FindCrew(Waiter);
+	const FText GiverName = GiverMember ? GiverMember->GetCrewName() : FText::FromName(Giver);
+	const FText WaiterName = WaiterMember ? WaiterMember->GetCrewName() : FText::FromName(Waiter);
+	const FText StepLabel = Heist->DescribeTask(Step);
+	const TArray<TPair<FName, FGuid>> Before = CollectProblems();
+	const int32 Existing = Plans->GetTasks(Waiter).IndexOfByPredicate([&Step](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Step.Id; });
+	if (Existing != INDEX_NONE)
+	{
+		{
+			FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoUnwait", "{0} wartet nicht mehr auf \u201e{1}\u201c"), WaiterName, StepLabel));
+			Plans->RemoveTask(Waiter, Existing);
+		}
+		ShowToast(FText::Format(LOCTEXT("NoLongerWaits", "{0} wartet nicht mehr auf \u201e{1}\u201c"), WaiterName, StepLabel));
+		CheckPlanAfterEdit(Before);
+		return;
+	}
+	// Before the waiter's first step that would start before the giver's step is done.
+	float Done = 0.f;
+	if (const FDCCrewSchedule* Theirs = Heist->GetSchedule().Find(Giver))
+	{
+		if (const FDCScheduledTask* Scheduled = Theirs->Tasks.FindByPredicate([StepIndex](const FDCScheduledTask& Task) { return Task.Index == StepIndex; }))
+		{
+			Done = Scheduled->End;
+		}
+	}
+	int32 At = Plans->GetTasks(Waiter).Num();
+	if (const FDCCrewSchedule* Mine = Heist->GetSchedule().Find(Waiter))
+	{
+		for (const FDCScheduledTask& Task : Mine->Tasks)
+		{
+			if (Task.Start < Done - 0.05f && Task.Type != EDCPlanTaskType::WaitFor)
+			{
+				At = Task.Index;
+				break;
+			}
+		}
+	}
+	FDCPlanTask Wait;
+	Wait.Type = EDCPlanTaskType::WaitFor;
+	Wait.Target = Giver;
+	Wait.Ref = Step.Id;
+	const TArray<FDCPlanTask>& WaiterTasks = Plans->GetTasks(Waiter);
+	const FText Where = WaiterTasks.IsValidIndex(At)
+		? FText::Format(LOCTEXT("WaitWhereBefore", "vor ihrem Schritt {0} \u201e{1}\u201c"), FText::AsNumber(At + 1), Heist->DescribeTask(WaiterTasks[At]))
+		: LOCTEXT("WaitWhereEnd", "am Ende ihres Plans");
+	{
+		FDCPlanEditScope Edit(Plans, FText::Format(LOCTEXT("UndoWaitOn", "{0} wartet auf \u201e{1}\u201c"), WaiterName, StepLabel));
+		Plans->InsertTask(Waiter, At, Wait);
+	}
+	ShowToast(FText::Format(LOCTEXT("WaitsNow", "{0} wartet jetzt {1} auf {2} (\u201e{3}\u201c)"), WaiterName, Where, GiverName, StepLabel));
+	UE_LOG(LogDerClou, Display, TEXT("Plan %s: waits for %s step %d, as step %d"), *WaiterName.ToString(), *GiverName.ToString(), StepIndex + 1, At + 1);
+	CheckPlanAfterEdit(Before, Waiter, At);
 }
 
 void ADCPlayerController::UndoPlan()
@@ -4204,12 +4325,46 @@ void ADCPlayerController::StartPlanLookSelfTest()
 		Expect(Back->GetPlanLabel().ToString().Contains(TEXT("Rosa")), TEXT("... the sign says Rosa opens it"));
 		Expect(!Back->IsOpen() && Back->IsLocked(), TEXT("... only the look: the real door is still shut and locked"));
 		Expect(Heist->DescribeViewMoment().ToString().Contains(TEXT("nach dem Plan")), TEXT("the frame says \u201eRaum zeigt: nach dem Plan\u201c"));
+
+		// The ghost of the selected crew member (Rosa): where her next step begins - the end of her plan.
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCRoomVolume* Hall = nullptr;
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			Hall = It->GetRoomName().ToString() == TEXT("Flur") ? *It : Hall;
+		}
+		if (Rosa && Hall)
+		{
+			FocusStep(Rosa->GetFName(), INDEX_NONE);
+			const ADCPlanGhost* Ghost = Heist->GetFigureGhost();
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: ghost \"%s\" at %s"), Ghost ? *Ghost->GetText().ToString() : TEXT("-"), Ghost ? *Ghost->GetActorLocation().ToCompactString() : TEXT("-"));
+			Expect(Ghost && Ghost->GetCrew() == Rosa->GetFName() && !Ghost->IsStuck() && FVector::Dist2D(Ghost->GetActorLocation(), Hall->GetActorLocation()) < 80.0,
+				TEXT("Rosa's ghost stands where her plan ends (in the hallway)"));
+			// Without Vic's pick she hangs at the back door: the ghost stands there, red.
+			UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+			Plans->RemoveTask(Vic->GetFName(), 0);
+			Ghost = Heist->GetFigureGhost();
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: stuck ghost \"%s\" at %s"), Ghost ? *Ghost->GetText().ToString() : TEXT("-"), Ghost ? *Ghost->GetActorLocation().ToCompactString() : TEXT("-"));
+			Expect(Ghost && Ghost->IsStuck() && Ghost->GetText().ToString().Contains(TEXT("h\u00e4ngt")) && FVector::Dist2D(Ghost->GetActorLocation(), Back->GetCenter()) < 260.0,
+				TEXT("... without Vic's pick it stands red at the back door, where she hangs"));
+			Plans->Undo();
+			// A preview time shows the pins of everybody instead.
+			Heist->SetPreviewTime(1.f);
+			Expect(!Heist->GetFigureGhost(), TEXT("with a preview time there is no figure ghost, only the pins"));
+			Heist->SetPreviewTime(-1.f);
+		}
 		// Picking Vic's step 1: the room shows the moment after it - unlocked, still shut.
 		FocusStep(Vic->GetFName(), 0);
 		return true;
 	});
 	SelfTestSteps.Add(Wait(1.2f));
 	SelfTestSteps.Add(Shot(TEXT("plan_look_step1.png")));
+	SelfTestSteps.Add([this, Expect]()
+	{
+		const ADCPlanGhost* Ghost = UDCHeistStateSubsystem::Get(this)->GetFigureGhost();
+		Expect(Ghost && Ghost->GetText().ToString().Contains(TEXT("nach 1")), TEXT("Vic's step 1 picked: his ghost says \u201eVic nach 1\u201c"));
+		return true;
+	});
 	SelfTestSteps.Add([this, Expect, DoorNamed]()
 	{
 		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
@@ -4230,6 +4385,136 @@ void ADCPlayerController::StartPlanLookSelfTest()
 	{
 		const ADCDoor* Back = DoorNamed(TEXT("Hintert\u00fcr"));
 		Expect(Back && !Back->IsPlanLookOn(), TEXT("playing: the doors show their real state again"));
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartInsertSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Insert started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	SelfTestSteps.Add([Started = -1.0]() mutable
+	{
+		const double Now = FPlatformTime::Seconds();
+		Started = Started < 0.0 ? Now : Started;
+		return Now - Started > 2.0;
+	});
+	SelfTestSteps.Add([this, Expect, bPassed]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = nullptr;
+		ADCCrewCharacter* Rosa = nullptr;
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			Vic = It->GetCrewName().ToString() == TEXT("Vic") ? *It : Vic;
+			Rosa = It->GetCrewName().ToString() == TEXT("Rosa") ? *It : Rosa;
+		}
+		ADCDoor* Back = nullptr;
+		ADCDoor* OfficeDoor = nullptr;
+		for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+		{
+			Back = It->GetInteractableName().ToString() == TEXT("Hintert\u00fcr") ? *It : Back;
+			OfficeDoor = It->GetInteractableName().ToString() == TEXT("B\u00fcrot\u00fcr") ? *It : OfficeDoor;
+		}
+		ADCRoomVolume* Hall = nullptr;
+		ADCRoomVolume* Office = nullptr;
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			Hall = It->GetRoomName().ToString() == TEXT("Flur") ? *It : Hall;
+			Office = It->GetRoomName().ToString() == TEXT("B\u00fcro") ? *It : Office;
+		}
+		ADCItemPickup* Dresser = FindPickup(TEXT("dresser"));
+		if (!Vic || !Rosa || !Back || !OfficeDoor || !Hall || !Office || !Dresser)
+		{
+			Expect(false, TEXT("crew, doors, rooms and dresser are there"));
+			FinishSelfTest(false);
+			return true;
+		}
+		const FName V = Vic->GetFName();
+		const FName R = Rosa->GetFName();
+		const auto PickStep = [](const ADCDoor* Door)
+		{
+			FDCPlanTask Task;
+			Task.Type = EDCPlanTaskType::Door;
+			Task.Target = Door->GetFName();
+			Task.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+			return Task;
+		};
+		const auto WalkStep = [](const ADCRoomVolume* Room)
+		{
+			FDCPlanTask Task;
+			Task.Type = EDCPlanTaskType::Move;
+			Task.Location = Room->GetActorLocation() - FVector(0.0, 0.0, 120.0);
+			return Task;
+		};
+		Select(Vic);
+		IssueTask(PickStep(Back));
+		IssueTask(PickStep(OfficeDoor));
+		Select(Rosa);
+		IssueTask(WalkStep(Hall));
+		IssueTask(WalkStep(Office));
+		Expect(GetInsertIndex() == INDEX_NONE, TEXT("nothing picked: new steps go to the end"));
+
+		// Pick Rosa's step 1: the next click goes right after it, and is then the picked one.
+		FocusStep(R, 0);
+		Expect(GetInsertIndex() == 1, TEXT("Rosa's step 1 picked: new steps come after it"));
+		FDCPlanTask Search;
+		Search.Type = EDCPlanTaskType::Loot;
+		Search.Target = Dresser->GetFName();
+		IssueTask(Search);
+		bool bProblem = false;
+		const FString Toast = GetToast(bProblem).ToString();
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: insert toast: %s"), *Toast);
+		const TArray<FDCPlanTask>& RosaSteps = Plans->GetTasks(R);
+		Expect(RosaSteps.Num() == 3 && RosaSteps[1].Type == EDCPlanTaskType::Loot && RosaSteps[2].Type == EDCPlanTaskType::Move, TEXT("the dresser search became Rosa's step 2, the office walk step 3"));
+		Expect(Heist->GetFocusStep() == 1 && GetInsertIndex() == 2, TEXT("... and is picked now, so the next click follows it"));
+		Expect(Toast.Contains(TEXT("nach")), TEXT("... the message says after which step"));
+		Expect(Heist->GetSchedule().FindProblems().IsEmpty(), TEXT("... and the plan still works out"));
+
+		// Rücktaste / Entf delete the picked step; Esc goes back to "at the end".
+		RemoveStep(GetInsertIndex() - 1);
+		Expect(Plans->GetTasks(R).Num() == 2 && Plans->GetTasks(R)[1].Type == EDCPlanTaskType::Move, TEXT("deleting the picked step takes the search out again"));
+		Heist->SetFocus(R);
+		Expect(GetInsertIndex() == INDEX_NONE, TEXT("no step picked: at the end again"));
+
+		// "Rosa wartet hierauf" at Vic's step 2 (office door): her wait goes before her first step.
+		const FGuid OfficePick = Plans->GetTasks(V)[1].Id;
+		ToggleWaitOn(V, 1, R);
+		const TArray<FDCPlanTask>& Waiting = Plans->GetTasks(R);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: wait toast: %s"), *GetToast(bProblem).ToString());
+		Expect(Waiting.Num() == 3 && Waiting[0].Type == EDCPlanTaskType::WaitFor && Waiting[0].Ref == OfficePick, TEXT("one click: Rosa waits for Vic's office door before her first step"));
+		Expect(!Plans->GetTasks(V).ContainsByPredicate([](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::Signal; }), TEXT("... without an extra signal step at Vic"));
+		const FDCCrewSchedule* VicPlan = Heist->GetSchedule().Find(V);
+		const FDCCrewSchedule* RosaPlan = Heist->GetSchedule().Find(R);
+		Expect(VicPlan && RosaPlan && RosaPlan->Tasks.Num() == 3 && RosaPlan->Tasks[1].Start >= VicPlan->Tasks[1].End - 0.05f, TEXT("... her walk starts once Vic has picked the office door"));
+
+		// Moving Vic's step keeps the link; a second click takes the wait away.
+		Select(Vic);
+		FocusStep(V, 1);
+		MoveStep(1, -1);
+		Expect(Plans->GetTasks(V)[0].Id == OfficePick && Plans->GetTasks(R).Num() == 3 && Plans->GetTasks(R)[0].Type == EDCPlanTaskType::WaitFor && Plans->GetTasks(R)[0].Ref == OfficePick,
+			TEXT("Vic's step moved to 1: Rosa still waits for exactly that step"));
+		ToggleWaitOn(V, 0, R);
+		Expect(Plans->GetTasks(R).Num() == 2, TEXT("a second click: Rosa does not wait any more"));
+
+		// Deleting the step takes the wait for it along - and one undo brings both back.
+		ToggleWaitOn(V, 0, R);
+		Heist->SetFocus(V);
+		RemoveStep(0);
+		const FString Removed = GetToast(bProblem).ToString();
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: delete toast: %s"), *Removed);
+		Expect(Plans->GetTasks(V).Num() == 1 && Plans->GetTasks(R).Num() == 2 && Removed.Contains(TEXT("Warten darauf auch")), TEXT("deleting Vic's step takes Rosa's wait along, and says so"));
+		UndoPlan();
+		Expect(Plans->GetTasks(V).Num() == 2 && Plans->GetTasks(R).Num() == 3 && Plans->GetTasks(R)[0].Ref == OfficePick, TEXT("... one undo brings both back"));
 		FinishSelfTest(*bPassed);
 		return true;
 	});

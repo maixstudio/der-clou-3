@@ -8,6 +8,7 @@
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCPlanGhost.h"
 #include "DCPlanMarker.h"
 #include "DCPlanRunner.h"
 #include "DCRoomVolume.h"
@@ -1985,6 +1986,59 @@ void UDCHeistStateSubsystem::UpdateWorldLook()
 			Label = FText::Format(Shown == By ? LOCTEXT("SignDone", "{0} {1} · {2}") : LOCTEXT("SignAhead", "{0} ab {1} · {2}"), What, Clock, Schedule.Crews[Shown->CrewIndex].Name);
 		}
 		It->SetPlanLook(true, At.bLocked, At.bOpen, At.Swing, Label);
+	}
+	UpdateFigureGhost();
+}
+
+void UDCHeistStateSubsystem::UpdateFigureGhost()
+{
+	UWorld* World = GetWorld();
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(World);
+	const FDCCrewSchedule* Crew = Schedule.Find(FocusCrew);
+	// Only while planning, without the preview pins, for the selected crew member.
+	if (!World || !Plans || Plans->GetMode() != EDCPlanMode::Planning || PreviewTime >= 0.f || !Crew)
+	{
+		if (FigureGhost.IsValid())
+		{
+			FigureGhost->Destroy();
+		}
+		FigureGhost.Reset();
+		return;
+	}
+	// Where the next step begins: after the picked step, else at the end of the plan - or, if the
+	// crew member hangs before that, where they hang (red).
+	const TArray<FDCPlanProblem> Problems = Schedule.FindProblems();
+	const FDCPlanProblem* Stuck = Problems.FindByPredicate([this](const FDCPlanProblem& Problem) { return Problem.Crew == FocusCrew; });
+	const FDCScheduledTask* Picked = FocusStep == INDEX_NONE ? nullptr : Crew->Tasks.FindByPredicate([this](const FDCScheduledTask& Task) { return Task.Index == FocusStep; });
+	FVector Where = Crew->StartLocation;
+	FText Text;
+	bool bStuck = false;
+	if (Stuck && (!Picked || FocusStep >= Stuck->Index))
+	{
+		Where = Stuck->Where;
+		bStuck = true;
+		Text = FText::Format(LOCTEXT("GhostStuck", "{0} hängt: {1}"), Crew->Name, Stuck->ShortReason);
+	}
+	else if (Picked)
+	{
+		Where = GetPositionAt(*Crew, Picked->End);
+		Text = FText::Format(LOCTEXT("GhostAfterStep", "{0} nach {1}"), Crew->Name, FText::AsNumber(FocusStep + 1));
+	}
+	else
+	{
+		Where = Crew->Tasks.IsEmpty() ? Crew->StartLocation : GetPositionAt(*Crew, Crew->End);
+		Text = Crew->Tasks.IsEmpty() ? FText::Format(LOCTEXT("GhostStart", "{0} startet hier"), Crew->Name) : FText::Format(LOCTEXT("GhostAfter", "{0} danach"), Crew->Name);
+	}
+	Where.Z = Crew->StartLocation.Z - 90.0;
+	if (!FigureGhost.IsValid())
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		FigureGhost = World->SpawnActor<ADCPlanGhost>(Where, FRotator::ZeroRotator, Params);
+	}
+	if (FigureGhost.IsValid())
+	{
+		FigureGhost->Show(Crew->Crew, Crew->Color, Where, Text, bStuck, Plans->bGhostAsPin);
 	}
 }
 

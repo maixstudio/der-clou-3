@@ -145,10 +145,10 @@ public:
 	FGuid InsertTask(FName Crew, int32 Index, const FDCPlanTask& Task);
 	void RemoveLastTask(FName Crew);
 	/**
-	 * Removes a step. A wait and the signal it waits for belong together: removing a signal also
-	 * removes the waits for it, removing the last wait for a signal also removes the signal.
+	 * Removes a step. Waits for it go along (nobody can wait for a step that is not there);
+	 * removing the last wait for a signal also removes the signal. Returns how many waits went along.
 	 */
-	void RemoveTask(FName Crew, int32 Index);
+	int32 RemoveTask(FName Crew, int32 Index);
 	/** The step with this id, in whose plan and where (nullptr if it is gone). */
 	const FDCPlanTask* FindTask(const FGuid& Id, FName* OutCrew = nullptr, int32* OutIndex = nullptr) const;
 	/** The number the next signal gets (1, 2, 3, ...). */
@@ -187,6 +187,9 @@ public:
 
 	/** Self-tests: a find during the heist takes everything of value and goes on at once (no player). */
 	bool bAutoDecideFinds = false;
+
+	/** Variant to compare: the ghost of the selected crew member as a pin instead of a figure. */
+	bool bGhostAsPin = false;
 
 	/** Self-tests that reload the level remember how far they got. */
 	int32 SelfTestStage = 0;

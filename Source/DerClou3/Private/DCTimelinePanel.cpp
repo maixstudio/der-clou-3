@@ -83,7 +83,9 @@ namespace
 		/** The one main action: filled in the focus colour. */
 		Primary,
 		/** Destroys something: red text. */
-		Danger
+		Danger,
+		/** Working together (waits, signals): cyan text. */
+		Coordination
 	};
 
 	/** A flat button that calls the controller. */
@@ -107,7 +109,7 @@ namespace
 				SNew(STextBlock)
 				.Text(Label)
 				.Font(Font(FontSize, true))
-				.ColorAndOpacity(Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : TextColor)
+				.ColorAndOpacity(Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : Kind == EPanelButton::Coordination ? CoordinationColor : TextColor)
 			];
 		if (Kind == EPanelButton::Primary)
 		{
@@ -896,10 +898,34 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
 						RowButton(LOCTEXT("Delete", "× löschen"),
-							bCoordination ? LOCTEXT("DeleteLinkedTip", "Schritt löschen – Warten und Zeichen gehören zusammen und gehen gemeinsam") : LOCTEXT("DeleteTip", "Schritt löschen"),
+							bCoordination ? LOCTEXT("DeleteLinkedTip", "Schritt löschen – Warten und Zeichen gehören zusammen und gehen gemeinsam") : LOCTEXT("DeleteTip", "Schritt löschen (Entf)"),
 							true, [Index](ADCPlayerController* C) { C->RemoveStep(Index); }, EPanelButton::Danger)
 					]
 				];
+				// Working together: one click lets another crew member wait for this step.
+				const UDCPlanSubsystem* PlanSource = UDCPlanSubsystem::Get(WeakThis.Get());
+				const TArray<FDCPlanTask>& OwnSteps = PlanSource ? PlanSource->GetTasks(Focus) : TArray<FDCPlanTask>();
+				if (!bCoordination && OwnSteps.IsValidIndex(Index))
+				{
+					const FGuid StepId = OwnSteps[Index].Id;
+					TSharedRef<SHorizontalBox> WaitButtons = SNew(SHorizontalBox);
+					for (const FDCCrewSchedule& Other : Schedule.Crews)
+					{
+						if (Other.Crew == Focus)
+						{
+							continue;
+						}
+						const bool bWaits = PlanSource->GetTasks(Other.Crew).ContainsByPredicate([&StepId](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == StepId; });
+						const FName OtherCrew = Other.Crew;
+						WaitButtons->AddSlot().AutoWidth().Padding(0.f, 0.f, 4.f, 0.f)
+						[
+							RowButton(FText::Format(bWaits ? LOCTEXT("WaitsNoMore", "{0} wartet nicht mehr") : LOCTEXT("WaitsOnThis", "{0} wartet hierauf"), Other.Name),
+								FText::Format(bWaits ? LOCTEXT("WaitsNoMoreTip", "{0} soll nicht mehr auf diesen Schritt warten") : LOCTEXT("WaitsOnThisTip", "{0} wartet, bis dieser Schritt erledigt ist – vor ihrem ersten Schritt, der sonst zu früh anfangen würde"), Other.Name),
+								true, [Focus, Index, OtherCrew](ADCPlayerController* C) { C->ToggleWaitOn(Focus, Index, OtherCrew); }, EPanelButton::Coordination)
+						];
+					}
+					Lines->AddSlot().AutoHeight().Padding(0.f, 2.f, 0.f, 2.f)[WaitButtons];
+				}
 			}
 		}
 
@@ -933,10 +959,8 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				if (ADCPlayerController* Controller = GetController(WeakThis.Get()))
 				{
 					Controller->FocusStep(Focus, bPicked ? INDEX_NONE : Index);
-					if (!bPicked)
-					{
-						Controller->SetPreviewTime(StepTime);
-					}
+					// The room shows the moment after the step (doors, ghost) - no preview pins.
+					Controller->SetPreviewTime(-1.f);
 				}
 				return FReply::Handled();
 			})
@@ -965,6 +989,29 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				]
 			]
 		];
+		// The picked step: new steps come right after it.
+		if (bPicked && bPlanning)
+		{
+			ListRows->AddSlot().AutoHeight().Padding(30.f, 2.f, 4.f, 4.f)
+			[
+				SNew(SBorder)
+				.BorderImage(Brush())
+				.BorderBackgroundColor(FLinearColor(0.32f, 0.27f, 0.04f, 0.95f))
+				.Padding(FMargin(8.f, 3.f))
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+					[
+						SNew(STextBlock).Text(LOCTEXT("InsertHere", "+ Neue Schritte kommen hierhin")).Font(Font(12, true)).ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.3f))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						PanelButton(WeakThis, LOCTEXT("ToEnd", "ans Ende"), LOCTEXT("ToEndTip", "Neue Schritte wieder hinten anhängen (Esc)"),
+							[Focus](ADCPlayerController* C) { C->FocusStep(Focus, INDEX_NONE); }, 11, FMargin(8.f, 1.f))
+					]
+				]
+			];
+		}
 	}
 }
 

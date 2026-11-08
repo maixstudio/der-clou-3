@@ -59,6 +59,13 @@ public:
 	/** Planning: takes the last plan change back / brings it back (Strg+Z, Strg+Y). */
 	void UndoPlan();
 	void RedoPlan();
+	/**
+	 * "Rosa wartet hierauf": Waiter waits until Giver's step is done - placed before Waiter's first
+	 * step that would start earlier (else at the end). A second call takes the wait away again.
+	 */
+	void ToggleWaitOn(FName Giver, int32 StepIndex, FName Waiter);
+	/** Planning: where new steps of the selected crew member go - right after the picked step (INDEX_NONE: at the end). */
+	int32 GetInsertIndex() const;
 
 	//~ Plan list
 	/** Selects the crew member and picks one of their steps (INDEX_NONE = none). */
@@ -160,6 +167,8 @@ private:
 	void StartPlanHelpSelfTest();
 	/** -DCSelfTest=PlanLook (map L_House01): doors show the plan at the moment the room shows (padlock, panel, sign). */
 	void StartPlanLookSelfTest();
+	/** -DCSelfTest=Insert (map L_House01): new steps after the picked one, "Rosa wartet hierauf", deleting takes waits along. */
+	void StartInsertSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */

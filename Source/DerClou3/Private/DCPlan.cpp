@@ -120,14 +120,15 @@ void UDCPlanSubsystem::RemoveLastTask(FName Crew)
 	}
 }
 
-void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
+int32 UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 {
 	FDCPlanEditScope Edit(this, LOCTEXT("EditRemove", "Schritt gelöscht"));
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
 	if (!Plan || !Plan->Tasks.IsValidIndex(Index))
 	{
-		return;
+		return 0;
 	}
+	int32 Followers = 0;
 	const FDCPlanTask Removed = Plan->Tasks[Index];
 	Plan->Tasks.RemoveAt(Index);
 	const auto WaitsFor = [this](const FGuid& Id)
@@ -139,12 +140,12 @@ void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 		}
 		return Count;
 	};
-	if (Removed.Type == EDCPlanTaskType::Signal)
+	if (Removed.Type != EDCPlanTaskType::WaitFor)
 	{
-		// Nobody can wait for a signal that is not given.
+		// Nobody can wait for a step (or a signal) that is not there.
 		for (FDCCrewPlan& Entry : Plans)
 		{
-			Entry.Tasks.RemoveAll([&Removed](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Removed.Id; });
+			Followers += Entry.Tasks.RemoveAll([&Removed](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::WaitFor && Task.Ref == Removed.Id; });
 		}
 	}
 	else if (Removed.Type == EDCPlanTaskType::WaitFor && Removed.Ref.IsValid() && WaitsFor(Removed.Ref) == 0)
@@ -156,6 +157,7 @@ void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 		}
 	}
 	MarkChanged();
+	return Followers;
 }
 
 void UDCPlanSubsystem::MoveTask(FName Crew, int32 Index, int32 Delta)

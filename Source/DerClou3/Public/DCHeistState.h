@@ -10,6 +10,7 @@ class ADCCrewCharacter;
 class ADCDoor;
 class ADCItemPickup;
 class ADCPlanMarker;
+class ADCPlanGhost;
 class ANavigationData;
 class UDCInventoryComponent;
 class UDCItem;
@@ -282,6 +283,8 @@ public:
 	FText DescribeViewMoment() const;
 	/** Doors show the plan at the view time while planning, their real state otherwise. */
 	void UpdateWorldLook();
+	/** The ghost of the selected crew member (nullptr while none is shown). */
+	ADCPlanGhost* GetFigureGhost() const { return FigureGhost.Get(); }
 	/** The wait before a step: "wartet 4 s auf Vic (1. Hintertür knacken)" – or "wartet 4 s – {reason}". */
 	static FText DescribeWaited(const FDCScheduledTask& Task, float Waited);
 
@@ -318,6 +321,8 @@ private:
 	void OnNavigationRebuilt(ANavigationData* NavData);
 	void UpdateMarkers();
 	void UpdateGhosts();
+	/** Planning without a preview: one ghost of the selected crew member where their next step begins. */
+	void UpdateFigureGhost();
 
 	FDCSchedule Schedule;
 	FString ScheduleSignature;
@@ -330,6 +335,7 @@ private:
 	FDelegateHandle PlanChangedHandle;
 	TArray<TWeakObjectPtr<ADCPlanMarker>> Markers;
 	TArray<TWeakObjectPtr<ADCPlanMarker>> Ghosts;
+	TWeakObjectPtr<ADCPlanGhost> FigureGhost;
 
 	UPROPERTY(Transient)
 	TMap<FName, TObjectPtr<UDCInventoryComponent>> PlannedInventories;
