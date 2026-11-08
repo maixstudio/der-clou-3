@@ -1,6 +1,7 @@
 #include "DCInfoPanel.h"
 
 #include "DCFrame.h"
+#include "DCItemWidgets.h"
 #include "DCInteractable.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -16,7 +17,7 @@ namespace
 {
 	FSlateFontInfo InfoFont(int32 Size, bool bBold = false)
 	{
-		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+		return DCItemWidgets::Font(Size, bBold);
 	}
 
 	/** Labels or values of all lines, one per row (two text columns stay aligned). */
@@ -46,8 +47,8 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 			.Visibility_Lambda([WeakThis]() { return WeakThis.IsValid() && WeakThis->IsShown() ? EVisibility::Visible : EVisibility::Collapsed; })
 			[
 				SNew(SBorder)
-				.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-				.BorderBackgroundColor(FLinearColor(0.03f, 0.035f, 0.05f, 0.92f))
+				.BorderImage(DCItemWidgets::FramedBrush())
+				.BorderBackgroundColor(DCItemWidgets::PanelColor)
 				.Padding(FMargin(16.f, 12.f))
 				[
 					SNew(SVerticalBox)
@@ -56,15 +57,14 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 						[
-							SNew(STextBlock)
-							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetTitle() : FText::GetEmpty(); })
-							.Font(InfoFont(15, true))
-							.ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.25f))
+							DCItemWidgets::MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetTitle() : FText::GetEmpty(); }), 20)
 						]
 						+ SHorizontalBox::Slot().AutoWidth()
 						[
 							SNew(SButton)
 							.IsFocusable(false)
+							.ButtonStyle(&DCItemWidgets::NormalButtonStyle())
+							.ContentPadding(FMargin(7.f, 0.f))
 							.ToolTipText(LOCTEXT("CloseTip", "Schließen"))
 							.OnClicked_Lambda([WeakThis]()
 							{
@@ -83,8 +83,8 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 					[
 						SNew(STextBlock)
 						.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetKind() : FText::GetEmpty(); })
-						.Font(InfoFont(11))
-						.ColorAndOpacity(FLinearColor(0.6f, 0.63f, 0.68f))
+						.Font(InfoFont(13))
+						.ColorAndOpacity(DCItemWidgets::MutedColor)
 					]
 					+ SVerticalBox::Slot().AutoHeight()
 					[
@@ -93,15 +93,15 @@ TSharedRef<SWidget> UDCInfoPanel::RebuildWidget()
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetLabels() : FText::GetEmpty(); })
-							.Font(InfoFont(12))
-							.ColorAndOpacity(FLinearColor(0.65f, 0.68f, 0.73f))
+							.Font(InfoFont(13))
+							.ColorAndOpacity(DCItemWidgets::MutedColor)
 						]
 						+ SHorizontalBox::Slot().AutoWidth()
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]() { return WeakThis.IsValid() ? WeakThis->GetValues() : FText::GetEmpty(); })
-							.Font(InfoFont(12, true))
-							.ColorAndOpacity(FLinearColor(0.93f, 0.94f, 0.96f))
+							.Font(InfoFont(13, true))
+							.ColorAndOpacity(DCItemWidgets::TextColor)
 						]
 					]
 				]

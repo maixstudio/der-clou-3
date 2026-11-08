@@ -115,9 +115,9 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 			[
 				MakeSwallowZone(
 					SNew(SBorder)
-					.BorderImage(Brush())
+					.BorderImage(FramedBrush())
 					.BorderBackgroundColor(PanelColor)
-					.Padding(FMargin(14.f, 12.f))
+					.Padding(FMargin(16.f, 12.f))
 					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 					[
 						SNew(SVerticalBox)
@@ -126,8 +126,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 							SNew(SHorizontalBox)
 							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 							[
-								SNew(STextBlock)
-								.Text_Lambda([WeakThis]()
+								MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]()
 								{
 									const ADCItemPickup* Container = WeakThis.IsValid() ? WeakThis->Pickup.Get() : nullptr;
 									if (!Container)
@@ -136,14 +135,14 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 									}
 									return WeakThis->IsFindMode() ? FText::Format(LOCTEXT("FindTitle", "Fund – {0}"), Container->GetInteractableName())
 										: FText::Format(LOCTEXT("Title", "Durchsuchen – {0}"), Container->GetInteractableName());
-								})
-								.Font(Font(15, true))
-								.ColorAndOpacity(TitleColor)
+								}), 20)
 							]
 							+ SHorizontalBox::Slot().AutoWidth()
 							[
 								SNew(SButton)
 								.IsFocusable(false)
+								.ButtonStyle(&NormalButtonStyle())
+								.ContentPadding(FMargin(7.f, 0.f))
 								.Visibility_Lambda([WeakThis]() { return WeakThis.IsValid() && WeakThis->IsFindMode() ? EVisibility::Collapsed : EVisibility::Visible; })
 								.ToolTipText(LOCTEXT("CloseTip", "Schließen"))
 								.OnClicked_Lambda([WeakThis]()
@@ -177,7 +176,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 								return Container->GetInteractableKind();
 							})
 							.AutoWrapText(true)
-							.Font_Lambda([WeakThis]() { return Font(WeakThis.IsValid() && WeakThis->IsFindMode() ? 12 : 11, WeakThis.IsValid() && WeakThis->IsFindMode()); })
+							.Font_Lambda([WeakThis]() { return Font(13, WeakThis.IsValid() && WeakThis->IsFindMode()); })
 							.ColorAndOpacity_Lambda([WeakThis]() { return FSlateColor(WeakThis.IsValid() && WeakThis->IsFindMode() ? LootColor : MutedColor); })
 						]
 						+ SVerticalBox::Slot().MaxHeight(560.f)
@@ -206,7 +205,7 @@ TSharedRef<SWidget> UDCContainerPanel::RebuildWidget()
 									? LOCTEXT("FindHint", "Das Spiel wartet. Ins Profil ziehen oder „nehmen“ = mitnehmen · drin lassen = liegen lassen · Eigenes hierher ziehen = dalassen · jeder Handgriff kostet Spielzeit (nehmen 0,6 s, umpacken 1 s)")
 									: LOCTEXT("Hint", "Anklicken = Knöpfe · ins Profil ziehen oder „nehmen“ · Dinge aus dem Profil hierher ziehen = verstecken");
 							})
-							.Font(Font(10))
+							.Font(Font(11))
 							.ColorAndOpacity(MutedColor)
 							.AutoWrapText(true)
 						]
@@ -418,6 +417,7 @@ TSharedRef<SWidget> UDCContainerPanel::MakeFindBar()
 		[
 			SNew(SButton)
 			.IsFocusable(false)
+			.ButtonStyle(&NormalButtonStyle())
 			.ToolTipText(LOCTEXT("TakeAllTip", "Nimmt alles mit Wert, das noch Platz hat – das Wertvollste zuerst"))
 			.ContentPadding(FMargin(8.f, 3.f))
 			.OnClicked_Lambda([WeakThis]()
@@ -429,7 +429,7 @@ TSharedRef<SWidget> UDCContainerPanel::MakeFindBar()
 				return FReply::Handled();
 			})
 			[
-				SNew(STextBlock).Text(LOCTEXT("TakeAll", "Alles Wertvolle nehmen")).Font(Font(11))
+				SNew(STextBlock).Text(LOCTEXT("TakeAll", "Alles Wertvolle nehmen")).Font(Font(12, true))
 			]
 		]
 		+ SHorizontalBox::Slot().AutoWidth().Padding(6.f, 0.f, 0.f, 0.f)

@@ -6,6 +6,7 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
@@ -15,6 +16,52 @@
 namespace
 {
 	constexpr double ShowNoiseSeconds = 3.0;
+	constexpr int32 SuspicionSegments = 5;
+
+	/** Calm in the given colour, amber from a third, red from two thirds. */
+	FLinearColor SuspicionColor(float Suspicion, const FLinearColor& Calm)
+	{
+		return Suspicion >= 67.f ? DCItemWidgets::MessageColor : Suspicion >= 34.f ? DCItemWidgets::TitleColor : Calm;
+	}
+
+	float HighestSuspicion(const UWorld* World)
+	{
+		float Highest = 0.f;
+		if (!World)
+		{
+			return Highest;
+		}
+		for (TActorIterator<ADCNoiseListener> It(World); It; ++It)
+		{
+			Highest = FMath::Max(Highest, It->GetSuspicion());
+		}
+		return Highest;
+	}
+
+	/** Five small bars, lit from the left by the highest suspicion. */
+	TSharedRef<SWidget> MakeSuspicionMeter(TWeakObjectPtr<UDCNoiseHud> WeakThis)
+	{
+		using namespace DCItemWidgets;
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+		for (int32 Index = 0; Index < SuspicionSegments; ++Index)
+		{
+			Row->AddSlot().AutoWidth().Padding(Index > 0 ? 3.f : 0.f, 0.f, 0.f, 0.f)
+			[
+				SNew(SBox).WidthOverride(16.f).HeightOverride(6.f)
+				[
+					SNew(SBorder)
+					.BorderImage(RoundBrush())
+					.BorderBackgroundColor_Lambda([WeakThis, Index]() -> FSlateColor
+					{
+						const float Highest = HighestSuspicion(WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr);
+						const bool bLit = Highest > Index * (100.f / SuspicionSegments);
+						return bLit ? SuspicionColor(Highest, OkColor) : BrassDimColor;
+					})
+				]
+			];
+		}
+		return Row;
+	}
 }
 
 TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
@@ -40,12 +87,15 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 10.f)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(FramedBrush())
 				.BorderBackgroundColor(PanelColor)
-				.Padding(FMargin(12.f, 4.f))
+				.Padding(FMargin(14.f, 3.f))
 				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
 					SNew(STextBlock)
-					.Font(Font(12, true))
+					.Font(Font(14, true))
 					.Text_Lambda([WeakThis]()
 					{
 						TArray<FString> Parts;
@@ -62,16 +112,22 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						{
 							Highest = FMath::Max(Highest, It->GetSuspicion());
 						}
-						return Highest >= 67.f ? FLinearColor(1.f, 0.35f, 0.25f) : Highest >= 34.f ? FLinearColor(1.f, 0.8f, 0.3f) : TextColor;
+						return SuspicionColor(Highest, TextColor);
 					})
+					]
+					// The highest suspicion as five segments.
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(12.f, 0.f, 0.f, 0.f)
+					[
+						MakeSuspicionMeter(WeakThis)
+					]
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(RoundBrush())
 				.BorderBackgroundColor(FLinearColor(0.55f, 0.03f, 0.02f, 0.95f))
-				.Padding(FMargin(18.f, 8.f))
+				.Padding(FMargin(20.f, 6.f))
 				.Visibility_Lambda([GetNoise]()
 				{
 					const UDCNoiseSubsystem* Noise = GetNoise();
@@ -84,14 +140,15 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						const UDCNoiseSubsystem* Noise = GetNoise();
 						return Noise ? FText::Format(LOCTEXT("Alarm", "ALARM – {0}"), Noise->GetAlarmText()) : FText::GetEmpty();
 					})
-					.Font(Font(16, true))
+					.Font(HeadFont(22))
+					.TransformPolicy(ETextTransformPolicy::ToUpper)
 					.ColorAndOpacity(FLinearColor::White)
 				]
 			]
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 6.f, 0.f, 0.f)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(FramedBrush())
 				.BorderBackgroundColor(PanelColor)
 				.Padding(FMargin(14.f, 5.f))
 				.Visibility_Lambda([IsRecent]() { return IsRecent() ? EVisibility::Visible : EVisibility::Collapsed; })

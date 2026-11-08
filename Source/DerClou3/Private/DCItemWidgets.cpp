@@ -1,8 +1,13 @@
 #include "DCItemWidgets.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateNoResource.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
 #include "DCItem.h"
+#include "DerClou3.h"
+#include "Fonts/CompositeFont.h"
 #include "Input/DragAndDrop.h"
+#include "Misc/Paths.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -16,34 +21,120 @@
 
 #define LOCTEXT_NAMESPACE "DCItemWidgets"
 
+namespace
+{
+	/**
+	 * A font family from Content/Slate/Fonts (read at runtime, see Config/DefaultGame.ini for packaging).
+	 * Glyphs Barlow lacks (arrows) come from the engine's fallback font, as with the default font.
+	 */
+	TSharedPtr<const FCompositeFont> LoadUIFont(const TCHAR* RegularFile, const TCHAR* BoldFile)
+	{
+		const FString Dir = FPaths::ProjectContentDir() / TEXT("Slate/Fonts");
+		const FString Regular = Dir / RegularFile;
+		const FString Bold = Dir / BoldFile;
+		if (!FPaths::FileExists(Regular) || !FPaths::FileExists(Bold))
+		{
+			UE_LOG(LogDerClou, Warning, TEXT("UI font %s missing in %s - using the engine font"), RegularFile, *Dir);
+			return nullptr;
+		}
+		TSharedRef<FCompositeFont> Family = MakeShared<FCompositeFont>();
+		Family->DefaultTypeface.AppendFont(TEXT("Regular"), Regular, EFontHinting::Default, EFontLoadingPolicy::LazyLoad);
+		Family->DefaultTypeface.AppendFont(TEXT("Bold"), Bold, EFontHinting::Default, EFontLoadingPolicy::LazyLoad);
+		Family->FallbackTypeface.Typeface.AppendFont(TEXT("Regular"), FPaths::EngineContentDir() / TEXT("Slate/Fonts/DroidSansFallback.ttf"),
+			EFontHinting::Default, EFontLoadingPolicy::LazyLoad);
+		return Family;
+	}
+
+	FSlateFontInfo FamilyFont(const TSharedPtr<const FCompositeFont>& Family, int32 Size, bool bBold)
+	{
+		return Family.IsValid() ? FSlateFontInfo(Family, Size, bBold ? TEXT("Bold") : TEXT("Regular"))
+			: FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+	}
+}
+
 namespace DCItemWidgets
 {
-	const FLinearColor TitleColor(1.f, 0.85f, 0.25f);
-	const FLinearColor MutedColor(0.6f, 0.63f, 0.68f);
-	const FLinearColor TextColor(0.93f, 0.94f, 0.96f);
-	const FLinearColor LootColor(1.f, 0.78f, 0.3f);
-	const FLinearColor PanelColor(0.03f, 0.035f, 0.05f, 0.92f);
-	const FLinearColor ZoneColor(0.07f, 0.075f, 0.095f);
-	const FLinearColor MessageColor(1.f, 0.45f, 0.35f);
-	const FLinearColor CoordinationColor(0.35f, 0.85f, 1.f);
-	const FLinearColor DarkTextColor(0.05f, 0.05f, 0.06f);
-	const FLinearColor TileColor(0.14f, 0.15f, 0.19f);
-	const FLinearColor SelectedTileColor(0.3f, 0.26f, 0.1f);
-	const FLinearColor AcceptColor(0.12f, 0.32f, 0.14f);
-	const FLinearColor RejectColor(0.38f, 0.1f, 0.08f);
-	const FLinearColor LockedColor(1.f, 0.4f, 0.3f);
-	const FLinearColor CellColor(0.1f, 0.105f, 0.13f);
-	const FLinearColor HintOkColor(0.45f, 0.95f, 0.5f);
+	// Palette of Docs/UI-Mockup/planung_v1.webp (sRGB hex in the comments, values are linear).
+	const FLinearColor TitleColor(0.8879f, 0.3663f, 0.0423f);            // #F2A33A amber: focus, main action
+	const FLinearColor MutedColor(0.2664f, 0.2918f, 0.3278f);            // #8D939B
+	const FLinearColor TextColor(0.8388f, 0.8148f, 0.7682f);             // #ECE9E3 warm white
+	const FLinearColor LootColor(0.8469f, 0.5457f, 0.1046f);             // #EDC35B gold
+	const FLinearColor PanelColor(0.0091f, 0.0137f, 0.0203f, 0.97f);     // #181F27
+	const FLinearColor ZoneColor(0.0137f, 0.0194f, 0.0273f);             // #1F262E
+	const FLinearColor MessageColor(0.8550f, 0.1441f, 0.1095f);          // #EE6A5D
+	const FLinearColor CoordinationColor(0.0595f, 0.6724f, 0.7305f);     // #45D6DE cyan
+	const FLinearColor DarkTextColor(0.0103f, 0.0065f, 0.0027f);         // #1A1309
+	const FLinearColor TileColor(0.0194f, 0.0262f, 0.0369f);             // #262D36
+	const FLinearColor BackdropColor(0.0060f, 0.0086f, 0.0123f);         // #12171D
+	const FLinearColor BrassColor(0.2051f, 0.1356f, 0.0578f);            // #7D6744
+	const FLinearColor BrassDimColor(0.0423f, 0.0369f, 0.0273f);         // #3A362E
+	const FLinearColor OkColor(0.1981f, 0.5520f, 0.2122f);               // #7BC47F
+	const FLinearColor TileHoverColor(0.0296f, 0.0395f, 0.0561f);        // #303843
+	const FLinearColor ItemTileColor(0.0343f, 0.0467f, 0.0648f);         // #343D48
+	const FLinearColor ItemEdgeColor(0.0802f, 0.0931f, 0.1144f);         // #50565F
+	const FLinearColor SelectedTileColor(0.0704f, 0.0423f, 0.0160f);     // #4B3A22
+	const FLinearColor AcceptColor(0.0176f, 0.0802f, 0.0252f);           // #24502C
+	const FLinearColor RejectColor(0.1022f, 0.0168f, 0.0130f);           // #5A231E
+	const FLinearColor LockedColor(0.8550f, 0.1441f, 0.1095f);           // = MessageColor
+	const FLinearColor CellColor(0.0144f, 0.0203f, 0.0284f);             // #20272F
+	const FLinearColor HintOkColor(0.2747f, 0.6939f, 0.3050f);           // #8FD996
+	const FLinearColor DangerEdgeColor(0.1559f, 0.0356f, 0.0296f);       // #6E3530
 	constexpr float Indent = 14.f;
+	constexpr float Corner = 3.f;
 
 	FSlateFontInfo Font(int32 Size, bool bBold)
 	{
-		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+		static const TSharedPtr<const FCompositeFont> Family = LoadUIFont(TEXT("Barlow-Regular.ttf"), TEXT("Barlow-Bold.ttf"));
+		return FamilyFont(Family, Size, bBold);
+	}
+
+	FSlateFontInfo HeadFont(int32 Size, bool bBold)
+	{
+		static const TSharedPtr<const FCompositeFont> Family = LoadUIFont(TEXT("BarlowCondensed-Regular.ttf"), TEXT("BarlowCondensed-Bold.ttf"));
+		FSlateFontInfo Info = FamilyFont(Family, Size, bBold);
+		Info.LetterSpacing = 30;
+		return Info;
 	}
 
 	const FSlateBrush* Brush()
 	{
 		return FCoreStyle::Get().GetBrush("WhiteBrush");
+	}
+
+	const FSlateBrush* RoundBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner);
+		return &Box;
+	}
+
+	const FSlateBrush* FramedBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner, BrassColor, 1.f);
+		return &Box;
+	}
+
+	const FSlateBrush* SoftFramedBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner, BrassDimColor, 1.f);
+		return &Box;
+	}
+
+	const FSlateBrush* FocusFramedBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner, TitleColor, 2.f);
+		return &Box;
+	}
+
+	const FSlateBrush* CoordinationFramedBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner, CoordinationColor, 1.f);
+		return &Box;
+	}
+
+	const FSlateBrush* ProblemFramedBrush()
+	{
+		static const FSlateRoundedBoxBrush Box(FLinearColor::White, Corner, MessageColor, 1.f);
+		return &Box;
 	}
 
 	const FProgressBarStyle& BarStyle()
@@ -59,18 +150,137 @@ namespace DCItemWidgets
 	const FButtonStyle& PrimaryButtonStyle()
 	{
 		static const FButtonStyle Style = FButtonStyle()
-			.SetNormal(FSlateColorBrush(FLinearColor(1.f, 0.85f, 0.25f)))
-			.SetHovered(FSlateColorBrush(FLinearColor(1.f, 0.92f, 0.5f)))
-			.SetPressed(FSlateColorBrush(FLinearColor(0.85f, 0.68f, 0.12f)))
-			.SetDisabled(FSlateColorBrush(FLinearColor(0.25f, 0.25f, 0.27f)))
+			.SetNormal(FSlateRoundedBoxBrush(TitleColor, Corner))
+			.SetHovered(FSlateRoundedBoxBrush(FLinearColor(1.f, 0.4851f, 0.0953f), Corner))     // #FFB957
+			.SetPressed(FSlateRoundedBoxBrush(FLinearColor(0.6376f, 0.2542f, 0.0232f), Corner)) // #D18A2A
+			.SetDisabled(FSlateRoundedBoxBrush(TileColor, Corner, BrassDimColor, 1.f))
+			.SetNormalForeground(DarkTextColor)
+			.SetHoveredForeground(DarkTextColor)
+			.SetPressedForeground(DarkTextColor)
+			.SetDisabledForeground(MutedColor)
 			.SetNormalPadding(FMargin(0.f))
 			.SetPressedPadding(FMargin(0.f));
 		return Style;
 	}
 
+	namespace
+	{
+		FButtonStyle OutlinedButtonStyle(const FLinearColor& Edge, const FLinearColor& HoverEdge)
+		{
+			return FButtonStyle()
+				.SetNormal(FSlateRoundedBoxBrush(TileColor, Corner, Edge, 1.f))
+				.SetHovered(FSlateRoundedBoxBrush(TileHoverColor, Corner, HoverEdge, 1.f))
+				.SetPressed(FSlateRoundedBoxBrush(ZoneColor, Corner, TitleColor, 1.f))
+				.SetDisabled(FSlateRoundedBoxBrush(ZoneColor, Corner, BrassDimColor, 1.f))
+				.SetNormalForeground(TextColor)
+				.SetHoveredForeground(FLinearColor::White)
+				.SetPressedForeground(TextColor)
+				.SetDisabledForeground(MutedColor)
+				.SetNormalPadding(FMargin(2.f))
+				.SetPressedPadding(FMargin(2.f, 3.f, 2.f, 1.f));
+		}
+	}
+
+	const FButtonStyle& NormalButtonStyle()
+	{
+		static const FButtonStyle Style = OutlinedButtonStyle(FLinearColor(0.0582f, 0.0545f, 0.0477f), BrassColor); // #45423D
+		return Style;
+	}
+
+	const FButtonStyle& DangerButtonStyle()
+	{
+		static const FButtonStyle Style = OutlinedButtonStyle(DangerEdgeColor, MessageColor);
+		return Style;
+	}
+
+	const FButtonStyle& FlatButtonStyle()
+	{
+		static const FButtonStyle Style = FButtonStyle()
+			.SetNormal(FSlateNoResource())
+			.SetHovered(FSlateRoundedBoxBrush(FLinearColor(1.f, 1.f, 1.f, 0.06f), Corner))
+			.SetPressed(FSlateRoundedBoxBrush(FLinearColor(0.f, 0.f, 0.f, 0.15f), Corner))
+			.SetDisabled(FSlateNoResource())
+			.SetNormalForeground(FSlateColor::UseForeground())
+			.SetHoveredForeground(FSlateColor::UseForeground())
+			.SetPressedForeground(FSlateColor::UseForeground())
+			.SetDisabledForeground(MutedColor)
+			.SetNormalPadding(FMargin(0.f))
+			.SetPressedPadding(FMargin(0.f));
+		return Style;
+	}
+
+	TSharedRef<SWidget> MakeSegments(const TArray<FText>& Labels, const TArray<FText>& Tips, TFunction<bool(int32 Index)> IsActive, TFunction<void(int32 Index)> OnClick)
+	{
+		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox);
+		for (int32 Index = 0; Index < Labels.Num(); ++Index)
+		{
+			Row->AddSlot().AutoWidth().Padding(Index > 0 ? 2.f : 0.f, 0.f, 0.f, 0.f)
+			[
+				SNew(SBorder)
+				.BorderImage(RoundBrush())
+				.Padding(0.f)
+				.BorderBackgroundColor_Lambda([IsActive, Index]() -> FSlateColor { return IsActive(Index) ? TitleColor : FLinearColor::Transparent; })
+				[
+					SNew(SButton)
+					.IsFocusable(false)
+					.ButtonStyle(&FlatButtonStyle())
+					.ToolTipText(Tips.IsValidIndex(Index) ? Tips[Index] : FText::GetEmpty())
+					.ContentPadding(FMargin(10.f, 2.f))
+					.OnClicked_Lambda([OnClick, Index]()
+					{
+						OnClick(Index);
+						return FReply::Handled();
+					})
+					[
+						SNew(STextBlock).Text(Labels[Index]).Font(Font(12, true))
+						.ColorAndOpacity_Lambda([IsActive, Index]() -> FSlateColor { return IsActive(Index) ? DarkTextColor : MutedColor; })
+					]
+				]
+			];
+		}
+		return SNew(SBorder).BorderImage(SoftFramedBrush()).BorderBackgroundColor(ZoneColor).Padding(FMargin(2.f))[Row];
+	}
+
 	TSharedRef<SWidget> MakeMuted(const FText& Text, int32 Size)
 	{
 		return SNew(STextBlock).Text(Text).Font(Font(Size)).ColorAndOpacity(MutedColor).AutoWrapText(true);
+	}
+
+	TSharedRef<SWidget> MakeTitle(const TAttribute<FText>& Text, int32 Size, const FLinearColor& Color)
+	{
+		return SNew(STextBlock)
+			.Text(Text)
+			.Font(HeadFont(Size))
+			.ColorAndOpacity(Color)
+			.TransformPolicy(ETextTransformPolicy::ToUpper)
+			.OverflowPolicy(ETextOverflowPolicy::Ellipsis);
+	}
+
+	TSharedRef<SWidget> MakeRule(bool bHorizontal, bool bDim)
+	{
+		return SNew(SBox)
+			.HeightOverride(bHorizontal ? FOptionalSize(1.f) : FOptionalSize())
+			.WidthOverride(bHorizontal ? FOptionalSize() : FOptionalSize(1.f))
+			[
+				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bDim ? BrassDimColor : BrassColor).Padding(0.f)
+			];
+	}
+
+	TSharedRef<SWidget> MakeSectionTitle(const FText& Text)
+	{
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(Text)
+				.Font(HeadFont(14))
+				.ColorAndOpacity(TextColor)
+				.TransformPolicy(ETextTransformPolicy::ToUpper)
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(8.f, 1.f, 0.f, 0.f)
+			[
+				MakeRule(true, true)
+			];
 	}
 }
 
@@ -117,9 +327,9 @@ namespace
 		{
 			const TSharedRef<FDCDragHint> HintRef = Hint;
 			return SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor(FLinearColor(0.08f, 0.085f, 0.11f, 0.95f))
-				.Padding(FMargin(10.f, 5.f))
+				.BorderImage(FramedBrush())
+				.BorderBackgroundColor(PanelColor)
+				.Padding(FMargin(10.f, 6.f))
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
@@ -251,7 +461,7 @@ namespace
 			ChildSlot
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(RoundBrush())
 				.BorderBackgroundColor_Lambda([this]() { return !bHovered ? Color : (bAccepts ? AcceptColor : RejectColor); })
 				.Padding(InArgs._Padding)
 				[
@@ -392,7 +602,7 @@ namespace
 				{
 					FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 						AllottedGeometry.ToPaintGeometry(FVector2f(CellSize - 2.f, CellSize - 2.f), FSlateLayoutTransform(FVector2f(X * CellSize + 1.f, Y * CellSize + 1.f))),
-						Brush(), ESlateDrawEffect::None, CellColor);
+						RoundBrush(), ESlateDrawEffect::None, CellColor);
 				}
 			}
 			int32 Layer = SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId + 1, InWidgetStyle, bParentEnabled);
@@ -485,17 +695,17 @@ namespace
 					]
 				];
 
-			const FLinearColor Fill = FMath::Lerp(TileColor, Def.Color.CopyWithNewOpacity(1.f), 0.22f);
+			const FLinearColor Fill = FMath::Lerp(ItemTileColor, Def.Color.CopyWithNewOpacity(1.f), 0.25f);
 			const bool bPlanned = IsPlannedItem(Context, Item);
 			TSharedRef<SWidget> Look = SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor_Lambda([CtxPtr, WeakItem, bPlanned]() { return IsSelected(CtxPtr, WeakItem.Get()) ? TitleColor : (bPlanned ? CoordinationColor : FLinearColor(0.32f, 0.34f, 0.4f)); })
+				.BorderImage(RoundBrush())
+				.BorderBackgroundColor_Lambda([CtxPtr, WeakItem, bPlanned]() { return IsSelected(CtxPtr, WeakItem.Get()) ? TitleColor : (bPlanned ? CoordinationColor : ItemEdgeColor); })
 				.Padding(FMargin(bPlanned ? 2.f : 1.f))
 				.ToolTipText(bPlanned ? FText::Format(LOCTEXT("PlannedTip", "geplant \u2013 kommt erst mit dem Plan\n{0}"), Tooltip(Item)) : Tooltip(Item))
 				.Cursor(EMouseCursor::GrabHand)
 				[
 					SNew(SBorder)
-					.BorderImage(Brush())
+					.BorderImage(RoundBrush())
 					.BorderBackgroundColor(Fill)
 					.Padding(FMargin(1.f))
 					[
@@ -640,9 +850,10 @@ namespace DCItemWidgets
 				[
 					SNew(SButton)
 					.IsFocusable(false)
+					.ButtonStyle(&NormalButtonStyle())
 					.ToolTipText(Check.Describe())
-					.ForegroundColor(Check.bPossible ? FLinearColor::White : MutedColor)
-					.ContentPadding(FMargin(4.f, 0.f))
+					.ForegroundColor(Check.bPossible ? TextColor : MutedColor)
+					.ContentPadding(FMargin(5.f, 0.f))
 					.OnClicked_Lambda([CtxPtr, WeakItem, Action]()
 					{
 						if (WeakItem.IsValid() && CtxPtr->DoAction)
@@ -652,8 +863,8 @@ namespace DCItemWidgets
 						return FReply::Handled();
 					})
 					[
-						SNew(STextBlock).Text(DCItems::DescribeAction(Action)).Font(Font(10))
-						.ColorAndOpacity(Check.bPossible ? FLinearColor::White : MutedColor)
+						SNew(STextBlock).Text(DCItems::DescribeAction(Action)).Font(Font(11, true))
+						.ColorAndOpacity(Check.bPossible ? TextColor : MutedColor)
 					]
 				];
 			}
@@ -668,7 +879,7 @@ namespace DCItemWidgets
 			Name = FText::Format(LOCTEXT("NamePlanned", "{0}  \u00b7 geplant"), Name);
 		}
 		TSharedRef<SWidget> Look = SNew(SBorder)
-			.BorderImage(Brush())
+			.BorderImage_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? FocusFramedBrush() : SoftFramedBrush(); })
 			.BorderBackgroundColor_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? SelectedTileColor : TileColor; })
 			.Padding(FMargin(8.f, 3.f, 4.f, 3.f))
 			.ToolTipText(Tooltip(Item))
@@ -771,14 +982,14 @@ namespace DCItemWidgets
 			Box->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)[MakeSection(Item, Context, true, !bAlreadyShown)];
 		}
 		return SNew(SBorder)
-			.BorderImage(Brush())
+			.BorderImage(RoundBrush())
 			.BorderBackgroundColor(ZoneColor)
-			.Padding(FMargin(6.f, 5.f))
+			.Padding(FMargin(8.f, 6.f))
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 5.f)
 				[
-					SNew(STextBlock).Text(LOCTEXT("SelectionTitle", "Ausgewählt")).Font(Font(10, true)).ColorAndOpacity(TitleColor)
+					MakeSectionTitle(LOCTEXT("SelectionTitle", "Ausgewählt"))
 				]
 				+ SVerticalBox::Slot().AutoHeight()[Box]
 			];

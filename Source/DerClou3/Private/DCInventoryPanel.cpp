@@ -105,9 +105,9 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 			[
 				MakeSwallowZone(
 					SNew(SBorder)
-					.BorderImage(Brush())
+					.BorderImage(FramedBrush())
 					.BorderBackgroundColor(PanelColor)
-					.Padding(FMargin(14.f, 12.f))
+					.Padding(FMargin(16.f, 12.f))
 					// Clicks on the window must not reach the game (they would send the crew there).
 					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 					[
@@ -117,21 +117,18 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 							SNew(SHorizontalBox)
 							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 							[
-								SNew(STextBlock)
-								.Text_Lambda([WeakThis]()
+								MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]()
 								{
 									const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
 									return Member ? FText::Format(LOCTEXT("Title", "Profil – {0}"), Member->GetCrewName()) : LOCTEXT("TitleNobody", "Profil");
-								})
-								.Font(Font(15, true))
-								.ColorAndOpacity(TitleColor)
+								}), 22)
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 							[
 								MakeViewToggle()
 							]
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 10.f)
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 12.f)
 						[
 							SNew(STextBlock)
 							.Text_Lambda([WeakThis]()
@@ -147,7 +144,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 									FText::AsNumber(FMath::RoundToInt(Inventory->GetSpeedFactor() * 100.f)), DCItems::FormatEuro(Inventory->GetTotalValue()));
 							})
 							.AutoWrapText(true)
-							.Font(Font(11))
+							.Font(Font(12))
 							.ColorAndOpacity(MutedColor)
 						]
 						+ SVerticalBox::Slot().MaxHeight(640.f)
@@ -169,7 +166,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 8.f, 0.f, 0.f)
 						[
-							MakeMuted(LOCTEXT("Hint", "Anklicken = Knöpfe · ziehen = umpacken (grün passt, rot sagt warum) · auf einen Behälter ziehen = hineinlegen · aus dem Fenster ziehen = auf den Boden"), 10)
+							MakeMuted(LOCTEXT("Hint", "Anklicken = Knöpfe · ziehen = umpacken (grün passt, rot sagt warum) · auf einen Behälter ziehen = hineinlegen · aus dem Fenster ziehen = auf den Boden"), 11)
 						]
 					])
 			]
@@ -294,43 +291,27 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeViewToggle()
 {
 	using namespace DCItemWidgets;
 	TWeakObjectPtr<UDCInventoryPanel> WeakThis = this;
-	const auto Button = [WeakThis](const FText& Label, const FText& Tip, bool bPlan)
-	{
-		return SNew(SButton)
-			.IsFocusable(false)
-			.ToolTipText(Tip)
-			.ContentPadding(FMargin(6.f, 1.f))
-			.ButtonColorAndOpacity_Lambda([WeakThis, bPlan]()
-			{
-				const bool bActive = WeakThis.IsValid() && WeakThis->IsPlanView() == bPlan;
-				// Bright (the active view) against dark: the tint multiplies the default dark button.
-				return bActive ? FLinearColor(6.f, 5.f, 1.5f) : FLinearColor(0.6f, 0.6f, 0.65f);
-			})
-			.OnClicked_Lambda([WeakThis, bPlan]()
-			{
-				if (WeakThis.IsValid())
-				{
-					WeakThis->SetPlanView(bPlan);
-				}
-				return FReply::Handled();
-			})
-			[
-				SNew(STextBlock).Text(Label).Font(Font(10, true))
-				.ColorAndOpacity_Lambda([WeakThis, bPlan]()
-				{
-					const bool bActive = WeakThis.IsValid() && WeakThis->IsPlanView() == bPlan;
-					return FSlateColor(bActive ? DarkTextColor : MutedColor);
-				})
-			];
-	};
-	return SNew(SHorizontalBox)
+	// Segment 0 = now, 1 = after the plan.
+	return SNew(SBox)
 		.Visibility_Lambda([WeakThis]()
 		{
 			const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
 			return Plans && Plans->GetMode() == EDCPlanMode::Planning ? EVisibility::Visible : EVisibility::Collapsed;
 		})
-		+ SHorizontalBox::Slot().AutoWidth()[Button(LOCTEXT("ViewNow", "Jetzt"), LOCTEXT("ViewNowTip", "Was die Figur jetzt dabei hat \u2013 hier kannst du umpacken"), false)]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f, 0.f, 0.f)[Button(LOCTEXT("ViewPlan", "Nach dem Plan"), LOCTEXT("ViewPlanTip", "Was sie nach ihren geplanten Schritten dabei hat (Geplantes ist blau markiert)"), true)];
+		[
+			MakeSegments(
+				{ LOCTEXT("ViewNow", "Jetzt"), LOCTEXT("ViewPlan", "Nach dem Plan") },
+				{ LOCTEXT("ViewNowTip", "Was die Figur jetzt dabei hat \u2013 hier kannst du umpacken"),
+					LOCTEXT("ViewPlanTip", "Was sie nach ihren geplanten Schritten dabei hat (Geplantes ist blau markiert)") },
+				[WeakThis](int32 Index) { return WeakThis.IsValid() && WeakThis->IsPlanView() == (Index == 1); },
+				[WeakThis](int32 Index)
+				{
+					if (WeakThis.IsValid())
+					{
+						WeakThis->SetPlanView(Index == 1);
+					}
+				})
+		];
 }
 
 void UDCInventoryPanel::SelectItem(UDCItem* Item)
@@ -441,9 +422,10 @@ void UDCInventoryPanel::RebuildContent()
 	{
 		Selected.Reset();
 	}
-	Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 8.f)[MakeSkills()];
+	Content->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 10.f)[MakeSkills()];
 
 	// Two columns: clothes and backpack on the left; head, vest and hands on the right.
+	Content->AddSlot().AutoHeight().Padding(0.f, 4.f, 0.f, 6.f)[MakeSectionTitle(LOCTEXT("EquipmentTitle", "Ausrüstung"))];
 	Content->AddSlot().AutoHeight()
 	[
 		SNew(SHorizontalBox)
@@ -496,31 +478,31 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSkills()
 			.ToolTipText(bUnused ? LOCTEXT("SkillUnused", "Wird noch nicht gebraucht.") : FText::GetEmpty())
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				SNew(SBox).WidthOverride(80.f)
+				SNew(SBox).WidthOverride(94.f)
 				[
-					SNew(STextBlock).Text(DCSkills::Name(Skill)).Font(Font(10, !bUnused)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
+					SNew(STextBlock).Text(DCSkills::Name(Skill)).Font(Font(12, !bUnused)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
 				]
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 			[
-				SNew(SBox).HeightOverride(5.f)
+				SNew(SBox).HeightOverride(4.f)
 				[
 					SNew(SProgressBar).Style(&BarStyle()).Percent(Value / 10.f).FillColorAndOpacity(bUnused ? MutedColor : TitleColor)
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(5.f, 0.f, 0.f, 0.f)
 			[
-				SNew(SBox).WidthOverride(16.f)
+				SNew(SBox).WidthOverride(18.f)
 				[
-					SNew(STextBlock).Text(FText::AsNumber(Value)).Font(Font(10, true)).ColorAndOpacity(bUnused ? MutedColor : TextColor)
+					SNew(STextBlock).Text(FText::AsNumber(Value)).Font(Font(12, true)).ColorAndOpacity(bUnused ? MutedColor : TextColor).Justification(ETextJustify::Right)
 				]
 			]
 		];
 	}
 	return SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 3.f)
+		+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)
 		[
-			SNew(STextBlock).Text(LOCTEXT("SkillsTitle", "Fähigkeiten")).Font(Font(12, true)).ColorAndOpacity(TextColor)
+			MakeSectionTitle(LOCTEXT("SkillsTitle", "Fähigkeiten"))
 		]
 		+ SVerticalBox::Slot().AutoHeight()[Rows];
 }
@@ -540,7 +522,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSlotCard(EDCEquipSlot EquipSlot)
 		[
 			MakeDropZone(
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(DCItems::DescribeSlot(EquipSlot), 10)]
+				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(DCItems::DescribeSlot(EquipSlot), 11)]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)
 				[
 					Item ? MakeHeader(Item, Ctx, true, false) : MakeMuted(LOCTEXT("EmptySlot", "–"))
@@ -561,7 +543,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeSlotCard(EDCEquipSlot EquipSlot)
 						WeakThis->MoveItem(Dragged, EquipSlot, nullptr);
 					}
 				},
-				ZoneColor, FMargin(5.f, 3.f), DCItems::DescribeSlot(EquipSlot))
+				ZoneColor, FMargin(7.f, 4.f), DCItems::DescribeSlot(EquipSlot))
 		];
 	if (Item && Item->IsContainer())
 	{
@@ -581,13 +563,13 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 	// One big place per hand; something large fills both.
 	const auto Hand = [&](EDCEquipSlot EquipSlot, const FText& Label, UDCItem* Item)
 	{
-		TSharedRef<SWidget> Filling = MakeMuted(LOCTEXT("EmptyHand", "frei"), 10);
+		TSharedRef<SWidget> Filling = MakeMuted(LOCTEXT("EmptyHand", "frei"), 12);
 		if (Item)
 		{
 			Filling = MakeTile(Item, Ctx,
 				SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor_Lambda([Ctx, Weak = TWeakObjectPtr<UDCItem>(Item)]() { return Ctx->GetSelected && Ctx->GetSelected() == Weak.Get() ? FLinearColor(0.3f, 0.26f, 0.1f) : FLinearColor(0.14f, 0.15f, 0.19f); })
+				.BorderImage_Lambda([Ctx, Weak = TWeakObjectPtr<UDCItem>(Item)]() { return Ctx->GetSelected && Ctx->GetSelected() == Weak.Get() ? FocusFramedBrush() : SoftFramedBrush(); })
+				.BorderBackgroundColor(TileColor)
 				.Padding(FMargin(5.f, 3.f))
 				.Cursor(EMouseCursor::GrabHand)
 				.ToolTipText(FText::Format(LOCTEXT("HandTip", "{0} · {1}"), Item->GetDisplayName(), DCItems::FormatKg(Item->GetTotalMass())))
@@ -604,7 +586,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 			.MinDesiredHeight(HandHeight)
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(Label, 10)]
+				+ SVerticalBox::Slot().AutoHeight()[MakeMuted(Label, 11)]
 				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)[Filling]
 			],
 			[WeakThis, EquipSlot](UDCItem* Dragged)
@@ -623,7 +605,7 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 					WeakThis->MoveItem(Dragged, EquipSlot, nullptr);
 				}
 			},
-			ZoneColor, FMargin(5.f, 3.f), Label);
+			ZoneColor, FMargin(7.f, 4.f), Label);
 	};
 
 	if (Inventory->HasBothHandsFull())

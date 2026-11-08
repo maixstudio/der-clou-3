@@ -37,9 +37,29 @@ namespace DCItemWidgets
 	/** One grid cell in Slate units. */
 	constexpr float CellSize = 36.f;
 
+	/** Body text: Barlow (Content/Slate/Fonts), the engine font if the files are missing. */
 	DERCLOU3_API FSlateFontInfo Font(int32 Size, bool bBold = false);
+	/** Titles and big labels: Barlow Condensed Bold, meant for capitals (see MakeTitle). */
+	DERCLOU3_API FSlateFontInfo HeadFont(int32 Size, bool bBold = true);
+	/** Plain white box: tint it with BorderBackgroundColor / the draw colour. */
 	DERCLOU3_API const FSlateBrush* Brush();
 	DERCLOU3_API const FProgressBarStyle& BarStyle();
+
+	/**
+	 * Rounded boxes (radius 3). The fill is white, so BorderBackgroundColor tints it; the outline keeps
+	 * its own colour whatever the tint.
+	 */
+	DERCLOU3_API const FSlateBrush* RoundBrush();
+	/** Rounded, thin brass outline: windows, cards, slots, list areas. */
+	DERCLOU3_API const FSlateBrush* FramedBrush();
+	/** Rounded, faint outline: rows and tiles inside a window. */
+	DERCLOU3_API const FSlateBrush* SoftFramedBrush();
+	/** Rounded, 2 px outline in the focus colour: what is selected (card, row, tile). */
+	DERCLOU3_API const FSlateBrush* FocusFramedBrush();
+	/** Rounded, 1 px outline in the coordination colour: planned things, waiting. */
+	DERCLOU3_API const FSlateBrush* CoordinationFramedBrush();
+	/** Rounded, 1 px outline in the problem colour. */
+	DERCLOU3_API const FSlateBrush* ProblemFramedBrush();
 
 	DERCLOU3_API extern const FLinearColor TitleColor;
 	DERCLOU3_API extern const FLinearColor MutedColor;
@@ -52,10 +72,38 @@ namespace DCItemWidgets
 	DERCLOU3_API extern const FLinearColor CoordinationColor;
 	/** Text on light (focus-coloured) surfaces. */
 	DERCLOU3_API extern const FLinearColor DarkTextColor;
+	/** Rows and normal buttons inside a window. */
+	DERCLOU3_API extern const FLinearColor TileColor;
+	/** The solid frame around the scene (behind the windows). */
+	DERCLOU3_API extern const FLinearColor BackdropColor;
+	/** Hairlines: window outlines, separators, rules under titles. */
+	DERCLOU3_API extern const FLinearColor BrassColor;
+	DERCLOU3_API extern const FLinearColor BrassDimColor;
+	/** Fits / done / plan works. */
+	DERCLOU3_API extern const FLinearColor OkColor;
+
 	/** The one main action of an area: filled in the focus colour (use DarkTextColor for its text). */
 	DERCLOU3_API const FButtonStyle& PrimaryButtonStyle();
+	/** Every other button: dark, faint outline, brass when hovered. Text colour comes from the style. */
+	DERCLOU3_API const FButtonStyle& NormalButtonStyle();
+	/** Destructive buttons ("Plan leeren"): like the normal one with a red outline; text in MessageColor. */
+	DERCLOU3_API const FButtonStyle& DangerButtonStyle();
+	/** No ground of its own, only a faint hover: for buttons that sit on a coloured box (segments, rows). */
+	DERCLOU3_API const FButtonStyle& FlatButtonStyle();
+	/**
+	 * Two or more segments in one rounded box, the active one filled amber ("Jetzt | Nach dem Plan").
+	 * Labels, tooltips, IsActive and OnClick per segment.
+	 */
+	DERCLOU3_API TSharedRef<SWidget> MakeSegments(const TArray<FText>& Labels, const TArray<FText>& Tips,
+		TFunction<bool(int32 Index)> IsActive, TFunction<void(int32 Index)> OnClick);
 
 	DERCLOU3_API TSharedRef<SWidget> MakeMuted(const FText& Text, int32 Size = 11);
+	/** A window or area title in capitals (Barlow Condensed). */
+	DERCLOU3_API TSharedRef<SWidget> MakeTitle(const TAttribute<FText>& Text, int32 Size = 18, const FLinearColor& Color = FLinearColor(0.8388f, 0.8148f, 0.7682f));
+	/** A heading inside a window in small capitals with a brass rule after it: "FÄHIGKEITEN ————". */
+	DERCLOU3_API TSharedRef<SWidget> MakeSectionTitle(const FText& Text);
+	/** A 1 px brass line (horizontal or vertical) to separate areas. */
+	DERCLOU3_API TSharedRef<SWidget> MakeRule(bool bHorizontal = true, bool bDim = true);
 
 	/**
 	 * Takes dropped items; Check decides green or red while hovering, and the reason shows next to

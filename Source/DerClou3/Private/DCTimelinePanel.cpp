@@ -37,14 +37,16 @@ namespace
 	constexpr float RowHeight = 24.f;
 	constexpr float RowPitch = 30.f;
 	constexpr float MinVisibleSeconds = 30.f;
-	const FLinearColor WaitBlockColor(0.32f, 0.33f, 0.36f);
-	const FLinearColor WaitTextColor(0.72f, 0.74f, 0.78f);
-	const FLinearColor StepBlockedColor(0.75f, 0.1f, 0.06f);
-	const FLinearColor StepBlockedTextColor(1.f, 0.42f, 0.35f);
-	const FLinearColor DoneColor(0.35f, 0.78f, 0.4f);
-	const FLinearColor HighlightRowColor(1.f, 1.f, 1.f, 0.09f);
-	const FLinearColor PickedRowColor(1.f, 0.85f, 0.25f, 0.14f);
-	const FLinearColor SelectedTrackColor(0.11f, 0.115f, 0.145f);
+	// Linear values, sRGB hex of the mockup palette in the comments (see Docs/UI-Leitfaden.md).
+	const FLinearColor WaitBlockColor(0.0908f, 0.0976f, 0.1144f);       // #55585F
+	const FLinearColor WaitTextColor(0.4851f, 0.5089f, 0.5457f);        // #B8BCC3
+	const FLinearColor StepBlockedColor(0.4793f, 0.0356f, 0.0242f);     // #B8352B
+	const FLinearColor StepBlockedTextColor(0.8550f, 0.1441f, 0.1095f); // #EE6A5D = MessageColor
+	const FLinearColor DoneColor(0.1981f, 0.5520f, 0.2122f);            // #7BC47F = OkColor
+	const FLinearColor HighlightRowColor(0.0296f, 0.0395f, 0.0561f);    // #303843
+	const FLinearColor PickedRowColor(0.0704f, 0.0423f, 0.0160f);       // #4B3A22 amber-dark
+	const FLinearColor SelectedTrackColor(0.0212f, 0.0296f, 0.0409f);   // #283039
+	const FLinearColor ToastProblemColor(0.1946f, 0.0232f, 0.0185f, 0.97f); // #7A2A25
 	/** Frame around the bar while trying things out (clicks act at once). */
 	const FLinearColor DirectFrameColor(1.f, 0.5f, 0.1f);
 
@@ -110,10 +112,7 @@ namespace
 				.Font(Font(FontSize, true))
 				.ColorAndOpacity(Kind == EPanelButton::Primary ? DarkTextColor : Kind == EPanelButton::Danger ? StepBlockedTextColor : Kind == EPanelButton::Coordination ? CoordinationColor : TextColor)
 			];
-		if (Kind == EPanelButton::Primary)
-		{
-			Button->SetButtonStyle(&PrimaryButtonStyle());
-		}
+		Button->SetButtonStyle(Kind == EPanelButton::Primary ? &PrimaryButtonStyle() : Kind == EPanelButton::Danger ? &DangerButtonStyle() : &NormalButtonStyle());
 		return Button;
 	}
 }
@@ -157,13 +156,22 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 6.f)
 			[
 			SNew(SBorder)
-			.BorderImage(Brush())
-			.Padding(FMargin(16.f, 7.f))
+			.Padding(FMargin(0.f))
 			.Visibility_Lambda([WeakThis]()
 			{
 				const ADCPlayerController* Controller = GetController(WeakThis.Get());
 				bool bProblem = false;
 				return Controller && !Controller->GetToast(bProblem).IsEmpty() ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+			})
+			.BorderImage_Lambda([WeakThis]()
+			{
+				const ADCPlayerController* Controller = GetController(WeakThis.Get());
+				bool bProblem = false;
+				if (Controller)
+				{
+					Controller->GetToast(bProblem);
+				}
+				return bProblem ? ProblemFramedBrush() : FramedBrush();
 			})
 			.BorderBackgroundColor_Lambda([WeakThis]() -> FSlateColor
 			{
@@ -173,27 +181,50 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 				{
 					Controller->GetToast(bProblem);
 				}
-				return bProblem ? FLinearColor(0.45f, 0.06f, 0.04f, 0.95f) : FLinearColor(0.03f, 0.035f, 0.05f, 0.95f);
+				return bProblem ? ToastProblemColor : PanelColor;
 			})
 			[
-				SNew(STextBlock)
-				.Font(Font(13, true))
-				.ColorAndOpacity(TextColor)
-				.Text_Lambda([WeakThis]()
-				{
-					const ADCPlayerController* Controller = GetController(WeakThis.Get());
-					bool bProblem = false;
-					return Controller ? Controller->GetToast(bProblem) : FText::GetEmpty();
-				})
+				SNew(SHorizontalBox)
+				// An amber (red: problem) bar on the left edge.
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SBox).WidthOverride(4.f)
+					[
+						SNew(SBorder)
+						.BorderImage(RoundBrush())
+						.BorderBackgroundColor_Lambda([WeakThis]() -> FSlateColor
+						{
+							const ADCPlayerController* Controller = GetController(WeakThis.Get());
+							bool bProblem = false;
+							if (Controller)
+							{
+								Controller->GetToast(bProblem);
+							}
+							return bProblem ? MessageColor : TitleColor;
+						})
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(14.f, 7.f, 18.f, 7.f))
+				[
+					SNew(STextBlock)
+					.Font(Font(14, true))
+					.ColorAndOpacity(TextColor)
+					.Text_Lambda([WeakThis]()
+					{
+						const ADCPlayerController* Controller = GetController(WeakThis.Get());
+						bool bProblem = false;
+						return Controller ? Controller->GetToast(bProblem) : FText::GetEmpty();
+					})
+				]
 			]
 			]
 			// A click made the plan hang: the help stays until the player reacts.
 			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(ProblemFramedBrush())
 				.Padding(FMargin(14.f, 8.f))
-				.BorderBackgroundColor(FLinearColor(0.42f, 0.06f, 0.04f, 0.97f))
+				.BorderBackgroundColor(ToastProblemColor)
 				.Visibility_Lambda([WeakThis]()
 				{
 					const ADCPlayerController* Controller = GetController(WeakThis.Get());
@@ -239,15 +270,15 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 				MakeSwallowZone(
 					// Orange frame while trying things out: clicks act at once there.
 					SNew(SBorder)
-					.BorderImage(Brush())
+					.BorderImage(RoundBrush())
 					.Padding(FMargin(2.f))
-					.BorderBackgroundColor_Lambda([Mode]() -> FSlateColor { return Mode() == EDCPlanMode::Direct ? DirectFrameColor : PanelColor; })
+					.BorderBackgroundColor_Lambda([Mode]() -> FSlateColor { return Mode() == EDCPlanMode::Direct ? DirectFrameColor : FLinearColor::Transparent; })
 					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 					[
 						SNew(SBorder)
-						.BorderImage(Brush())
+						.BorderImage(FramedBrush())
 						.BorderBackgroundColor(PanelColor)
-						.Padding(FMargin(12.f, 8.f))
+						.Padding(FMargin(14.f, 10.f))
 						[
 							SNew(SVerticalBox)
 							// Mode, state, the main action, the rest small.
@@ -271,18 +302,25 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 											const FText Label = Controller ? Controller->DescribeDeleteStep() : FText::GetEmpty();
 											return Label.IsEmpty() ? LOCTEXT("DeleteNone", "Letzten Schritt löschen") : Label;
 										}), LOCTEXT("DeleteTip", "Löscht den gewählten Schritt der Figur, sonst ihren letzten (Entf)"),
-										[](ADCPlayerController* C) { C->DeleteStep(); }, 11, FMargin(8.f, 3.f))
+										[](ADCPlayerController* C) { C->DeleteStep(); }, 12, FMargin(10.f, 3.f))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
 								[
 									SNew(STextBlock)
-									.Font(Font(12, true))
+									.Font(Font(14, true))
 									.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
 									{
 										const UDCHeistStateSubsystem* State = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-										const bool bHangs = State && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning && !State->GetSchedule().FindProblems().IsEmpty();
-										return bHangs ? StepBlockedTextColor : TextColor;
+										if (!State || GetPlanMode(WeakThis.Get()) != EDCPlanMode::Planning)
+										{
+											return TextColor;
+										}
+										if (!State->GetSchedule().FindProblems().IsEmpty())
+										{
+											return StepBlockedTextColor;
+										}
+										return State->GetSchedule().Duration > 0.f ? OkColor : MutedColor;
 									})
 									.Text_Lambda([WeakThis]()
 									{
@@ -324,8 +362,8 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 								[
 									SNew(SBox).Visibility(PlanHangs(false))
 									[
-										PanelButton(WeakThis, LOCTEXT("Play", "Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
-											[](ADCPlayerController* C) { C->StartPlayback(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
+										PanelButton(WeakThis, LOCTEXT("Play", "▶  Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
+											[](ADCPlayerController* C) { C->StartPlayback(); }, 14, FMargin(22.f, 4.f), EPanelButton::Primary)
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -399,9 +437,9 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 											.HeightOverride(ListHeight)
 											[
 												SNew(SBorder)
-												.BorderImage(Brush())
+												.BorderImage(SoftFramedBrush())
 												.BorderBackgroundColor(ZoneColor)
-												.Padding(2.f)
+												.Padding(4.f)
 												[
 													SNew(SScrollBox)
 													+ SScrollBox::Slot()
@@ -611,7 +649,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
-			SNew(STextBlock).Text(FText::Format(LOCTEXT("PlanOf", "Plan von {0}"), Crew->Name)).Font(Font(14, true)).ColorAndOpacity(Crew->Color)
+			MakeTitle(FText::Format(LOCTEXT("PlanOf", "Plan von {0}"), Crew->Name), 19)
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(10.f, 0.f, 0.f, 0.f)
 		[
@@ -879,11 +917,11 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		}
 
 		const float StepTime = Task.WorkStart;
-		ListRows->AddSlot().AutoHeight().Padding(0.f, 1.f)
+		ListRows->AddSlot().AutoHeight().Padding(0.f, 1.f, 0.f, 2.f)
 		[
 			SNew(SBorder)
-			.BorderImage(Brush())
-			.Padding(FMargin(4.f, 3.f))
+			.BorderImage(bPicked ? FocusFramedBrush() : SoftFramedBrush())
+			.Padding(FMargin(5.f, 4.f))
 			.Cursor(EMouseCursor::Hand)
 			.BorderBackgroundColor_Lambda([WeakThis, Focus, Index, bPicked]() -> FSlateColor
 			{
@@ -900,7 +938,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 						return HighlightRowColor;
 					}
 				}
-				return FLinearColor::Transparent;
+				return PanelColor;
 			})
 			// Click picks the step (details and buttons open), a second click closes it again.
 			.OnMouseButtonDown_Lambda([WeakThis, Focus, Index, StepTime, bPicked](const FGeometry&, const FPointerEvent&)
@@ -919,9 +957,9 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				[
 					SNew(SBox).WidthOverride(24.f).HeightOverride(20.f)
 					[
-						SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Badge).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(0.f)
+						SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(Badge).HAlign(HAlign_Center).VAlign(VAlign_Center).Padding(0.f)
 						[
-							SNew(STextBlock).Text(FText::AsNumber(Index + 1)).Font(Font(11, true)).ColorAndOpacity(DarkTextColor)
+							SNew(STextBlock).Text(FText::AsNumber(Index + 1)).Font(Font(12, true)).ColorAndOpacity(DarkTextColor)
 						]
 					]
 				]
@@ -929,7 +967,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				[
 					SNew(SBox).WidthOverride(38.f)
 					[
-						SNew(STextBlock).Text(FormatTime(Task.bBlocked || Task.Type == EDCPlanTaskType::WaitFor ? Task.Ready : Task.WorkStart)).Font(Font(11)).ColorAndOpacity(MutedColor)
+						SNew(STextBlock).Text(FormatTime(Task.bBlocked || Task.Type == EDCPlanTaskType::WaitFor ? Task.Ready : Task.WorkStart)).Font(Font(12)).ColorAndOpacity(MutedColor)
 					]
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f)
@@ -957,14 +995,14 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 			ListRows->AddSlot().AutoHeight().Padding(30.f, 2.f, 4.f, 4.f)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
-				.BorderBackgroundColor(FLinearColor(0.32f, 0.27f, 0.04f, 0.95f))
+				.BorderImage(FocusFramedBrush())
+				.BorderBackgroundColor(PickedRowColor)
 				.Padding(FMargin(8.f, 3.f))
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 					[
-						SNew(STextBlock).Text(LOCTEXT("InsertHere", "+ Neue Schritte kommen hierhin")).Font(Font(12, true)).ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.3f))
+						SNew(STextBlock).Text(LOCTEXT("InsertHere", "+ Neue Schritte kommen hierhin")).Font(Font(12, true)).ColorAndOpacity(TitleColor)
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
@@ -1043,13 +1081,13 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		const bool bMajor = Second % 10 == 0;
 		Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale, bMajor ? 0.0 : 8.0)).Size(FVector2D(1.0, bMajor ? RulerHeight : 8.0))
 		[
-			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(MutedColor).Visibility(EVisibility::HitTestInvisible)
+			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bMajor ? MutedColor : BrassDimColor).Visibility(EVisibility::HitTestInvisible)
 		];
 		if (bMajor)
 		{
 			Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale + 3.0, 0.0)).Size(FVector2D(40.0, 14.0))
 			[
-				SNew(STextBlock).Text(FormatTime(static_cast<float>(Second))).Font(Font(10)).ColorAndOpacity(MutedColor).Visibility(EVisibility::HitTestInvisible)
+				SNew(STextBlock).Text(FormatTime(static_cast<float>(Second))).Font(Font(11)).ColorAndOpacity(MutedColor).Visibility(EVisibility::HitTestInvisible)
 			];
 		}
 	}
@@ -1069,13 +1107,14 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			[
 				SNew(STextBlock)
 				.Text(bSelectedRow ? FText::Format(LOCTEXT("SelectedName", "> {0}"), Crew.Name) : Crew.Name)
-				.Font(Font(bSelectedRow ? 13 : 12, true))
+				.Font(HeadFont(bSelectedRow ? 17 : 16))
+				.TransformPolicy(ETextTransformPolicy::ToUpper)
 				.ColorAndOpacity(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.75f))
 			]
 		];
 		Canvas->AddSlot().Position(FVector2D(NameWidth, Top)).Size(FVector2D(TrackWidth, RowHeight))
 		[
-			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
+			SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
 		];
 
 		for (const FDCScheduledTask& Task : Crew.Tasks)
@@ -1126,7 +1165,7 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 				Canvas->AddSlot().Position(FVector2D(NameWidth + From * Scale, Top + 2.0)).Size(FVector2D(Width - 1.0, RowHeight - 4.0))
 				[
 					SNew(SBorder)
-					.BorderImage(Brush())
+					.BorderImage(RoundBrush())
 					.BorderBackgroundColor(bOutline ? FLinearColor::White : Color)
 					.Padding(bOutline ? 2.f : 0.f)
 					.ToolTipText(Tip)
@@ -1142,13 +1181,13 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 					})
 					[
 						SNew(SBorder)
-						.BorderImage(Brush())
+						.BorderImage(RoundBrush())
 						.BorderBackgroundColor(Color)
-						.Padding(FMargin(3.f, 0.f))
+						.Padding(FMargin(4.f, 0.f))
 						.VAlign(VAlign_Center)
 						.Clipping(EWidgetClipping::ClipToBounds)
 						[
-							SNew(STextBlock).Text(Width >= 12.f ? Text : FText::GetEmpty()).Font(Font(10, true)).ColorAndOpacity(DarkTextColor)
+							SNew(STextBlock).Text(Width >= 12.f ? Text : FText::GetEmpty()).Font(Font(11, true)).ColorAndOpacity(DarkTextColor)
 						]
 					]
 				];

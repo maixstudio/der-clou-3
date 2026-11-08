@@ -471,6 +471,27 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Autosave → Pausemenü → „Test-Stand“ speichern → Hauptmenü → Fortsetzen/Laden/Optionen → Stand laden → Neuladen. Eigene Slots
     `DCSelfTest_*`, die er wieder löscht. Screenshots `menu_loading/main/heists/continue/load/options/heists_saved.png`,
     `pause_menu.png`, `pause_save.png`.
+- **Professioneller Look, Schritt 1 von 6 (Schritt 29, 2026-11-08):** Vorlage ist ein vom User mit einer Bild-KI erzeugtes
+  Mockup, `Docs/UI-Mockup/planung_v1.webp` („noir dossier meets tactical HUD“). Regeln stehen in `Docs/UI-Leitfaden.md`
+  (Abschnitte 3–5).
+  - Schriften Barlow / Barlow Condensed (OFL) in `Content/Slate/Fonts`, zur Laufzeit als Dateien geladen
+    (`DCItemWidgets::Font`, neu `HeadFont`). Ein Import als Font-Asset stürzt im Commandlet ab (braucht eine Slate-App).
+    `Config/DefaultEditorPerProjectUserSettings.ini` hält den Auto-Import von `Content/Slate` fern, `DefaultGame.ini` packt
+    den Ordner mit.
+  - Palette aus dem Mockup als lineare Werte, Hex-Wert im Kommentar. Neu: `BackdropColor`, `BrassColor`/`BrassDimColor`,
+    `TileColor`, `OkColor`. Bernstein (`TitleColor`) gilt nur für Auswahl und Hauptknopf, Titel sind warmweiß.
+  - Bausteine: abgerundete Flächen `RoundBrush`/`FramedBrush` (Messinglinie)/`SoftFramedBrush`/`FocusFramedBrush` usw.
+    Die Randlinie behält ihre Farbe, nur die Füllung wird eingefärbt. Dazu Knopfstile `NormalButtonStyle`/`DangerButtonStyle`/
+    `FlatButtonStyle` und die Bausteine `MakeTitle`, `MakeSectionTitle`, `MakeRule`, `MakeSegments`.
+  - Umgestellt sind Rahmen (Modus in Großbuchstaben, Trenner, Linie unter der Kopfzeile), Profilkarten (Farbstreifen, Abzeichen,
+    Bernstein-Rahmen), Profil (Segment-Umschalter, „FÄHIGKEITEN“/„AUSRÜSTUNG“), Radialmenü (Pillen mit Messingrand),
+    Status oben (Misstrauen mit 5 Segmenten), Info, Durchsuchen/Fund, Warten-Dialog, Planungsleiste (Meldung mit Farbbalken,
+    „▶ Abspielen“, „Plan geht auf“ grün, gerahmte Schrittzeilen, runde Blöcke in der Zeitleiste).
+    Die Menüs aus Schritt 28 übernehmen den Stil automatisch.
+  - Geprüft mit den Selbsttests Villa, Signals, PlanHelp, Find, Timeline, Menu und PlanView (alle bestanden, Screenshots angesehen).
+  - Als Nächstes (mit dem User vereinbart): 2 Icons (Lucide-SVG), 3 Porträts (der User erzeugt sie mit der Bild-KI),
+    4 Gegenstands-Icons aus Blender, 5 Feinschliff der Zeitleiste (schraffiertes Warten, Zeitmarke), 6 Punktlinien und Schilder
+    in der Welt.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -495,6 +516,8 @@ Neu seit 2026-11-08: Türregel (öffnet unterwegs, wartet an verschlossener Tür
 dem gewählten Schritt, Rückgängig/Strg+Z – und welche der drei Varianten besser ist (Geist, Hinweis, Einfügen).
 Neu (Schritt 28): Startmenü, Ladebildschirm, Pausemenü, Spielstände und Optionen mit der Maus – vor allem Auflösung und
 Fenstermodus (im Selbsttest nicht umgeschaltet) und das Namensfeld beim Speichern.
+Neu (Schritt 29): der neue Look im Ganzen, also Schriften, Farben, Rahmen, Knöpfe und Hover-Zustände mit der Maus
+(die Selbsttests zeigen nur Standbilder).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),

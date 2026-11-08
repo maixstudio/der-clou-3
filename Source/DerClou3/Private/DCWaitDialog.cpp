@@ -18,8 +18,8 @@ namespace
 {
 	constexpr float DialogWidth = 560.f;
 	const FLinearColor DimBackground(0.f, 0.f, 0.f, 0.45f);
-	const FLinearColor OptionColor(0.11f, 0.115f, 0.145f);
-	const FLinearColor ChosenOptionColor(0.2f, 0.32f, 0.22f);
+	const FLinearColor OptionColor(0.0194f, 0.0262f, 0.0369f);       // #262D36 = TileColor
+	const FLinearColor ChosenOptionColor(0.0704f, 0.0423f, 0.0160f); // #4B3A22 amber-dark (selected)
 
 	FText ClockText(float Seconds)
 	{
@@ -139,17 +139,17 @@ TSharedRef<SWidget> UDCWaitDialog::RebuildWidget()
 			.WidthOverride(DialogWidth)
 			[
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage(FramedBrush())
 				.BorderBackgroundColor(PanelColor)
-				.Padding(FMargin(18.f, 14.f))
+				.Padding(FMargin(20.f, 16.f))
 				.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						SNew(STextBlock)
-						.Font(Font(16, true))
-						.ColorAndOpacity(TitleColor)
+						.Font(Font(18, true))
+						.ColorAndOpacity(TextColor)
 						.Text_Lambda([WeakThis]()
 						{
 							const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
@@ -192,9 +192,9 @@ TSharedRef<SWidget> UDCWaitDialog::RebuildWidget()
 					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 10.f, 0.f, 0.f)
 					[
 						SNew(SBorder)
-						.BorderImage(Brush())
+						.BorderImage(SoftFramedBrush())
 						.BorderBackgroundColor(ZoneColor)
-						.Padding(FMargin(10.f, 8.f))
+						.Padding(FMargin(12.f, 9.f))
 						[
 							SNew(STextBlock)
 							.Font(Font(12))
@@ -210,6 +210,7 @@ TSharedRef<SWidget> UDCWaitDialog::RebuildWidget()
 						[
 							SNew(SButton)
 							.IsFocusable(false)
+							.ButtonStyle(&NormalButtonStyle())
 							.ContentPadding(FMargin(14.f, 4.f))
 							.ToolTipText(LOCTEXT("CancelTip", "Nichts ändern (Esc)"))
 							.OnClicked_Lambda([WeakThis]()
@@ -288,8 +289,8 @@ void UDCWaitDialog::RebuildOptions()
 		Into->AddSlot().AutoHeight().Padding(0.f, 1.f)
 		[
 			SNew(SBorder)
-			.BorderImage(Brush())
-			.Padding(FMargin(0.f))
+			.BorderImage_Lambda([WeakThis, Option]() { return WeakThis.IsValid() && WeakThis->IsChosen(Option) ? FocusFramedBrush() : SoftFramedBrush(); })
+			.Padding(FMargin(2.f))
 			.Cursor(EMouseCursor::Hand)
 			.BorderBackgroundColor_Lambda([WeakThis, Option]() -> FSlateColor
 			{
@@ -320,11 +321,8 @@ void UDCWaitDialog::RebuildOptions()
 					SNew(SBox).WidthOverride(5.f)
 					[
 						SNew(SBorder)
-						.BorderImage(Brush())
-						.BorderBackgroundColor_Lambda([WeakThis, Option, Accent]() -> FSlateColor
-						{
-							return WeakThis.IsValid() && WeakThis->IsChosen(Option) ? FLinearColor::White : Accent;
-						})
+						.BorderImage(RoundBrush())
+						.BorderBackgroundColor(Accent)
 					]
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(10.f, 6.f)
@@ -342,7 +340,7 @@ void UDCWaitDialog::RebuildOptions()
 	{
 		Options->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 3.f)
 		[
-			SNew(STextBlock).Text(Text).Font(Font(14, true)).ColorAndOpacity(Color)
+			SNew(STextBlock).Text(Text).Font(HeadFont(16)).ColorAndOpacity(Color).TransformPolicy(ETextTransformPolicy::ToUpper)
 		];
 	};
 

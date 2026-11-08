@@ -20,10 +20,10 @@
 namespace
 {
 	constexpr float CardWidth = 252.f;
-	constexpr float PortraitSize = 46.f;
-	const FLinearColor CardColor(0.05f, 0.055f, 0.075f, 0.92f);
-	const FLinearColor SelectedCardColor(0.12f, 0.13f, 0.17f, 0.96f);
-	const FLinearColor CardProblemColor(1.f, 0.42f, 0.35f);
+	constexpr float PortraitSize = 52.f;
+	constexpr float StripeWidth = 4.f;
+	const FLinearColor CardColor(0.0091f, 0.0137f, 0.0203f, 0.97f);         // #181F27 like the windows
+	const FLinearColor SelectedCardColor(0.0152f, 0.0222f, 0.0319f, 0.98f); // #212932
 
 	ADCPlayerController* BarController(const UUserWidget* Widget)
 	{
@@ -145,12 +145,13 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 		.WidthOverride(CardWidth)
 		[
 			MakeSwallowZone(
+				// Rounded card with a brass outline; selected: amber outline (2 px) and a lighter ground.
 				SNew(SBorder)
-				.BorderImage(Brush())
+				.BorderImage_Lambda([IsSelected]() { return IsSelected() ? FocusFramedBrush() : FramedBrush(); })
+				.BorderBackgroundColor_Lambda([IsSelected]() -> FSlateColor { return IsSelected() ? SelectedCardColor : CardColor; })
 				.Padding(FMargin(2.f))
 				.Cursor(EMouseCursor::Hand)
 				.ToolTipText(FText::Format(LOCTEXT("CardTip", "{0} auswählen (Taste {1}): Plan unten, Profil rechts, die Kamera fährt hin"), Member->GetCrewName(), FText::AsNumber(Number)))
-				.BorderBackgroundColor_Lambda([IsSelected, Color]() -> FSlateColor { return IsSelected() ? Color : FLinearColor(0.f, 0.f, 0.f, 0.f); })
 				.OnMouseButtonDown_Lambda([WeakThis, WeakMember](const FGeometry&, const FPointerEvent&)
 				{
 					ADCPlayerController* Controller = BarController(WeakThis.Get());
@@ -161,29 +162,26 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 					return FReply::Handled();
 				})
 				[
-					// A coloured frame (2 px) while selected.
-					SNew(SBorder)
-					.BorderImage(Brush())
-					.Padding(FMargin(8.f, 7.f))
-					.BorderBackgroundColor_Lambda([IsSelected]() -> FSlateColor { return IsSelected() ? SelectedCardColor : CardColor; })
+					SNew(SHorizontalBox)
+					// The crew colour as a stripe on the left edge (identity, not selection).
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SBox).WidthOverride(StripeWidth)
+						[
+							SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(Color)
+						]
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(9.f, 7.f, 8.f, 7.f))
 					[
 						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 0.f, 9.f, 0.f)
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 0.f, 10.f, 0.f)
 						[
+							// Portrait placeholder: the initial on the crew colour.
 							SNew(SBox).WidthOverride(PortraitSize).HeightOverride(PortraitSize)
 							[
-								SNew(SOverlay)
-								+ SOverlay::Slot()
+								SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(Color).HAlign(HAlign_Center).VAlign(VAlign_Center)
 								[
-									SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Color).HAlign(HAlign_Center).VAlign(VAlign_Center)
-									[
-										SNew(STextBlock).Text(Initial).Font(Font(22, true)).ColorAndOpacity(DarkTextColor)
-									]
-								]
-								// The number key that selects this crew member.
-								+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(0.f, 0.f, 3.f, 1.f)
-								[
-									SNew(STextBlock).Text(FText::AsNumber(Number)).Font(Font(10, true)).ColorAndOpacity(DarkTextColor)
+									SNew(STextBlock).Text(Initial).Font(HeadFont(30)).ColorAndOpacity(DarkTextColor)
 								]
 							]
 						]
@@ -193,23 +191,32 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 							+ SVerticalBox::Slot().AutoHeight()
 							[
 								SNew(SHorizontalBox)
+								// The number key that selects this crew member.
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 7.f, 0.f)
+								[
+									SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(Color).Padding(FMargin(5.f, 0.f))
+									[
+										SNew(STextBlock).Text(FText::AsNumber(Number)).Font(Font(12, true)).ColorAndOpacity(DarkTextColor)
+									]
+								]
 								+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 								[
-									SNew(STextBlock).Text(Member->GetCrewName()).Font(Font(14, true))
-									.ColorAndOpacity_Lambda([IsSelected, Color]() -> FSlateColor { return IsSelected() ? FLinearColor::White : Color; })
+									SNew(STextBlock).Text(Member->GetCrewName()).Font(HeadFont(20))
+									.TransformPolicy(ETextTransformPolicy::ToUpper)
+									.ColorAndOpacity_Lambda([IsSelected]() -> FSlateColor { return IsSelected() ? FLinearColor::White : TextColor; })
 								]
 							]
-							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 1.f, 0.f, 0.f)
+							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
 							[
-								SNew(STextBlock).Text(BestSkills(Member->GetSkills())).Font(Font(11)).ColorAndOpacity(MutedColor)
+								SNew(STextBlock).Text(BestSkills(Member->GetSkills())).Font(Font(12)).ColorAndOpacity(MutedColor)
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
 							[
 								SNew(STextBlock)
-								.Font(Font(12))
+								.Font(Font(12, true))
 								.AutoWrapText(true)
 								.Text_Lambda([Status]() { bool bProblem = false; return Status(bProblem); })
-								.ColorAndOpacity_Lambda([Status]() -> FSlateColor { bool bProblem = false; Status(bProblem); return bProblem ? CardProblemColor : TextColor; })
+								.ColorAndOpacity_Lambda([Status]() -> FSlateColor { bool bProblem = false; Status(bProblem); return bProblem ? MessageColor : TextColor; })
 							]
 						]
 					]

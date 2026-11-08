@@ -2,6 +2,9 @@
 
 #include "DerClou3.h"
 
+#include "Brushes/SlateRoundedBoxBrush.h"
+#include "DCItemWidgets.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -16,15 +19,37 @@ namespace
 	constexpr float RadiusY = 85.f;
 	/** Each option beyond four pushes the circle a bit further out. */
 	constexpr float GrowPerOption = 22.f;
-	const FVector2D ButtonSize(150.0, 40.0);
-	const FVector2D DetailButtonSize(250.0, 50.0);
-	const FLinearColor DisabledColor(0.55f, 0.57f, 0.6f);
-	const FLinearColor DetailColor(0.75f, 0.78f, 0.82f);
-	const FVector2D TitleSize(200.0, 44.0);
+	const FVector2D ButtonSize(170.0, 44.0);
+	const FVector2D DetailButtonSize(260.0, 56.0);
+	const FLinearColor DetailColor(0.4851f, 0.5089f, 0.5457f); // #B8BCC3
+	const FVector2D TitleSize(220.0, 38.0);
 
 	FSlateFontInfo RadialFont(int32 Size, bool bBold)
 	{
-		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+		return DCItemWidgets::Font(Size, bBold);
+	}
+
+	/** Pill-shaped option: dark with a brass outline, amber outline under the mouse; dimmer when not possible. */
+	const FButtonStyle& RadialButtonStyle(bool bPossible)
+	{
+		using namespace DCItemWidgets;
+		const auto Make = [](const FLinearColor& Edge, float Width)
+		{
+			return FButtonStyle()
+				.SetNormal(FSlateRoundedBoxBrush(PanelColor, Edge, Width))
+				.SetHovered(FSlateRoundedBoxBrush(FLinearColor(0.0296f, 0.0395f, 0.0561f, 0.98f), TitleColor, 2.f))
+				.SetPressed(FSlateRoundedBoxBrush(ZoneColor, TitleColor, 2.f))
+				.SetDisabled(FSlateRoundedBoxBrush(PanelColor, BrassDimColor, 1.f))
+				.SetNormalForeground(TextColor)
+				.SetHoveredForeground(FLinearColor::White)
+				.SetPressedForeground(TextColor)
+				.SetDisabledForeground(MutedColor)
+				.SetNormalPadding(FMargin(0.f))
+				.SetPressedPadding(FMargin(0.f));
+		};
+		static const FButtonStyle Possible = Make(BrassColor, 1.5f);
+		static const FButtonStyle Impossible = Make(BrassDimColor, 1.f);
+		return bPossible ? Possible : Impossible;
 	}
 }
 
@@ -73,13 +98,15 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 		.VAlign(VAlign_Center)
 		[
 			SNew(SBorder)
-			.BorderImage(FCoreStyle::Get().GetBrush("WhiteBrush"))
-			.BorderBackgroundColor(FLinearColor(0.04f, 0.05f, 0.07f, 0.92f))
+			.BorderImage(DCItemWidgets::FramedBrush())
+			.BorderBackgroundColor(DCItemWidgets::PanelColor)
 			.HAlign(HAlign_Center)
 			.VAlign(VAlign_Center)
+			.Padding(FMargin(10.f, 2.f))
 			.Visibility(EVisibility::HitTestInvisible)
 			[
-				SNew(STextBlock).Text(Title).Font(RadialFont(12, true)).ColorAndOpacity(FLinearColor(1.f, 0.85f, 0.25f)).Justification(ETextJustify::Center)
+				SNew(STextBlock).Text(Title).Font(DCItemWidgets::HeadFont(15)).ColorAndOpacity(DCItemWidgets::TextColor)
+				.TransformPolicy(ETextTransformPolicy::ToUpper).Justification(ETextJustify::Center)
 			]
 		];
 
@@ -101,6 +128,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 				SNew(SButton)
 				// Never take keyboard focus: the camera keys must keep reaching the game.
 				.IsFocusable(false)
+				.ButtonStyle(&RadialButtonStyle(Option.bEnabled))
 				.ToolTipText(Option.Tooltip)
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
@@ -118,15 +146,16 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 						SNew(SVerticalBox)
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 						[
-							SNew(STextBlock).Text(Option.Label).Font(RadialFont(13, true))
-							.ColorAndOpacity(Option.bEnabled ? FLinearColor::White : DisabledColor)
+							SNew(STextBlock).Text(Option.Label).Font(DCItemWidgets::HeadFont(16))
+							.TransformPolicy(ETextTransformPolicy::ToUpper)
+							.ColorAndOpacity(Option.bEnabled ? DCItemWidgets::TextColor : DCItemWidgets::MutedColor)
 						]
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 						[
-							SNew(STextBlock).Text(Option.Detail).Font(RadialFont(9, false))
-							.ColorAndOpacity(!Option.bEnabled ? DisabledColor
-								: Option.Tone == EDCOptionTone::Problem ? FLinearColor(1.f, 0.42f, 0.36f)
-								: Option.Tone == EDCOptionTone::Waits ? FLinearColor(0.35f, 0.85f, 0.95f)
+							SNew(STextBlock).Text(Option.Detail).Font(RadialFont(11, false))
+							.ColorAndOpacity(!Option.bEnabled ? DCItemWidgets::MutedColor
+								: Option.Tone == EDCOptionTone::Problem ? DCItemWidgets::MessageColor
+								: Option.Tone == EDCOptionTone::Waits ? DCItemWidgets::CoordinationColor
 								: DetailColor)
 							.Visibility(Option.Detail.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
 						]

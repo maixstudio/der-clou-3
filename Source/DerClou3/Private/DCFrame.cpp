@@ -18,11 +18,10 @@
 
 namespace
 {
-	const FLinearColor FrameColor(0.035f, 0.04f, 0.055f, 1.f);
-	const FLinearColor FramePlanColor(0.62f, 0.5f, 0.28f);
-	const FLinearColor FramePlayColor(0.35f, 0.75f, 0.42f);
-	const FLinearColor FrameDirectColor(1.f, 0.5f, 0.1f);
-	constexpr float FrameLine = 3.f;
+	const FLinearColor FramePlanColor(0.2623f, 0.1714f, 0.0648f);   // #8C7348 brass
+	const FLinearColor FramePlayColor(0.1095f, 0.4508f, 0.1441f);   // #5DB36A
+	const FLinearColor FrameDirectColor(0.8714f, 0.1946f, 0.0232f); // #F07A2A
+	constexpr float FrameLine = 2.f;
 
 	EDCPlanMode FrameMode(const UObject* Context)
 	{
@@ -40,6 +39,12 @@ namespace
 		}
 		return FramePlanColor;
 	}
+
+	/** The mode name top left: amber while planning (the focus colour), else the line colour. */
+	FLinearColor ModeTextColor(EDCPlanMode Mode)
+	{
+		return Mode == EDCPlanMode::Planning ? DCItemWidgets::TitleColor : ModeColor(Mode);
+	}
 }
 
 TSharedRef<SWidget> UDCFrame::RebuildWidget()
@@ -53,6 +58,7 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 	{
 		return SNew(SButton)
 			.IsFocusable(false)
+			.ButtonStyle(&NormalButtonStyle())
 			.ToolTipText(Tip)
 			.ContentPadding(FMargin(9.f, 1.f))
 			.IsEnabled_Lambda([WeakThis, Delta]()
@@ -82,7 +88,7 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 			[
 				SNew(SBorder)
 				.BorderImage(Brush())
-				.BorderBackgroundColor(FrameColor)
+				.BorderBackgroundColor(BackdropColor)
 				.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 			];
 	};
@@ -120,42 +126,66 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 			]
 			+ SVerticalBox::Slot().AutoHeight()[Zone(0.f, BottomHeight)]
 		]
-		// What mode the game is in, top left, in the colour of the line.
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(16.f, 9.f))
+		// A hairline under the top bar, over the full width.
+		+ SOverlay::Slot().VAlign(VAlign_Top).Padding(FMargin(0.f, TopHeight - 1.f, 0.f, 0.f))
 		[
-			SNew(STextBlock)
-			.Visibility(EVisibility::HitTestInvisible)
-			.Font(Font(16, true))
-			.ColorAndOpacity_Lambda(LineColor)
-			.Text_Lambda([WeakThis]()
-			{
-				switch (FrameMode(WeakThis.Get()))
-				{
-				case EDCPlanMode::Playing: return LOCTEXT("ModePlaying", "Plan läuft");
-				case EDCPlanMode::Direct: return LOCTEXT("ModeDirect", "Ausprobieren");
-				case EDCPlanMode::Planning: break;
-				}
-				return LOCTEXT("ModePlanning", "Planung");
-			})
+			SNew(SBox).Visibility(EVisibility::HitTestInvisible)[MakeRule(true, true)]
 		]
-		// Planning: which moment of the plan the room shows (doors as the plan leaves them then).
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(116.f, 14.f))
+		// What mode the game is in, top left – and while planning, which moment of the plan the room
+		// shows (doors as the plan leaves them then), after a separator.
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(18.f, 0.f))
 		[
-			SNew(STextBlock)
-			.Visibility_Lambda([WeakThis]() { return FrameMode(WeakThis.Get()) == EDCPlanMode::Planning ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
-			.Font(Font(12))
-			.ColorAndOpacity(FLinearColor(0.62f, 0.66f, 0.72f))
-			.Text_Lambda([WeakThis]()
-			{
-				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-				return Heist ? Heist->DescribeViewMoment() : FText::GetEmpty();
-			})
+			SNew(SBox)
+			.HeightOverride(TopHeight)
+			.Visibility(EVisibility::HitTestInvisible)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Font(HeadFont(22))
+					.TransformPolicy(ETextTransformPolicy::ToUpper)
+					.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor { return ModeTextColor(FrameMode(WeakThis.Get())); })
+					.Text_Lambda([WeakThis]()
+					{
+						switch (FrameMode(WeakThis.Get()))
+						{
+						case EDCPlanMode::Playing: return LOCTEXT("ModePlaying", "Plan läuft");
+						case EDCPlanMode::Direct: return LOCTEXT("ModeDirect", "Ausprobieren");
+						case EDCPlanMode::Planning: break;
+						}
+						return LOCTEXT("ModePlanning", "Planung");
+					})
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f)
+				[
+					SNew(SBox)
+					.HeightOverride(20.f)
+					.Visibility_Lambda([WeakThis]() { return FrameMode(WeakThis.Get()) == EDCPlanMode::Planning ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+					[
+						MakeRule(false, false)
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Visibility_Lambda([WeakThis]() { return FrameMode(WeakThis.Get()) == EDCPlanMode::Planning ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+					.Font(Font(13))
+					.ColorAndOpacity(MutedColor)
+					.Text_Lambda([WeakThis]()
+					{
+						const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+						return Heist ? Heist->DescribeViewMoment() : FText::GetEmpty();
+					})
+				]
+			]
 		]
 		// The game menu (pause, save, load, options), top right; Esc opens it too.
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f))
 		[
 			SNew(SButton)
 			.IsFocusable(false)
+			.ButtonStyle(&NormalButtonStyle())
 			.ToolTipText(LOCTEXT("MenuTip", "Pause, Plan speichern, Laden, Optionen, Hauptmenü (Esc)"))
 			.ContentPadding(FMargin(14.f, 1.f))
 			.OnClicked_Lambda([WeakThis]()
@@ -179,15 +209,21 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
 				return Floors && Floors->HasSeveralFloors() ? EVisibility::Visible : EVisibility::Collapsed;
 			})
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
+			[
+				SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor).TransformPolicy(ETextTransformPolicy::ToUpper)
+				.Text(LOCTEXT("FloorLabel", "Ebene"))
+			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
 			[
 				SNew(STextBlock)
-				.Font(Font(13, true))
-				.ColorAndOpacity(TitleColor)
+				.Font(HeadFont(18))
+				.ColorAndOpacity(TextColor)
+				.TransformPolicy(ETextTransformPolicy::ToUpper)
 				.Text_Lambda([WeakThis]()
 				{
 					const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
-					return FText::Format(LOCTEXT("FloorShown", "Ebene: {0}"), UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0));
+					return UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0);
 				})
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)

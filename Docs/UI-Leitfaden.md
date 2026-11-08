@@ -1,7 +1,11 @@
 # UI-Leitfaden – der clou 3
 
-Verbindliche Regeln für das Interface (Slate in C++), Stand 2026-11-07. Farben, Schriften und Bausteine
-nur zentral in `DCItemWidgets.h/.cpp` anlegen (InfoPanel, RadialMenu, NoiseHud nutzen noch eigene Literale).
+Verbindliche Regeln für das Interface (Slate in C++), Stand 2026-11-08. Farben, Schriften und Bausteine
+nur zentral in `DCItemWidgets.h/.cpp` anlegen.
+
+**Look seit 2026-11-08 („noir dossier meets tactical HUD“):** Vorlage ist das Mockup
+[`Docs/UI-Mockup/planung_v1.webp`](UI-Mockup/planung_v1.webp) – dunkle blaugraue Fenster, dünne Messinglinien,
+abgerundete Ecken (3), Bernstein nur für Auswahl und Hauptknopf, Titel in schmalen Großbuchstaben.
 
 ## 1. Leitprinzipien
 
@@ -49,39 +53,50 @@ Nur Dialoge, Meldungen, Radialmenü, Info und Durchsuchen liegen auf der Szene.
 
 Die Kamera rahmt den Raum in die freie Spielfläche (zwischen Kartenspalte, Kontextpanel und Leiste).
 
-## 3. Typografie (Slate-Größen, `DCItemWidgets::Font`)
+## 3. Typografie (Slate-Größen, `DCItemWidgets::Font` / `HeadFont`)
+
+Schriften: **Barlow** (Text, `Font`) und **Barlow Condensed Bold** (Titel, `HeadFont`, Laufweite +30), beide unter
+SIL Open Font License in `Content/Slate/Fonts` (mit `OFL.txt`). Sie werden zur Laufzeit als Dateien geladen, nicht als
+Assets: der Font-Import braucht eine Slate-App und stürzt im Commandlet ab. `Config/DefaultEditorPerProjectUserSettings.ini`
+hält den Auto-Import von `Content/Slate` fern, `DefaultGame.ini` packt den Ordner mit. Fehlen die Dateien, nimmt
+`Font` die Engine-Schrift. Pfeile (↑ ↓ →) hat Barlow nicht – sie kommen aus der Engine-Ersatzschrift.
 
 Bezug 1920×1080 (Slate: ca. 1,33 px je Größenpunkt, bei kleinerer Auflösung skaliert die Engine herunter).
 Sätze nie unter 12 – das entspricht etwa dem PC-Mindestmaß aus XAG 101 (ca. 18 px Zeichenhöhe bei 1080p).
 
-| Rolle | Größe | Schnitt | Wofür |
+| Rolle | Größe | Schrift | Wofür |
 |---|---|---|---|
-| Mikro | 10 | Regular | nur Zeitlineal, Einheiten, Nummern in Plaketten – **nie Sätze** |
-| Text | 12 | Regular | Details, Tooltips, Hinweise, Listen-Nebenzeilen |
-| Label | 12 | Bold | Knöpfe, Schrittnamen, Spaltenköpfe |
-| Name | 14 | Bold | Kartennamen, Abschnittstitel, Name in der Zeitleiste |
-| Titel | 16 | Bold | Fenster- und Dialogtitel (Dialogtitel als Frage) |
-| Banner | 18 | Bold | Alarm, Moduswechsel |
+| Mikro | 10 | Barlow Regular | nur Zeitlineal, Einheiten, Nummern in Plaketten – **nie Sätze** |
+| Text | 12–13 | Barlow Regular | Details, Tooltips, Hinweise, Listen-Nebenzeilen, Zusammenfassungen |
+| Label | 12 | Barlow Bold | Knöpfe, Schrittnamen, Spaltenköpfe |
+| Abschnitt | 14 | Condensed, Großbuchstaben | `MakeSectionTitle`: „FÄHIGKEITEN ———“ mit Messinglinie |
+| Name | 16–20 | Condensed, Großbuchstaben | Kartennamen, Optionen im Radialmenü |
+| Titel | 20–22 | Condensed, Großbuchstaben | Fenstertitel (`MakeTitle`), Modus oben links. Dialogtitel als Frage: Barlow Bold 18, normal geschrieben |
+| Banner | 22 | Condensed, Großbuchstaben | Alarm |
 
 Höchstens drei Größen pro Fenster. Weniger Text ist die Antwort auf Platzmangel, nicht kleinere Schrift.
 
 ## 4. Farbrollen
 
-Jede Farbe hat **eine** Bedeutung. Bestehende Konstanten in `DCItemWidgets.cpp`/`DCTimelinePanel.cpp`:
+Jede Farbe hat **eine** Bedeutung. Konstanten in `DCItemWidgets.h/.cpp` – Werte sind *linear* (Slate rechnet
+gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neue Farben immer so anlegen
+(Hex aus dem Mockup → linear umrechnen), nie sRGB-Werte direkt in `FLinearColor` schreiben.
 
-| Rolle | Konstante (heute) | Verwendung – und nur diese |
-|---|---|---|
-| Fenstergrund | `PanelColor` (0.03, 0.035, 0.05, 0.92) | Hintergrund aller Fenster, Leiste, Karten |
-| Fläche | `ZoneColor` (0.07, 0.075, 0.095) | Listen, Spuren, Ablagen im Fenster |
-| Kachel / Knopf | `TileColor` (0.14, 0.15, 0.19) | Zeilen, normale Knöpfe |
-| Text | `TextColor` (0.93, 0.94, 0.96) | Fließtext und **Titel** |
-| Nebentext | `MutedColor` (0.6, 0.63, 0.68) | Einheiten, Zeiten, Erklärungen |
-| **Fokus / Hauptaktion** | `TitleColor` (1, 0.85, 0.25) | Auswahl (Ring, Kartenrahmen, gewählte Zeile), Hauptknopf. Titel künftig weiß statt gelb |
-| Beute / Wert | `LootColor` (1, 0.78, 0.3) | nur Beute-Namen und €-Werte, nie Rahmen oder Knöpfe |
-| Problem | `MessageColor`, `LockedColor`, `StepBlockedColor` | „geht nicht“, versperrt, Ablehnung, Alarm – immer mit Wort/Symbol |
-| Passt / erledigt | `AcceptColor`, `DoneColor` | Ablage erlaubt, Schritt erledigt |
-| Wartet | `WaitBlockColor` | Wartezeit in der Zeitleiste |
-| **Abstimmung** | `SignalColor` – **neu: Cyan** statt Gelb, z. B. (0.35, 0.85, 1) | Warten auf …, Signal, Abhängigkeitspfeile |
+| Rolle | Konstante | Hex | Verwendung – und nur diese |
+|---|---|---|---|
+| Rahmen um die Szene | `BackdropColor` | #12171D | feste Ränder hinter den Fenstern |
+| Fenstergrund | `PanelColor` | #181F27 | Hintergrund aller Fenster, Leiste, Karten |
+| Fläche | `ZoneColor` | #1F262E | Listen, Spuren, Ablagen, Plätze im Fenster |
+| Kachel / Knopf | `TileColor` | #262D36 | Zeilen, normale Knöpfe |
+| Messing | `BrassColor` / `BrassDimColor` | #7D6744 / #3A362E | Haarlinien: Fensterrahmen, Trenner, Linie hinter Abschnittstiteln |
+| Text | `TextColor` | #ECE9E3 | Fließtext und **Titel** (warmes Weiß) |
+| Nebentext | `MutedColor` | #8D939B | Einheiten, Zeiten, Erklärungen |
+| **Fokus / Hauptaktion** | `TitleColor` | #F2A33A Bernstein | Auswahl (Kartenrahmen, gewählte Zeile, Segment), Hauptknopf, Modus „Planung“. Nie für Titel |
+| Beute / Wert | `LootColor` | #EDC35B Gold | nur Beute-Namen und €-Werte, nie Rahmen oder Knöpfe |
+| Problem | `MessageColor`, `LockedColor`, `StepBlockedColor` | #EE6A5D | „geht nicht“, versperrt, Ablehnung, Alarm – immer mit Wort/Symbol |
+| Passt / erledigt | `OkColor`, `AcceptColor`, `DoneColor` | #7BC47F | Ablage erlaubt, Schritt erledigt, „Plan geht auf“ |
+| Wartet | `WaitBlockColor` | grau | Wartezeit in der Zeitleiste |
+| **Abstimmung** | `CoordinationColor` | #45D6DE Cyan | Warten auf …, Signal, Abhängigkeitspfeile, Geplantes |
 | Lärmskala | `UDCNoiseSubsystem::ColorFor` | nur Lärmring und Lärmanzeige |
 | Crew-Farben | `Crew->Color` | nur Identität (Kartenstreifen, Spur, Marker). Keine reservierten Töne (Gelb, Rot, Grün, Cyan, Grau) |
 
@@ -89,9 +104,22 @@ Jede Farbe hat **eine** Bedeutung. Bestehende Konstanten in `DCItemWidgets.cpp`/
 
 ## 5. Bausteine
 
+**Flächen** (alle in `DCItemWidgets`, abgerundet mit Radius 3; die Füllung ist weiß und wird mit
+`BorderBackgroundColor` eingefärbt, die Randlinie behält ihre Farbe)
+- `FramedBrush()` – Fenster, Karten, Plätze: dünne Messinglinie. Mit `PanelColor` = Fenster.
+- `SoftFramedBrush()` – Zeilen und Kacheln im Fenster: schwache Linie.
+- `FocusFramedBrush()` – das Gewählte: 2 px Bernstein (Karte, Zeile, Option).
+- `CoordinationFramedBrush()`, `ProblemFramedBrush()` – Cyan bzw. Rot, 1 px.
+- `RoundBrush()` – nur Füllung (Farbstreifen, Abzeichen, Plätze). `Brush()` bleibt das eckige Weiß.
+- `MakeTitle`, `MakeSectionTitle`, `MakeRule` – Titel in Großbuchstaben, Abschnitt mit Messinglinie, Trennlinie.
+- `MakeSegments` – Umschalter aus Segmenten („Jetzt | Nach dem Plan“), das aktive in Bernstein.
+
 **Knöpfe**
-- Drei Stufen: *Haupt* (gefüllt `TitleColor`, dunkler Text, eine pro Bereich), *Normal* (`TileColor`),
-  *Gefährlich* (Text in Problem-Rot, löst Rückfrage oder Rückgängig-Toast aus).
+- Drei Stufen: *Haupt* (`PrimaryButtonStyle`, gefüllt `TitleColor`, dunkler Text, eine pro Bereich), *Normal*
+  (`NormalButtonStyle`, `TileColor` mit schwacher Linie, Messing beim Überfahren), *Gefährlich*
+  (`DangerButtonStyle`, rote Linie, Text in Problem-Rot, löst Rückfrage oder Rückgängig-Toast aus).
+  Jeder `SButton` bekommt einen dieser Stile (`.ButtonStyle(&…)`) – der Engine-Standardknopf passt nicht.
+  `FlatButtonStyle` nur für Knöpfe auf einer eigenen Fläche (Segmente, Zeilen).
 - Klickfläche mindestens 28 hoch, 32 breit, Abstand ≥ 4. Immer `.IsFocusable(false)`.
 - Beschriftung: Verb, 1–2 Wörter. Tastenkürzel im Tooltip und als kleine Kappe („Leertaste“).
 - Nicht möglich → ausgegraut, Tooltip und Klick sagen warum. Feste Plätze, auch wenn ausgegraut.
@@ -109,9 +137,9 @@ Jede Farbe hat **eine** Bedeutung. Bestehende Konstanten in `DCItemWidgets.cpp`/
 - Leerer Zustand: ein Satz mit der nächsten Handlung („Boden, Tür oder Gegenstand anklicken.“).
 
 **Profilkarten** – pro Figur eine, feste Reihenfolge, Taste 1–n auf der Karte.
-- Höchstens drei Zeilen: Farbstreifen + Name + Rolle · „jetzt/als Nächstes …“ · Symbole (Hände, Last, Problem „!“).
-- Gewählt: dicker Rahmen in Fokus-Gelb und hellerer Grund. Klick = wählen, Doppelklick = Kamera hin,
-  Knopf „Profil“ = Profil & Inventar aufklappen.
+- Farbstreifen links (Crew-Farbe = Identität), Porträt (bis es Bilder gibt: Initiale auf der Crew-Farbe),
+  Tastennummer als Abzeichen vor dem Namen, Name in Großbuchstaben, darunter beste Fähigkeiten und Plan-Stand.
+- Gewählt: 2 px Bernstein-Rahmen und hellerer Grund. Klick = wählen + Kamera hin.
 
 **Tooltips**: nach ca. 0,4 s; höchstens vier Zeilen: was es tut · Kürzel · warum nicht · Zahlen.
 Nichts, was man zum Spielen *braucht*, steht nur im Tooltip.
