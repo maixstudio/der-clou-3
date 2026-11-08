@@ -119,6 +119,92 @@ namespace
 	}
 }
 
+namespace
+{
+	/** "Varianten …": three switches, each with one sentence about what changes. */
+	TSharedRef<SWidget> MakeVariantsWindow(TWeakObjectPtr<UDCTimelinePanel> WeakThis)
+	{
+		using namespace DCItemWidgets;
+		const auto Flag = [WeakThis](int32 Which)
+		{
+			const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+			return Plans && (Which == 0 ? Plans->bGhostAsPin : Which == 1 ? Plans->bHelpAsMenu : Plans->bInsertOnlyWithButton);
+		};
+		// One half of a switch: filled while chosen.
+		const auto Half = [WeakThis, Flag](int32 Which, bool bValue, const FText& Label)
+		{
+			return SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SBox).Visibility_Lambda([Flag, Which, bValue]() { return Flag(Which) == bValue ? EVisibility::Visible : EVisibility::Collapsed; })
+					[
+						PanelButton(WeakThis, Label, FText::GetEmpty(), [](ADCPlayerController*) {}, 11, FMargin(8.f, 2.f), EPanelButton::Primary)
+					]
+				]
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					SNew(SBox).Visibility_Lambda([Flag, Which, bValue]() { return Flag(Which) != bValue ? EVisibility::Visible : EVisibility::Collapsed; })
+					[
+						PanelButton(WeakThis, Label, FText::GetEmpty(), [Which, bValue](ADCPlayerController* C) { C->SetVariant(Which, bValue); }, 11, FMargin(8.f, 2.f))
+					]
+				];
+		};
+		const auto Row = [Half](int32 Which, const FText& Title, const FText& Off, const FText& On, const FText& Sentence)
+		{
+			return SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 6.f, 0.f, 2.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+					[
+						SNew(SBox).WidthOverride(80.f)[SNew(STextBlock).Text(Title).Font(Font(12, true)).ColorAndOpacity(TextColor)]
+					]
+					+ SHorizontalBox::Slot().AutoWidth()[Half(Which, false, Off)]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f, 0.f, 0.f)[Half(Which, true, On)]
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(SBox).WidthOverride(430.f)[SNew(STextBlock).Text(Sentence).Font(Font(11)).ColorAndOpacity(MutedColor).AutoWrapText(true)]
+				];
+		};
+		return SNew(SBorder)
+			.BorderImage(Brush())
+			.BorderBackgroundColor(FLinearColor(0.05f, 0.06f, 0.08f, 0.97f))
+			.Padding(FMargin(14.f, 10.f))
+			.Visibility_Lambda([WeakThis]()
+			{
+				return WeakThis.IsValid() && WeakThis->IsVariantsOpen() && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock).Text(LOCTEXT("VariantsTitle", "Varianten zum Vergleichen")).Font(Font(13, true)).ColorAndOpacity(TextColor)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					Row(0, LOCTEXT("VariantGhost", "Geist"), LOCTEXT("VariantGhostFigure", "Figur"), LOCTEXT("VariantGhostPin", "Stecknadel"),
+						LOCTEXT("VariantGhostSentence", "Wo der nächste Schritt der gewählten Figur anfängt: als abgedunkelte Figur oder als Stecknadel wie in der Vorschau."))
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					Row(1, LOCTEXT("VariantHelp", "Hinweis"), LOCTEXT("VariantHelpBar", "Leiste"), LOCTEXT("VariantHelpMenu", "Menü an der Maus"),
+						LOCTEXT("VariantHelpSentence", "Wenn ein Klick den Plan hängen lässt: ruhige Leiste über dem Plan oder ein Menü genau dort, wo du geklickt hast."))
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					Row(2, LOCTEXT("VariantInsert", "Einfügen"), LOCTEXT("VariantInsertPicked", "hinter Gewähltem"), LOCTEXT("VariantInsertButton", "nur per Knopf"),
+						LOCTEXT("VariantInsertSentence", "Neue Schritte kommen sofort hinter den gewählten Schritt – oder erst nach „+ danach einfügen“ (ein Klick mehr, dafür nie aus Versehen)."))
+				]
+				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right).Padding(0.f, 8.f, 0.f, 0.f)
+				[
+					PanelButton(WeakThis, LOCTEXT("VariantsClose", "Schließen"), FText::GetEmpty(), [WeakThis](ADCPlayerController*) { if (WeakThis.IsValid()) { WeakThis->CloseVariants(); } }, 11, FMargin(10.f, 2.f))
+				]
+			];
+	}
+}
+
 TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 {
 	Super::RebuildWidget();
@@ -256,6 +342,10 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 					]
 				]
 			]
+		]
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 24.f, ToastBottom))
+		[
+			MakeVariantsWindow(WeakThis)
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.f)
 		[
@@ -420,6 +510,14 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										}), LOCTEXT("SpeedTip", "Abspieltempo 1×, 2×, 4×"), [](ADCPlayerController* C) { C->CycleSpeed(); })
 									]
 								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+								[
+									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning }))
+									[
+										PanelButton(WeakThis, LOCTEXT("Variants", "Varianten …"), LOCTEXT("VariantsTip", "Zum Vergleichen: Geist, Hinweis, Einfügen – zwei Arten je Sache"),
+											[WeakThis](ADCPlayerController*) { if (WeakThis.IsValid()) { WeakThis->bVariantsOpen = !WeakThis->bVariantsOpen; } })
+									]
+								]
 								// Deleting everything at once: "Rückgängig" brings it back.
 								+ SHorizontalBox::Slot().AutoWidth().Padding(16.f, 0.f, 0.f, 0.f)
 								[
@@ -581,8 +679,8 @@ FString UDCTimelinePanel::MakeSignature() const
 	const UDCHeistStateSubsystem* State = UDCHeistStateSubsystem::Get(this);
 	const ADCPlayerController* Controller = GetController(this);
 	const ADCCrewCharacter* Selected = Controller ? Controller->GetSelectedCrew() : nullptr;
-	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
-		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE);
+	FString Result = FString::Printf(TEXT("%d|%d|%s|%d|%d|"), State ? State->GetScheduleVersion() : 0, static_cast<int32>(GetPlanMode(this)),
+		Selected ? *Selected->GetName() : TEXT(""), State ? State->GetFocusStep() : INDEX_NONE, Controller ? Controller->GetInsertIndex() : INDEX_NONE);
 	if (!State)
 	{
 		return Result;
@@ -989,8 +1087,21 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				]
 			]
 		];
-		// The picked step: new steps come right after it.
-		if (bPicked && bPlanning)
+		// The picked step: new steps come right after it (variant: only after "+ danach einfügen").
+		const ADCPlayerController* InsertOwner = GetController(WeakThis.Get());
+		if (bPicked && bPlanning && InsertOwner && InsertOwner->GetInsertIndex() != Index + 1)
+		{
+			ListRows->AddSlot().AutoHeight().Padding(30.f, 2.f, 4.f, 4.f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().AutoWidth()
+				[
+					PanelButton(WeakThis, LOCTEXT("InsertAfter", "+ danach einfügen"), LOCTEXT("InsertAfterTip", "Neue Schritte kommen direkt hinter diesen Schritt"),
+						[Index](ADCPlayerController* C) { C->InsertAfterStep(Index); }, 11, FMargin(8.f, 1.f))
+				]
+			];
+		}
+		else if (bPicked && bPlanning)
 		{
 			ListRows->AddSlot().AutoHeight().Padding(30.f, 2.f, 4.f, 4.f)
 			[
@@ -1007,7 +1118,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
 						PanelButton(WeakThis, LOCTEXT("ToEnd", "ans Ende"), LOCTEXT("ToEndTip", "Neue Schritte wieder hinten anhängen (Esc)"),
-							[Focus](ADCPlayerController* C) { C->FocusStep(Focus, INDEX_NONE); }, 11, FMargin(8.f, 1.f))
+							[](ADCPlayerController* C) { C->InsertAtEnd(); }, 11, FMargin(8.f, 1.f))
 					]
 				]
 			];

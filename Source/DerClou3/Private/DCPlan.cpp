@@ -2,8 +2,49 @@
 
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Misc/CommandLine.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/Parse.h"
 
 #define LOCTEXT_NAMESPACE "DCPlan"
+
+namespace
+{
+	const TCHAR* const PlanVariantSection = TEXT("DerClou.Variants");
+}
+
+void UDCPlanSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+	FString Ignored;
+	const bool bSelfTest = FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), Ignored);
+	if (GConfig && !bSelfTest)
+	{
+		GConfig->GetBool(PlanVariantSection, TEXT("GhostAsPin"), bGhostAsPin, GGameUserSettingsIni);
+		GConfig->GetBool(PlanVariantSection, TEXT("HelpAsMenu"), bHelpAsMenu, GGameUserSettingsIni);
+		GConfig->GetBool(PlanVariantSection, TEXT("InsertOnlyWithButton"), bInsertOnlyWithButton, GGameUserSettingsIni);
+	}
+	FString Variant;
+	if (FParse::Value(FCommandLine::Get(), TEXT("DCVariant="), Variant))
+	{
+		bGhostAsPin = Variant.Contains(TEXT("GhostPin"));
+		bHelpAsMenu = Variant.Contains(TEXT("HelpMenu"));
+		bInsertOnlyWithButton = Variant.Contains(TEXT("InsertButton"));
+	}
+}
+
+void UDCPlanSubsystem::SaveVariants() const
+{
+	// Self-tests never touch the player's settings.
+	FString Ignored;
+	if (GConfig && !FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), Ignored))
+	{
+		GConfig->SetBool(PlanVariantSection, TEXT("GhostAsPin"), bGhostAsPin, GGameUserSettingsIni);
+		GConfig->SetBool(PlanVariantSection, TEXT("HelpAsMenu"), bHelpAsMenu, GGameUserSettingsIni);
+		GConfig->SetBool(PlanVariantSection, TEXT("InsertOnlyWithButton"), bInsertOnlyWithButton, GGameUserSettingsIni);
+		GConfig->Flush(false, GGameUserSettingsIni);
+	}
+}
 
 UDCPlanSubsystem* UDCPlanSubsystem::Get(const UObject* WorldContext)
 {

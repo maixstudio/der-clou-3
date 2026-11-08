@@ -359,6 +359,16 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Schritte mit der Maus ziehen (Bauschritt 9), Lösungen per Klick (10), Vorhersage im Menü (11) und das
     Varianten-Fenster (12) fehlen ebenfalls.
   - Selbsttest `-DCSelfTest=Insert` (L_House01). PlanLook prüft den Geist mit.
+- **Varianten zum Vergleichen (Schritt 23 = Bauschritt 12, ohne 9–11):** In der Planungsleiste öffnet der
+  Knopf „Varianten …“ ein kleines Fenster mit drei Umschaltern, je mit einem Satz dazu:
+  - Geist als Figur oder als Stecknadel (`bGhostAsPin`).
+  - Hinweis als Leiste oder als Menü an der Maus (`bHelpAsMenu`; Menü mit „Rückgängig“ und „Später“).
+  - Einfügen hinter dem gewählten Schritt oder nur nach „+ danach einfügen“ (`bInsertOnlyWithButton`,
+    `InsertAfterStep`, `InsertAtEnd`).
+  Die Werte stehen in `UDCPlanSubsystem` und werden in GameUserSettings.ini gespeichert (Abschnitt
+  `DerClou.Variants`). Selbsttests nutzen immer die Standardwerte (`-DCVariant=GhostPin,HelpMenu,InsertButton`
+  setzt sie) und speichern nichts. Selbsttest `-DCSelfTest=Variants` (L_House01, Screenshots `ghost_figure.png`,
+  `ghost_pin.png`).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -378,9 +388,12 @@ Zeitleiste per Maus und im PIE (Neuladen wurde nur im `-game`-Selbsttest geprüf
 und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Regel passt, Warten-Dialog,
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
+Neu seit 2026-11-08: Türregel (öffnet unterwegs, wartet an verschlossener Tür daneben), roter Hinweis beim Klick und
+„Plan hängt“, Türen im geplanten Zustand mit Schild, Geist der gewählten Figur, „Rosa wartet hierauf“, Einfügen hinter
+dem gewählten Schritt, Rückgängig/Strg+Z – und welche der drei Varianten besser ist (Geist, Hinweis, Einfügen).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert` (alle drei L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

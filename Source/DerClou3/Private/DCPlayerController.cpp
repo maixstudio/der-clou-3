@@ -194,6 +194,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartInsertSelfTest();
 	}
+	else if (SelfTest == TEXT("Variants"))
+	{
+		StartVariantsSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -315,7 +319,7 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	// Esc: no step picked any more - new steps go to the end again.
 	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape) && GetInsertIndex() != INDEX_NONE)
 	{
-		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
+		InsertAtEnd();
 		return;
 	}
 	// Clicks on the menu buttons are handled by the UI and never arrive here.
@@ -832,7 +836,7 @@ void ADCPlayerController::IssueTasks(const TArray<FDCPlanTask>& Tasks)
 		}
 		if (At != INDEX_NONE)
 		{
-			UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName(), First - 1 + Tasks.Num() - 1);
+			AfterInsert(Selected->GetFName(), First - 1 + Tasks.Num() - 1);
 		}
 		ShowToast(FText::Format(LOCTEXT("StepsAdded", "{0}, Schritte {1}–{2}: {3}"), Selected->GetCrewName(), FText::AsNumber(First),
 			FText::AsNumber(First + Tasks.Num() - 1), FText::FromString(FString::Join(Names, TEXT(", dann ")))));
@@ -871,7 +875,7 @@ void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
 		}
 		if (At != INDEX_NONE)
 		{
-			Heist->SetFocus(Own, NewIndex);
+			AfterInsert(Own, NewIndex);
 		}
 		ON_SCOPE_EXIT
 		{
@@ -1214,7 +1218,7 @@ void ADCPlayerController::ApplyWaitChoice(const FDCWaitChoice& Choice)
 	Plans->InsertTask(Own, At == INDEX_NONE ? TNumericLimits<int32>::Max() : At, Wait);
 	if (At != INDEX_NONE)
 	{
-		UDCHeistStateSubsystem::Get(this)->SetFocus(Own, At);
+		AfterInsert(Own, At);
 	}
 	}
 	ShowToast(FText::Format(LOCTEXT("WaitAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(), FText::AsNumber(Plans->GetTasks(Own).Num()),
@@ -1343,6 +1347,21 @@ bool ADCPlayerController::CheckPlanAfterEdit(const TArray<TPair<FName, FGuid>>& 
 		PlanHelp = FPlanHelp{ Problem.Crew, Key.Value, FText::Format(LOCTEXT("PlanHelpText", "Geht so nicht: {0}, Schritt {1} \u201e{2}\u201c – {3}"),
 			Problem.CrewName, FText::AsNumber(Problem.Index + 1), Problem.Label, Problem.Reason) };
 		UE_LOG(LogDerClou, Display, TEXT("Plan problem: %s"), *PlanHelp->Text.ToString());
+		if (Plans->bHelpAsMenu && RadialMenu)
+		{
+			// Variant: the same help as a menu right where the player clicked.
+			TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+			TArray<FDCRadialOption> Options;
+			FDCRadialOption& Back = Options.AddDefaulted_GetRef();
+			Back.Label = LOCTEXT("HelpMenuUndo", "Rückgängig");
+			Back.Detail = LOCTEXT("HelpMenuUndoDetail", "den Klick zurücknehmen");
+			Back.OnSelected = [WeakThis]() { if (WeakThis.IsValid()) { WeakThis->DismissPlanHelp(); WeakThis->UndoPlan(); } };
+			FDCRadialOption& Later = Options.AddDefaulted_GetRef();
+			Later.Label = LOCTEXT("HelpMenuLater", "Später");
+			Later.Detail = LOCTEXT("HelpMenuLaterDetail", "oben steht weiter, was hängt");
+			Later.OnSelected = [WeakThis]() { if (WeakThis.IsValid()) { WeakThis->DismissPlanHelp(); } };
+			RadialMenu->Open(FText::Format(LOCTEXT("HelpMenuTitle", "Geht so nicht\n{0}"), Problem.ShortReason), MoveTemp(Options));
+		}
 		return true;
 	}
 	return false;
@@ -1350,7 +1369,8 @@ bool ADCPlayerController::CheckPlanAfterEdit(const TArray<TPair<FName, FGuid>>& 
 
 FText ADCPlayerController::GetPlanHelp() const
 {
-	if (!PlanHelp.IsSet() || GetMode() != EDCPlanMode::Planning)
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!PlanHelp.IsSet() || GetMode() != EDCPlanMode::Planning || (Plans && Plans->bHelpAsMenu))
 	{
 		return FText::GetEmpty();
 	}
@@ -1385,8 +1405,63 @@ int32 ADCPlayerController::GetInsertIndex() const
 	{
 		return INDEX_NONE;
 	}
+	const TArray<FDCPlanTask>& Tasks = Plans->GetTasks(Selected->GetFName());
+	if (Plans->bInsertOnlyWithButton)
+	{
+		// Only after "+ danach einfügen".
+		const int32 After = InsertAfter.IsValid() ? Tasks.IndexOfByPredicate([this](const FDCPlanTask& Task) { return Task.Id == InsertAfter; }) : INDEX_NONE;
+		return After == INDEX_NONE ? INDEX_NONE : After + 1;
+	}
 	const int32 Picked = Heist->GetFocusStep();
-	return Plans->GetTasks(Selected->GetFName()).IsValidIndex(Picked) ? Picked + 1 : INDEX_NONE;
+	return Tasks.IsValidIndex(Picked) ? Picked + 1 : INDEX_NONE;
+}
+
+void ADCPlayerController::AfterInsert(FName Crew, int32 NewIndex)
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	UDCHeistStateSubsystem::Get(this)->SetFocus(Crew, NewIndex);
+	if (Plans && Plans->GetTasks(Crew).IsValidIndex(NewIndex))
+	{
+		InsertAfter = Plans->bInsertOnlyWithButton ? Plans->GetTasks(Crew)[NewIndex].Id : FGuid();
+	}
+}
+
+void ADCPlayerController::InsertAtEnd()
+{
+	InsertAfter.Invalidate();
+	if (Selected)
+	{
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
+	}
+}
+
+void ADCPlayerController::InsertAfterStep(int32 Index)
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (Selected && Plans && Plans->GetTasks(Selected->GetFName()).IsValidIndex(Index))
+	{
+		InsertAfter = Plans->GetTasks(Selected->GetFName())[Index].Id;
+		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName(), Index);
+	}
+}
+
+void ADCPlayerController::SetVariant(int32 Which, bool bValue)
+{
+	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Plans)
+	{
+		return;
+	}
+	switch (Which)
+	{
+	case 0: Plans->bGhostAsPin = bValue; break;
+	case 1: Plans->bHelpAsMenu = bValue; break;
+	default: Plans->bInsertOnlyWithButton = bValue; InsertAfter.Invalidate(); break;
+	}
+	Plans->SaveVariants();
+	UDCHeistStateSubsystem::Get(this)->UpdateWorldLook();
+	UE_LOG(LogDerClou, Display, TEXT("Variants: ghost %s, help %s, insert %s"), Plans->bGhostAsPin ? TEXT("pin") : TEXT("figure"),
+		Plans->bHelpAsMenu ? TEXT("menu") : TEXT("bar"), Plans->bInsertOnlyWithButton ? TEXT("button") : TEXT("picked step"));
 }
 
 void ADCPlayerController::ToggleWaitOn(FName Giver, int32 StepIndex, FName Waiter)
@@ -4515,6 +4590,156 @@ void ADCPlayerController::StartInsertSelfTest()
 		Expect(Plans->GetTasks(V).Num() == 1 && Plans->GetTasks(R).Num() == 2 && Removed.Contains(TEXT("Warten darauf auch")), TEXT("deleting Vic's step takes Rosa's wait along, and says so"));
 		UndoPlan();
 		Expect(Plans->GetTasks(V).Num() == 2 && Plans->GetTasks(R).Num() == 3 && Plans->GetTasks(R)[0].Ref == OfficePick, TEXT("... one undo brings both back"));
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartVariantsSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test Variants started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [](float Seconds)
+	{
+		return [Seconds, End = -1.0]() mutable
+		{
+			const double Now = FPlatformTime::Seconds();
+			End = End < 0.0 ? Now + Seconds : End;
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto Setup = [this]() -> TPair<ADCCrewCharacter*, ADCCrewCharacter*>
+	{
+		ADCCrewCharacter* Vic = nullptr;
+		ADCCrewCharacter* Rosa = nullptr;
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			Vic = It->GetCrewName().ToString() == TEXT("Vic") ? *It : Vic;
+			Rosa = It->GetCrewName().ToString() == TEXT("Rosa") ? *It : Rosa;
+		}
+		return TPair<ADCCrewCharacter*, ADCCrewCharacter*>(Vic, Rosa);
+	};
+	const auto RoomFloor = [this](const TCHAR* Name)
+	{
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			if (It->GetRoomName().ToString() == Name)
+			{
+				return It->GetActorLocation() - FVector(0.0, 0.0, 120.0);
+			}
+		}
+		return FVector::ZeroVector;
+	};
+
+	SelfTestSteps.Add(Wait(2.f));
+	// Rosa walks into the hallway (Vic picks the back door); the ghost as a figure, then as a pin.
+	SelfTestSteps.Add([this, Expect, Setup, RoomFloor]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		const TPair<ADCCrewCharacter*, ADCCrewCharacter*> Crew = Setup();
+		ADCCrewCharacter* Vic = Crew.Key;
+		ADCCrewCharacter* Rosa = Crew.Value;
+		ADCDoor* Back = nullptr;
+		for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+		{
+			Back = It->GetInteractableName().ToString() == TEXT("Hintert\u00fcr") ? *It : Back;
+		}
+		if (!Vic || !Rosa || !Back)
+		{
+			Expect(false, TEXT("Vic, Rosa and the back door are there"));
+			return true;
+		}
+		Expect(!Plans->bGhostAsPin && !Plans->bHelpAsMenu && !Plans->bInsertOnlyWithButton, TEXT("self-tests start with the default variants"));
+		Select(Vic);
+		FDCPlanTask Pick;
+		Pick.Type = EDCPlanTaskType::Door;
+		Pick.Target = Back->GetFName();
+		Pick.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+		IssueTask(Pick);
+		Select(Rosa);
+		FDCPlanTask Go;
+		Go.Type = EDCPlanTaskType::Move;
+		Go.Location = RoomFloor(TEXT("Flur"));
+		IssueTask(Go);
+		InsertAtEnd();
+		Expect(UDCHeistStateSubsystem::Get(this)->GetFigureGhost() != nullptr, TEXT("Rosa's ghost stands at the end of her plan"));
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("ghost_figure.png")));
+	SelfTestSteps.Add([this]() { SetVariant(0, true); if (TimelinePanel) { TimelinePanel->OpenVariants(); } return true; });
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("ghost_pin.png")));
+	SelfTestSteps.Add([this]() { if (TimelinePanel) { TimelinePanel->CloseVariants(); } return true; });
+	// The help as a menu at the mouse: a click that makes the plan hang opens it.
+	SelfTestSteps.Add([this, Expect, Setup, RoomFloor]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		SetVariant(0, false);
+		SetVariant(1, true);
+		ADCCrewCharacter* Rosa = Setup().Value;
+		if (!Rosa || !RadialMenu)
+		{
+			return true;
+		}
+		Select(Rosa);
+		FDCPlanTask Go;
+		Go.Type = EDCPlanTaskType::Move;
+		Go.Location = RoomFloor(TEXT("B\u00fcro"));
+		IssueTask(Go);
+		Expect(RadialMenu->IsOpen() && RadialMenu->GetTitle().ToString().Contains(TEXT("Geht so nicht")), TEXT("variant: the help opens as a menu at the mouse"));
+		Expect(GetPlanHelp().IsEmpty(), TEXT("... and not as a bar"));
+		const int32 Before = Plans->GetTasks(Rosa->GetFName()).Num();
+		Expect(RadialMenu->ChooseOption(TEXT("R\u00fcckg\u00e4ngig")) && Plans->GetTasks(Rosa->GetFName()).Num() == Before - 1, TEXT("... its \u201eR\u00fcckg\u00e4ngig\u201c takes the click back"));
+		SetVariant(1, false);
+		return true;
+	});
+	// Insert only with the button: picking a step alone changes nothing.
+	SelfTestSteps.Add([this, Expect, Setup, RoomFloor, bPassed]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		SetVariant(2, true);
+		ADCCrewCharacter* Rosa = Setup().Value;
+		if (!Rosa)
+		{
+			FinishSelfTest(false);
+			return true;
+		}
+		const FName R = Rosa->GetFName();
+		Select(Rosa);
+		FDCPlanTask Linger;
+		Linger.Type = EDCPlanTaskType::Wait;
+		Linger.Seconds = 3.f;
+		IssueTask(Linger);
+		FocusStep(R, 0);
+		Expect(GetInsertIndex() == INDEX_NONE, TEXT("variant \u201enur per Knopf\u201c: picking a step alone does not change where new steps go"));
+		InsertAfterStep(0);
+		Expect(GetInsertIndex() == 1, TEXT("... \u201e+ danach einf\u00fcgen\u201c does"));
+		FDCPlanTask Short;
+		Short.Type = EDCPlanTaskType::Wait;
+		Short.Seconds = 1.f;
+		IssueTask(Short);
+		Expect(Plans->GetTasks(R).Num() == 3 && Plans->GetTasks(R)[1].Seconds == 1.f && GetInsertIndex() == 2, TEXT("... the new step came after step 1, the next one follows it"));
+		InsertAtEnd();
+		Expect(GetInsertIndex() == INDEX_NONE, TEXT("... \u201eans Ende\u201c / Esc: at the end again"));
+		SetVariant(2, false);
 		FinishSelfTest(*bPassed);
 		return true;
 	});

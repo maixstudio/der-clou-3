@@ -5,6 +5,25 @@ Entstanden aus einer Analyse (4 Agenten) und einem Design-Panel (3 Konzepte, 2 G
 
 **Entscheidung des Users zum Warteort:** Liegt eine verschlossene Tür auf dem Weg, geht die Figur **bis zur Tür**, wartet **seitlich daneben**, bis die Tür im Plan aufgesperrt ist, öffnet sie dann selbst und geht weiter.
 
+## Stand der Umsetzung (2026-11-08)
+
+- **Gebaut und getestet:**
+  - 1 Türregel: öffnet unterwegs; wartet an einer verschlossenen Tür direkt daneben.
+  - 2 Tür-Menü, Texte, Ausprobieren und die Aufgeben-Meldung.
+  - 3 Rückgängig/Wiederholen.
+  - 4 Sofort-Warnung und Plan-Status.
+  - 5 Türen zeigen den Plan.
+  - 6 Geist der gewählten Figur.
+  - 7 Warten hängt am Schritt: Knopf „Rosa wartet hierauf“. Der Dialog „Warten …“ legt weiterhin ein Zeichen an.
+  - 8 Einfügen hinter dem gewählten Schritt.
+  - 12 Varianten-Schalter.
+- **Vereinfacht:** Menüs und „Hände danach“ rechnen noch mit dem Stand am Planende, nicht an der Einfügestelle. Die Liste blendet die Schritte nach einem hängenden nicht ein, sondern zeigt sie grau.
+- **Offen:**
+  - 9 Schritte mit der Maus ziehen.
+  - 10 Lösungen per Klick (Probelauf).
+  - 11 Vorhersage im Menü.
+  - Schraffierter „hängt“-Balken in der Zeitleiste.
+
 ## Für den User (Kurzfassung)
 
 Kurz gesagt: Türen verhalten sich jetzt so, wie man es erwartet. Probleme siehst du schon beim Klick und nicht erst am Ende. Einfügen, Abstimmen und Zurücknehmen geht mit einem Klick.

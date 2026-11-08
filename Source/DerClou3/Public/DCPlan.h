@@ -188,8 +188,19 @@ public:
 	/** Self-tests: a find during the heist takes everything of value and goes on at once (no player). */
 	bool bAutoDecideFinds = false;
 
-	/** Variant to compare: the ghost of the selected crew member as a pin instead of a figure. */
+	/**
+	 * Variants to compare while playing (window "Varianten …", saved in GameUserSettings.ini;
+	 * self-tests use the defaults unless -DCVariant=GhostPin,HelpMenu,InsertButton):
+	 * the ghost of the selected crew member as a pin instead of a figure ...
+	 */
 	bool bGhostAsPin = false;
+	/** ... the help after a click that makes the plan hang as a menu at the mouse instead of a bar ... */
+	bool bHelpAsMenu = false;
+	/** ... new steps after the picked one only after "+ danach einfügen" (instead of right away). */
+	bool bInsertOnlyWithButton = false;
+	void SaveVariants() const;
+
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
 	/** Self-tests that reload the level remember how far they got. */
 	int32 SelfTestStage = 0;

@@ -66,6 +66,12 @@ public:
 	void ToggleWaitOn(FName Giver, int32 StepIndex, FName Waiter);
 	/** Planning: where new steps of the selected crew member go - right after the picked step (INDEX_NONE: at the end). */
 	int32 GetInsertIndex() const;
+	/** New steps go to the end again (Esc, "ans Ende"). */
+	void InsertAtEnd();
+	/** Variant "nur per Knopf": "+ danach einfügen" at the selected crew member's step. */
+	void InsertAfterStep(int32 Index);
+	/** "Varianten …": 0 ghost as pin, 1 help as menu at the mouse, 2 insert only with the button. */
+	void SetVariant(int32 Which, bool bValue);
 
 	//~ Plan list
 	/** Selects the crew member and picks one of their steps (INDEX_NONE = none). */
@@ -169,6 +175,8 @@ private:
 	void StartPlanLookSelfTest();
 	/** -DCSelfTest=Insert (map L_House01): new steps after the picked one, "Rosa wartet hierauf", deleting takes waits along. */
 	void StartInsertSelfTest();
+	/** -DCSelfTest=Variants (map L_House01): the three switches in "Varianten …" (ghost, help, insert). */
+	void StartVariantsSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */
@@ -225,6 +233,10 @@ private:
 	TOptional<FPlanHelp> PlanHelp;
 	/** The last planned click made the plan hang (the click ring turns red). */
 	bool bLastEditProblem = false;
+	/** Variant "nur per Knopf": new steps go after this step (invalid: at the end). */
+	FGuid InsertAfter;
+	/** A step was put in at NewIndex: it is the picked one now, so the next click follows it. */
+	void AfterInsert(FName Crew, int32 NewIndex);
 	double ToastTime = -100.0;
 	bool bToastProblem = false;
 

@@ -54,4 +54,11 @@ private:
 	FString Signature;
 	/** Width of the timeline itself: the bar fills the bottom of the frame. */
 	float TrackWidthNow = 640.f;
+	/** The small window "Varianten …" is open. */
+	bool bVariantsOpen = false;
+
+public:
+	bool IsVariantsOpen() const { return bVariantsOpen; }
+	void CloseVariants() { bVariantsOpen = false; }
+	void OpenVariants() { bVariantsOpen = true; }
 };
