@@ -127,6 +127,11 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
   auf Ereignisse warten.
 - Später **Zeitbudget** je Suche („höchstens 45 s“) und Räume als eigene Bereiche (`ADCRoomVolume`).
 
+### Villa für die Demo – Grundriss-Entwurf 2026-11-08
+Auftrag des Users: größere Villa mit Keller, EG, 1. Stock, Nebengebäude, Zaun, Bäumen, Hecke, Außenlicht, Fenstern,
+verschiedenen Türen, Pool und Garten – zuerst nur der Grundriss. Entwurf: `Docs/Villa/Villa-Grundriss.html`
+(Daten `Scripts/Levels/villa_layout.py`). Noch nicht gebaut; die offenen Fragen stehen am Ende der Seite.
+
 ### 7. Später
 Auskundschaften als eigene Phase · Polizei und Zeitlimit · Wachen und Hunde · Alarmanlagen (Elektronik) ·
 Überwältigen (Kampf; Schlüssel der Wache aufheben und verstauen) · Geld als Menge · zu zweit tragen ·

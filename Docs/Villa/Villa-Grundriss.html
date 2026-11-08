@@ -1,0 +1,2168 @@
+<title>Villa Lindenhof</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column for text, wide figure bands for the plans; plans sit on "drafting paper". */
+:root{
+  --paper:#f4f6f5; --sheet:#ffffff; --ink:#1b2630; --muted:#5b6b76; --rule:#cdd5d9; --accent:#1f6f8b;
+  --wall:#1b2630; --win-bg:#ffffff; --glass:#2f7fbf; --stair:#eef1f2;
+  --rk-wohnen:#f0e2cb; --rk-schlafen:#d8e4f2; --rk-nass:#cfeaee; --rk-service:#ebe8d6; --rk-verkehr:#e8ebed;
+  --rk-technik:#e1dbea; --rk-wert:#f5d5c2; --rk-garage:#e1e2de;
+  --lawn:#d6e5c8; --ground:#e3e9df; --kies:#e6e0d1; --pflaster:#d5d3cd; --stein:#dcd8d0; --holz:#e1c9a7;
+  --wasser:#8fcbe2; --beet:#c3d6a4; --strasse:#c3c8cc; --gehweg:#d9dcde; --feldweg:#ddd5c2; --nachbar:#e5e8e1;
+  --hedge:#5f8f4e; --hedge-low:#8db57a; --tree:#6fa65b; --tree-edge:#3f6e33; --fence:#2c3a44;
+  --lamp:#f0b400; --lamp-edge:#7a5b00; --entry:#d4480f; --target:#a87400; --security:#a3214f; --lock:#c62828;
+  --font-display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0d151d; --sheet:#121d27; --ink:#dbe5ec; --muted:#8da0ad; --rule:#26384a; --accent:#6cc3e0;
+  --wall:#e3ebf0; --win-bg:#121d27; --glass:#7cc4f5; --stair:#1a2733;
+  --rk-wohnen:#3a3124; --rk-schlafen:#203148; --rk-nass:#1c3c43; --rk-service:#313324; --rk-verkehr:#1e2b36;
+  --rk-technik:#2d293b; --rk-wert:#46302a; --rk-garage:#272c31;
+  --lawn:#15241a; --ground:#101a14; --kies:#2b2925; --pflaster:#2c3036; --stein:#2b2d31; --holz:#3a2e21;
+  --wasser:#1b5470; --beet:#203320; --strasse:#222a31; --gehweg:#2a3238; --feldweg:#2c2820; --nachbar:#18221b;
+  --hedge:#2f5a31; --hedge-low:#3e6b3c; --tree:#3b7044; --tree-edge:#7fbf86; --fence:#c4d0d8;
+  --lamp:#ffd34d; --lamp-edge:#ffe58f; --entry:#ff8a4c; --target:#f2c14e; --security:#f06595; --lock:#ff6b6b;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --paper:#0d151d; --sheet:#121d27; --ink:#dbe5ec; --muted:#8da0ad; --rule:#26384a; --accent:#6cc3e0;
+  --wall:#e3ebf0; --win-bg:#121d27; --glass:#7cc4f5; --stair:#1a2733;
+  --rk-wohnen:#3a3124; --rk-schlafen:#203148; --rk-nass:#1c3c43; --rk-service:#313324; --rk-verkehr:#1e2b36;
+  --rk-technik:#2d293b; --rk-wert:#46302a; --rk-garage:#272c31;
+  --lawn:#15241a; --ground:#101a14; --kies:#2b2925; --pflaster:#2c3036; --stein:#2b2d31; --holz:#3a2e21;
+  --wasser:#1b5470; --beet:#203320; --strasse:#222a31; --gehweg:#2a3238; --feldweg:#2c2820; --nachbar:#18221b;
+  --hedge:#2f5a31; --hedge-low:#3e6b3c; --tree:#3b7044; --tree-edge:#7fbf86; --fence:#c4d0d8;
+  --lamp:#ffd34d; --lamp-edge:#ffe58f; --entry:#ff8a4c; --target:#f2c14e; --security:#f06595; --lock:#ff6b6b;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:28px 64px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+header{display:flex;flex-direction:column;gap:14px;max-width:880px}
+.eyebrow{font-family:var(--font-data);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--font-display);font-weight:700;font-size:clamp(40px,6vw,64px);line-height:1;margin:0;
+  letter-spacing:.01em;text-wrap:balance}
+h2{font-family:var(--font-display);font-weight:600;font-size:30px;line-height:1.1;margin:0;text-wrap:balance}
+h3{font-family:var(--font-display);font-weight:600;font-size:21px;margin:0}
+p{margin:0;max-width:68ch}
+.lead{font-size:18px;color:var(--ink)}
+.facts{display:flex;flex-wrap:wrap;gap:8px 22px;font-family:var(--font-data);font-size:13.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums}
+.facts b{color:var(--ink);font-weight:500}
+section{display:flex;flex-direction:column;gap:16px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px}
+.sec-head .tag{font-family:var(--font-data);font-size:12.5px;color:var(--muted);letter-spacing:.04em}
+.figure{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;overflow-x:auto}
+.figure svg{display:block;width:100%;height:auto;min-width:760px}
+.figure svg.small{min-width:520px}
+.controls{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:flex;flex-wrap:wrap;gap:8px 18px;
+  align-items:center;padding:10px 14px;background:var(--sheet);border:1px solid var(--rule);border-radius:6px;
+  font-size:14px}
+@media (max-width:700px){.controls{position:static}}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+.controls .lbl{font-family:var(--font-data);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.controls label{display:inline-flex;align-items:center;gap:7px;cursor:pointer;user-select:none}
+.controls input{accent-color:var(--accent);width:16px;height:16px}
+.controls input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav{display:flex;flex-wrap:wrap;gap:6px 14px;margin-left:auto}
+.nav a{color:var(--accent);text-decoration:none;font-weight:500}
+.nav a:hover,.nav a:focus-visible{text-decoration:underline}
+.split{display:flex;flex-direction:column;gap:18px}
+.split > *{min-width:0}
+.below{display:grid;grid-template-columns:minmax(0,1fr);gap:14px 36px;align-items:start}
+@media (min-width:960px){.below{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}}
+.below > *{min-width:0}
+.note{font-size:14.5px;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th{font-family:var(--font-data);font-weight:500;font-size:12px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--rule)}
+td{padding:7px 8px;border-bottom:1px solid var(--rule);vertical-align:top}
+td.num,th.num{text-align:right;font-family:var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap}
+.table-wrap{overflow-x:auto}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:8px;vertical-align:-1px;
+  border:1px solid var(--rule)}
+.sw.rk-wohnen{background:var(--rk-wohnen)}.sw.rk-schlafen{background:var(--rk-schlafen)}.sw.rk-nass{background:var(--rk-nass)}
+.sw.rk-service{background:var(--rk-service)}.sw.rk-verkehr{background:var(--rk-verkehr)}.sw.rk-technik{background:var(--rk-technik)}
+.sw.rk-wert{background:var(--rk-wert)}.sw.rk-garage{background:var(--rk-garage)}
+.pill{display:inline-block;font-family:var(--font-data);font-size:12px;padding:1px 8px;border-radius:999px;
+  border:1px solid currentColor;white-space:nowrap}
+.pill-lock{color:var(--lock)}.pill-open{color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:22px 30px}
+.cols > *{min-width:0;display:flex;flex-direction:column;gap:10px}
+.markers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:15px}
+.markers li{display:flex;gap:10px;align-items:flex-start}
+.markers em{color:var(--muted);font-style:normal;font-size:13.5px}
+.code{flex:none;font-family:var(--font-data);font-size:12px;font-weight:500;min-width:30px;text-align:center;
+  padding:1px 5px;border-radius:3px;color:var(--sheet)}
+.code-einstieg{background:var(--entry)}.code-ziel{background:var(--target)}.code-sicherheit{background:var(--security)}
+.legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:8px 22px;font-size:14px}
+.legend div{display:flex;align-items:center;gap:10px}
+.legend svg{flex:none;width:34px;height:20px}
+ol.q{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:9px;max-width:80ch}
+ol.q b{font-weight:600}
+ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;max-width:80ch}
+code{font-family:var(--font-data);font-size:13px;background:var(--stair);padding:1px 5px;border-radius:3px}
+.hide-licht .lyr-licht,.hide-einstiege .lyr-einstiege,.hide-ziele .lyr-ziele,.hide-moebel .lyr-moebel{display:none}
+
+/* SVG drawing classes */
+svg text{font-family:var(--font-body)}
+.paper{fill:var(--sheet)}
+.ground{fill:var(--ground)}
+.lawn{fill:var(--lawn)}
+.room{stroke:none}
+.rk-wohnen{fill:var(--rk-wohnen)}.rk-schlafen{fill:var(--rk-schlafen)}.rk-nass{fill:var(--rk-nass)}
+.rk-service{fill:var(--rk-service)}.rk-verkehr{fill:var(--rk-verkehr)}.rk-technik{fill:var(--rk-technik)}
+.rk-wert{fill:var(--rk-wert)}.rk-garage{fill:var(--rk-garage)}
+.wall{fill:var(--wall)}
+.win{fill:var(--win-bg);stroke:var(--wall);stroke-width:.03}
+.win-milch{fill:url(#hatch)}
+.glass-line{stroke:var(--glass);stroke-width:.035;fill:none}
+.tilt{fill:var(--entry);opacity:.9}
+.lightwell{fill:url(#grate);stroke:var(--ink);stroke-width:.04}
+.threshold{stroke:var(--muted);stroke-width:.03;stroke-dasharray:.12 .08;fill:none}
+.leaf{stroke:var(--ink);stroke-width:.06;fill:none;stroke-linecap:round}
+.leaf.main{stroke-width:.1}
+.leaf.steel{stroke-width:.1}
+.leaf.armour{stroke-width:.2;stroke:var(--target)}
+.leaf.glass{stroke:var(--glass);stroke-width:.07}
+.leaf.secret{stroke:var(--security);stroke-dasharray:.12 .08}
+.leaf.grid{stroke-dasharray:.06 .06;stroke-width:.09}
+.swing{stroke:var(--muted);stroke-width:.025;fill:none}
+.swing.secret{stroke:var(--security);stroke-dasharray:.12 .08}
+.swing.armour{stroke:var(--target)}
+.slide{fill:var(--glass)}
+.gate-panel{stroke:var(--ink);stroke-width:.1;stroke-dasharray:.3 .15;fill:none}
+.gate-bar{stroke:var(--fence);stroke-width:.22;fill:none}
+.gate-arrow{stroke:var(--fence);stroke-width:.08;fill:none}
+.gate-arrow-head{fill:var(--fence)}
+.lock{fill:var(--sheet);stroke:var(--lock);stroke-width:.06}
+.lock-t{fill:var(--lock);font-family:var(--font-data);font-weight:500}
+.stair{fill:var(--stair);stroke:var(--ink);stroke-width:.04}
+.tread{stroke:var(--ink);stroke-width:.02}
+.stair-hole{fill:var(--sheet);stroke:var(--ink);stroke-width:.04;stroke-dasharray:.15 .1}
+.stair-x{stroke:var(--rule);stroke-width:.03}
+.railing{stroke:var(--ink);stroke-width:.06;fill:none}
+.walk{stroke:var(--accent);stroke-width:.05;fill:none;stroke-linejoin:round}
+.walk-dot{fill:var(--accent)}
+.stair-t{fill:var(--accent);font-family:var(--font-data)}
+.fixture{fill:none;stroke:var(--muted);stroke-width:.03}
+.fixture-t{fill:var(--muted)}
+.room-t{fill:var(--ink);font-family:var(--font-display);font-weight:600}
+.room-sub{fill:var(--muted);font-family:var(--font-data)}
+.mk-shape{stroke:var(--sheet);stroke-width:.06}
+.mk-einstieg .mk-shape{fill:var(--entry)}
+.mk-ziel .mk-shape{fill:var(--target)}
+.mk-sicherheit .mk-shape{fill:var(--security)}
+.mk-t{fill:var(--sheet);font-family:var(--font-data);font-weight:500}
+.compass-ring{fill:var(--sheet);stroke:var(--ink);stroke-width:.05}
+.compass-needle{fill:var(--ink)}
+.compass-t{fill:var(--ink);font-family:var(--font-display);font-weight:700}
+.scale-a{fill:var(--ink)}.scale-b{fill:var(--sheet);stroke:var(--ink);stroke-width:.05}
+.scale-t{fill:var(--ink);font-family:var(--font-data)}
+.dim-line{stroke:var(--muted);stroke-width:.025;fill:none}
+.dim-tick{stroke:var(--ink);stroke-width:.05}
+.dim-t{fill:var(--muted);font-family:var(--font-data)}
+.ctx{fill:var(--stein);opacity:.55}
+.ctx-dash{fill:none;stroke:var(--muted);stroke-width:.04;stroke-dasharray:.2 .12}
+.ctx-t{fill:var(--muted);font-family:var(--font-data)}
+.earth{fill:none}
+.balcony{fill:var(--holz);opacity:.7;stroke:var(--ink);stroke-width:.04}
+.balcony-outline{fill:none;stroke:var(--ink);stroke-width:.06;stroke-dasharray:.3 .2}
+.canopy{fill:var(--pflaster);stroke:var(--ink);stroke-width:.04;stroke-dasharray:.25 .15}
+.retaining{stroke:var(--wall);stroke-width:.2}
+.retaining-low{stroke:var(--wall);stroke-width:.1}
+.surf{stroke:none}
+.s-strasse{fill:var(--strasse)}.s-gehweg{fill:var(--gehweg)}.s-feldweg{fill:var(--feldweg)}.s-nachbar{fill:var(--nachbar)}
+.s-kies{fill:var(--kies)}.s-pflaster{fill:var(--pflaster)}.s-stein{fill:var(--stein)}.s-holz{fill:var(--holz)}
+.s-wasser{fill:var(--wasser)}.s-beet{fill:var(--beet)}
+.ring.s-kies{fill:none;stroke:var(--kies)}
+.pathway{fill:none;stroke-linejoin:miter;stroke-linecap:butt}
+.pathway.s-pflaster{stroke:var(--pflaster)}
+.pathway.s-trittstein{stroke:var(--pflaster);stroke-dasharray:.6 .45}
+rect.s-wasser{stroke:var(--glass);stroke-width:.08}
+.neighbour-house{fill:var(--rk-garage);stroke:var(--muted);stroke-width:.08}
+.label-muted{fill:var(--muted);font-family:var(--font-display);font-weight:600}
+.hedge{fill:var(--hedge)}
+.hedge-low{fill:var(--hedge-low)}
+.tree{fill:var(--tree);fill-opacity:.62;stroke:var(--tree-edge);stroke-width:.07}
+.t-obst{fill-opacity:.48}
+.t-nadel{fill-opacity:.85}
+.tree-inner{fill:none;stroke:var(--tree-edge);stroke-width:.04;stroke-opacity:.5}
+.trunk{fill:var(--tree-edge)}
+.fence-line{stroke:var(--fence);stroke-width:.09;fill:none}
+.fence-post{fill:var(--fence)}
+.light-glow{fill:url(#glow)}
+.light-bm{fill:var(--lamp);fill-opacity:.07;stroke:var(--lamp-edge);stroke-width:.07;stroke-dasharray:.35 .25}
+.lamp{fill:var(--lamp);stroke:var(--lamp-edge);stroke-width:.05}
+.lamp-x{stroke:var(--lamp-edge);stroke-width:.05}
+.site-t{font-family:var(--font-display);font-weight:600;fill:var(--muted)}
+.st-street{fill:var(--muted);letter-spacing:.08em}
+.st-water{fill:var(--ink)}
+.st-building{fill:var(--ink);letter-spacing:.04em}
+@media (prefers-reduced-motion:no-preference){.figure svg .lyr-licht{transition:opacity .2s}}
+</style>
+<div class="wrap">
+<header>
+  <div class="eyebrow">der clou 3 · Demo-Level · Grundriss-Entwurf v1 · 8. November 2026</div>
+  <h1>Villa Lindenhof</h1>
+  <p class="lead">Eine freistehende Villa am Ortsrand, Lindenallee 12: Keller, Erdgeschoss und 1. Stock, dazu eine Remise mit
+  Garage und Werkstatt, Pool, Garten, Zaun und Hecke. Diese Fassung legt nur den Grundriss fest. Möbel und Beute sind
+  angedeutet, damit man sieht, wofür die Räume da sind.</p>
+  <div class="facts">
+    <span>Grundstück <b>60 × 48 m</b></span><span>Haupthaus <b>22 × 14 m</b>, 3 Ebenen</span>
+    <span>Wohnfläche Haus <b>≈ 924 m²</b></span><span><b>34</b> Räume</span>
+    <span><b>43</b> Türen und Tore, <b>19</b> verschlossen</span>
+    <span><b>39</b> Fenster</span><span><b>30</b> Außenleuchten</span>
+    <span><b>18</b> Bäume</span>
+  </div>
+</header>
+
+<div class="controls" role="group" aria-label="Ebenen im Plan ein- und ausblenden">
+  <span class="lbl">Im Plan zeigen</span>
+  <label><input type="checkbox" id="t-licht" data-layer="licht" checked> Lichtkegel</label>
+  <label><input type="checkbox" id="t-einstiege" data-layer="einstiege" checked> Einstiege</label>
+  <label><input type="checkbox" id="t-ziele" data-layer="ziele" checked> Ziele &amp; Sicherheit</label>
+  <label><input type="checkbox" id="t-moebel" data-layer="moebel" checked> Möbel</label>
+  <nav class="nav" aria-label="Abschnitte"><a href="#lageplan">Lageplan</a><a href="#eg">EG</a><a href="#og">1. Stock</a>
+  <a href="#kg">Keller</a><a href="#remise">Remise</a><a href="#tueren">Türen</a><a href="#fragen">Offene Fragen</a></nav>
+</div>
+
+<section id="lageplan">
+  <div class="sec-head"><h2>Lageplan</h2><span class="tag">Grundstück mit Erdgeschoss · Maßstab in Metern</span></div>
+  <div class="figure"><svg class="plan site" viewBox="0 0 82.00 63.00" role="img" aria-label="Lageplan Villa Lindenhof" xmlns="http://www.w3.org/2000/svg">
+<title>Lageplan Villa Lindenhof</title>
+<defs>
+<radialGradient id="glow"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.55"/>
+<stop offset=".55" style="stop-color:var(--lamp);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient>
+<pattern id="hatch" width=".35" height=".35" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2=".35" style="stroke:var(--muted);stroke-width:.05"/></pattern>
+<pattern id="grate" width=".18" height=".18" patternUnits="userSpaceOnUse">
+<path d="M0 0H.18M0 0V.18" style="stroke:var(--ink);stroke-width:.03;fill:none"/></pattern>
+</defs>
+<rect class="ground" x="0.000" y="0.000" width="82.000" height="63.000" />
+<rect class="lawn" x="4.000" y="5.000" width="60.000" height="48.000" />
+<rect class="surf s-strasse" x="-2.000" y="55.200" width="86.000" height="6.800" />
+<rect class="surf s-gehweg" x="-2.000" y="53.000" width="86.000" height="2.200" />
+<rect class="surf s-feldweg" x="-2.000" y="1.400" width="86.000" height="3.200" />
+<rect class="surf s-nachbar" x="64.600" y="4.600" width="19.400" height="48.800" />
+<rect class="surf s-kies" x="10.000" y="41.000" width="4.000" height="12.000" />
+<rect class="surf s-kies" x="7.000" y="35.000" width="12.000" height="6.000" />
+<rect class="surf s-kies" x="14.000" y="42.900" width="17.600" height="3.200" />
+<circle class="ring s-kies" cx="36.500" cy="44.500" r="3.950" style="stroke-width:3.100"/>
+<rect class="surf s-pflaster" x="35.000" y="37.000" width="3.000" height="2.000" />
+<polyline class="pathway s-pflaster" points="36.500,53.000 36.500,49.800" style="stroke-width:1.600"/>
+<polyline class="pathway s-pflaster" points="41.900,44.500 52.000,44.500 52.000,21.000 50.000,21.000" style="stroke-width:1.400"/>
+<polyline class="pathway s-pflaster" points="52.000,21.000 56.250,21.000 56.250,14.800" style="stroke-width:1.200"/>
+<polyline class="pathway s-pflaster" points="52.000,29.100 49.600,29.100" style="stroke-width:1.200"/>
+<polyline class="pathway s-pflaster" points="19.000,38.000 23.500,38.000 23.500,21.000 26.000,21.000" style="stroke-width:1.400"/>
+<polyline class="pathway s-pflaster" points="19.000,33.400 23.500,33.400" style="stroke-width:1.200"/>
+<polyline class="pathway s-pflaster" points="19.000,29.250 23.500,29.250" style="stroke-width:1.200"/>
+<polyline class="pathway s-pflaster" points="23.500,30.000 26.000,30.000" style="stroke-width:1.200"/>
+<polyline class="pathway s-pflaster" points="8.500,28.000 8.500,25.500 23.500,25.500" style="stroke-width:1.000"/>
+<polyline class="pathway s-trittstein" points="46.000,10.500 56.600,8.400 56.600,5.200" style="stroke-width:0.900"/>
+<rect class="surf s-stein" x="26.000" y="19.000" width="24.000" height="4.000" />
+<rect class="surf s-holz" x="30.000" y="10.000" width="16.000" height="9.000" />
+<rect class="surf s-wasser" x="32.000" y="12.000" width="12.000" height="5.000" />
+<rect class="surf s-holz" x="54.000" y="10.500" width="4.500" height="4.500" />
+<rect class="surf s-beet" x="19.500" y="18.500" width="1.200" height="4.000" />
+<rect class="surf s-beet" x="21.200" y="18.500" width="1.200" height="4.000" />
+<rect class="surf s-beet" x="26.000" y="37.400" width="8.600" height="1.000" />
+<rect class="surf s-beet" x="38.400" y="37.400" width="9.600" height="1.000" />
+<rect class="surf s-beet" x="48.600" y="29.400" width="1.000" height="7.600" />
+<circle class="surf s-beet" cx="36.500" cy="44.500" r="2.400" />
+<circle class="surf s-wasser" cx="36.500" cy="44.500" r="1.300" />
+<rect class="neighbour-house" x="68.000" y="26.000" width="12.000" height="13.000" />
+<text class="label-muted" x="74.000" y="32.500" font-size="1.000" text-anchor="middle" >Nachbarhaus</text>
+<rect class="hedge" x="4.300" y="5.300" width="1.000" height="46.400" />
+<rect class="hedge" x="5.300" y="5.300" width="50.200" height="1.000" />
+<rect class="hedge" x="57.700" y="5.300" width="6.000" height="1.000" />
+<rect class="hedge" x="62.700" y="6.300" width="1.000" height="45.400" />
+<rect class="hedge hedge-low" x="4.300" y="51.900" width="5.100" height="0.800" />
+<rect class="hedge hedge-low" x="14.600" y="51.900" width="20.800" height="0.800" />
+<rect class="hedge hedge-low" x="37.600" y="51.900" width="26.100" height="0.800" />
+<rect class="hedge" x="46.600" y="10.000" width="0.800" height="8.800" />
+<rect class="canopy" x="34.600" y="37.000" width="3.800" height="2.000" />
+<rect class="room rk-wohnen" x="40.000" y="23.000" width="8.000" height="9.000" />
+<rect class="room rk-verkehr" x="33.000" y="29.000" width="7.000" height="8.000" />
+<rect class="room rk-garage" x="7.000" y="28.000" width="7.000" height="7.000" />
+<rect class="room rk-service" x="26.000" y="23.000" width="7.000" height="6.000" />
+<rect class="room rk-wohnen" x="33.000" y="23.000" width="7.000" height="6.000" />
+<rect class="room rk-wohnen" x="40.000" y="32.000" width="8.000" height="5.000" />
+<rect class="room rk-service" x="14.000" y="30.500" width="5.000" height="4.500" />
+<rect class="room rk-service" x="26.000" y="31.000" width="3.500" height="6.000" />
+<rect class="room rk-verkehr" x="26.000" y="29.000" width="7.000" height="2.000" />
+<rect class="room rk-service" x="14.000" y="28.000" width="5.000" height="2.500" />
+<rect class="room rk-verkehr" x="29.500" y="31.000" width="3.500" height="3.500" />
+<rect class="room rk-verkehr" x="33.000" y="31.000" width="1.800" height="6.000" />
+<rect class="room rk-nass" x="29.500" y="34.500" width="3.500" height="2.500" />
+<rect class="room rk-service" x="26.000" y="26.500" width="2.500" height="2.500" />
+<rect class="room rk-wert" x="46.000" y="34.500" width="2.000" height="2.500" />
+<rect class="stair" x="48.200" y="25.000" width="1.400" height="3.600" />
+<polyline class="tread" points="48.200,28.310 49.600,28.310" />
+<polyline class="tread" points="48.200,28.020 49.600,28.020" />
+<polyline class="tread" points="48.200,27.730 49.600,27.730" />
+<polyline class="tread" points="48.200,27.440 49.600,27.440" />
+<polyline class="tread" points="48.200,27.150 49.600,27.150" />
+<polyline class="tread" points="48.200,26.860 49.600,26.860" />
+<polyline class="tread" points="48.200,26.570 49.600,26.570" />
+<polyline class="tread" points="48.200,26.280 49.600,26.280" />
+<polyline class="tread" points="48.200,25.990 49.600,25.990" />
+<polyline class="tread" points="48.200,25.700 49.600,25.700" />
+<polyline class="tread" points="48.200,25.410 49.600,25.410" />
+<polyline class="tread" points="48.200,25.120 49.600,25.120" />
+<circle class="walk-dot" cx="48.900" cy="28.350" r="0.090" />
+<polyline class="walk" points="48.900,28.350 48.900,25.300" />
+<polyline class="walk" points="48.680,25.650 48.900,25.300 49.120,25.650" />
+<text class="stair-t" x="50.050" y="26.800" font-size="0.36" text-anchor="middle" transform="rotate(-90 50.050 26.800)">runter</text>
+<g class="walls">
+<rect class="wall" x="25.850" y="36.850" width="10.050" height="0.300" />
+<rect class="wall" x="37.100" y="36.850" width="11.050" height="0.300" />
+<rect class="wall" x="25.850" y="30.925" width="1.450" height="0.150" />
+<rect class="wall" x="28.200" y="30.925" width="2.600" height="0.150" />
+<rect class="wall" x="31.700" y="30.925" width="3.175" height="0.150" />
+<rect class="wall" x="29.425" y="34.425" width="1.375" height="0.150" />
+<rect class="wall" x="31.700" y="34.425" width="1.375" height="0.150" />
+<rect class="wall" x="45.925" y="34.425" width="2.225" height="0.150" />
+<rect class="wall" x="25.850" y="28.925" width="4.200" height="0.150" />
+<rect class="wall" x="30.950" y="28.925" width="4.750" height="0.150" />
+<rect class="wall" x="37.300" y="28.925" width="2.775" height="0.150" />
+<rect class="wall" x="25.850" y="22.850" width="5.150" height="0.300" />
+<rect class="wall" x="32.000" y="22.850" width="3.800" height="0.300" />
+<rect class="wall" x="37.200" y="22.850" width="5.300" height="0.300" />
+<rect class="wall" x="45.500" y="22.850" width="2.650" height="0.300" />
+<rect class="wall" x="25.850" y="26.425" width="0.950" height="0.150" />
+<rect class="wall" x="27.700" y="26.425" width="0.875" height="0.150" />
+<rect class="wall" x="39.925" y="31.925" width="2.875" height="0.150" />
+<rect class="wall" x="44.400" y="31.925" width="3.750" height="0.150" />
+<rect class="wall" x="6.850" y="34.850" width="1.150" height="0.300" />
+<rect class="wall" x="13.000" y="34.850" width="6.150" height="0.300" />
+<rect class="wall" x="6.850" y="27.850" width="1.200" height="0.300" />
+<rect class="wall" x="8.950" y="27.850" width="10.200" height="0.300" />
+<rect class="wall" x="13.925" y="30.425" width="5.225" height="0.150" />
+<rect class="wall" x="25.850" y="30.500" width="0.300" height="6.650" />
+<rect class="wall" x="25.850" y="22.850" width="0.300" height="6.650" />
+<rect class="wall" x="29.425" y="30.925" width="0.150" height="6.225" />
+<rect class="wall" x="32.925" y="30.700" width="0.150" height="6.450" />
+<rect class="wall" x="32.925" y="26.500" width="0.150" height="2.800" />
+<rect class="wall" x="32.925" y="22.850" width="0.150" height="2.650" />
+<rect class="wall" x="28.425" y="26.425" width="0.150" height="2.650" />
+<rect class="wall" x="39.925" y="30.800" width="0.150" height="6.350" />
+<rect class="wall" x="39.925" y="26.800" width="0.150" height="2.600" />
+<rect class="wall" x="39.925" y="22.850" width="0.150" height="1.950" />
+<rect class="wall" x="34.725" y="36.550" width="0.150" height="0.600" />
+<rect class="wall" x="34.725" y="30.925" width="0.150" height="4.725" />
+<rect class="wall" x="47.850" y="22.850" width="0.300" height="14.300" />
+<rect class="wall" x="45.925" y="36.200" width="0.150" height="0.950" />
+<rect class="wall" x="45.925" y="34.425" width="0.150" height="0.875" />
+<rect class="wall" x="6.850" y="27.850" width="0.300" height="7.300" />
+<rect class="wall" x="13.925" y="33.450" width="0.150" height="1.700" />
+<rect class="wall" x="13.925" y="27.850" width="0.150" height="4.700" />
+<rect class="wall" x="18.850" y="33.900" width="0.300" height="1.250" />
+<rect class="wall" x="18.850" y="29.750" width="0.300" height="3.150" />
+<rect class="wall" x="18.850" y="27.850" width="0.300" height="0.900" />
+</g>
+<rect class="win" x="27.150" y="36.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="27.150,37.050 28.350,37.050" />
+<polyline class="glass-line" points="27.150,36.950 28.350,36.950" />
+<rect class="win" x="30.900" y="36.850" width="0.700" height="0.300" />
+<polyline class="glass-line" points="30.900,37.050 31.600,37.050" />
+<polyline class="glass-line" points="30.900,36.950 31.600,36.950" />
+<polygon class="tilt" points="31.000,37.150 31.500,37.150 31.250,37.430" />
+<rect class="win" x="41.200" y="36.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="41.200,37.050 42.400,37.050" />
+<polyline class="glass-line" points="41.200,36.950 42.400,36.950" />
+<rect class="win" x="43.800" y="36.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="43.800,37.050 45.000,37.050" />
+<polyline class="glass-line" points="43.800,36.950 45.000,36.950" />
+<rect class="win" x="25.850" y="33.200" width="0.300" height="1.200" />
+<polyline class="glass-line" points="25.950,34.400 25.950,33.200" />
+<polyline class="glass-line" points="26.050,34.400 26.050,33.200" />
+<rect class="win" x="25.850" y="24.100" width="0.300" height="1.400" />
+<polyline class="glass-line" points="25.950,25.500 25.950,24.100" />
+<polyline class="glass-line" points="26.050,25.500 26.050,24.100" />
+<rect class="win" x="27.900" y="22.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="27.900,23.050 29.300,23.050" />
+<polyline class="glass-line" points="27.900,22.950 29.300,22.950" />
+<rect class="win" x="33.800" y="22.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="33.800,23.075 35.000,23.075" />
+<polyline class="glass-line" points="33.800,23.000 35.000,23.000" />
+<polyline class="glass-line" points="33.800,22.925 35.000,22.925" />
+<rect class="win" x="38.000" y="22.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="38.000,23.075 39.200,23.075" />
+<polyline class="glass-line" points="38.000,23.000 39.200,23.000" />
+<polyline class="glass-line" points="38.000,22.925 39.200,22.925" />
+<rect class="win" x="40.800" y="22.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="40.800,23.075 41.800,23.075" />
+<polyline class="glass-line" points="40.800,23.000 41.800,23.000" />
+<polyline class="glass-line" points="40.800,22.925 41.800,22.925" />
+<rect class="win" x="46.100" y="22.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="46.100,23.075 47.500,23.075" />
+<polyline class="glass-line" points="46.100,23.000 47.500,23.000" />
+<polyline class="glass-line" points="46.100,22.925 47.500,22.925" />
+<rect class="win" x="47.850" y="32.650" width="0.300" height="1.200" />
+<polyline class="glass-line" points="47.950,33.850 47.950,32.650" />
+<polyline class="glass-line" points="48.050,33.850 48.050,32.650" />
+<rect class="win" x="47.850" y="28.800" width="0.300" height="1.600" />
+<polyline class="glass-line" points="47.925,30.400 47.925,28.800" />
+<polyline class="glass-line" points="48.000,30.400 48.000,28.800" />
+<polyline class="glass-line" points="48.075,30.400 48.075,28.800" />
+<rect class="win" x="47.850" y="23.900" width="0.300" height="1.400" />
+<polyline class="glass-line" points="47.925,25.300 47.925,23.900" />
+<polyline class="glass-line" points="48.000,25.300 48.000,23.900" />
+<polyline class="glass-line" points="48.075,25.300 48.075,23.900" />
+<rect class="win" x="6.850" y="31.900" width="0.300" height="1.200" />
+<polyline class="glass-line" points="6.950,33.100 6.950,31.900" />
+<polyline class="glass-line" points="7.050,33.100 7.050,31.900" />
+<rect class="win" x="6.850" y="29.200" width="0.300" height="1.200" />
+<polyline class="glass-line" points="6.950,30.400 6.950,29.200" />
+<polyline class="glass-line" points="7.050,30.400 7.050,29.200" />
+<rect class="win" x="15.700" y="34.850" width="1.600" height="0.300" />
+<polyline class="glass-line" points="15.700,35.050 17.300,35.050" />
+<polyline class="glass-line" points="15.700,34.950 17.300,34.950" />
+<rect class="win" x="15.900" y="27.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="15.900,28.050 17.100,28.050" />
+<polyline class="glass-line" points="15.900,27.950 17.100,27.950" />
+<polygon class="tilt" points="16.000,27.850 17.000,27.850 16.500,27.570" />
+<rect class="stair" x="38.200" y="31.400" width="1.600" height="5.000" />
+<polyline class="tread" points="38.200,36.110 39.800,36.110" />
+<polyline class="tread" points="38.200,35.820 39.800,35.820" />
+<polyline class="tread" points="38.200,35.530 39.800,35.530" />
+<polyline class="tread" points="38.200,35.240 39.800,35.240" />
+<polyline class="tread" points="38.200,34.950 39.800,34.950" />
+<polyline class="tread" points="38.200,34.660 39.800,34.660" />
+<polyline class="tread" points="38.200,34.370 39.800,34.370" />
+<polyline class="tread" points="38.200,34.080 39.800,34.080" />
+<polyline class="tread" points="38.200,33.790 39.800,33.790" />
+<polyline class="tread" points="38.200,33.500 39.800,33.500" />
+<polyline class="tread" points="38.200,33.210 39.800,33.210" />
+<polyline class="tread" points="38.200,32.920 39.800,32.920" />
+<polyline class="tread" points="38.200,32.630 39.800,32.630" />
+<polyline class="tread" points="38.200,32.340 39.800,32.340" />
+<polyline class="tread" points="38.200,32.050 39.800,32.050" />
+<polyline class="tread" points="38.200,31.760 39.800,31.760" />
+<polyline class="tread" points="38.200,31.470 39.800,31.470" />
+<circle class="walk-dot" cx="39.000" cy="36.150" r="0.090" />
+<polyline class="walk" points="39.000,36.150 39.000,31.700" />
+<polyline class="walk" points="38.780,32.050 39.000,31.700 39.220,32.050" />
+<text class="stair-t" x="37.980" y="33.900" font-size="0.36" text-anchor="middle" transform="rotate(-90 37.980 33.900)">hoch · 1. Stock</text>
+<rect class="stair" x="33.150" y="31.150" width="1.500" height="4.450" />
+<polyline class="tread" points="33.150,35.310 34.650,35.310" />
+<polyline class="tread" points="33.150,35.020 34.650,35.020" />
+<polyline class="tread" points="33.150,34.730 34.650,34.730" />
+<polyline class="tread" points="33.150,34.440 34.650,34.440" />
+<polyline class="tread" points="33.150,34.150 34.650,34.150" />
+<polyline class="tread" points="33.150,33.860 34.650,33.860" />
+<polyline class="tread" points="33.150,33.570 34.650,33.570" />
+<polyline class="tread" points="33.150,33.280 34.650,33.280" />
+<polyline class="tread" points="33.150,32.990 34.650,32.990" />
+<polyline class="tread" points="33.150,32.700 34.650,32.700" />
+<polyline class="tread" points="33.150,32.410 34.650,32.410" />
+<polyline class="tread" points="33.150,32.120 34.650,32.120" />
+<polyline class="tread" points="33.150,31.830 34.650,31.830" />
+<polyline class="tread" points="33.150,31.540 34.650,31.540" />
+<polyline class="tread" points="33.150,31.250 34.650,31.250" />
+<circle class="walk-dot" cx="33.900" cy="35.350" r="0.090" />
+<polyline class="walk" points="33.900,35.350 33.900,31.450" />
+<polyline class="walk" points="33.680,31.800 33.900,31.450 34.120,31.800" />
+<text class="stair-t" x="33.900" y="36.220" font-size="0.340" text-anchor="middle" >Keller</text>
+<g class="door dt-haustuer">
+<polyline class="threshold" points="35.900,37.000 37.100,37.000" />
+<polyline class="swing main" points="35.900,35.800 36.034,35.808 36.167,35.830 36.296,35.867 36.421,35.919 36.538,35.984 36.648,36.062 36.749,36.151 36.838,36.252 36.916,36.362 36.981,36.479 37.033,36.604 37.070,36.733 37.092,36.866 37.100,37.000" />
+<polyline class="leaf main" points="35.900,37.000 35.900,35.800" />
+<circle class="lock" cx="36.500" cy="37.570" r="0.340" />
+<text class="lock-t" x="36.500" y="37.692" font-size="0.374" text-anchor="middle" >6</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="26.000,30.500 26.000,29.500" />
+<polyline class="swing " points="27.000,30.500 26.994,30.388 26.975,30.277 26.944,30.170 26.901,30.066 26.847,29.968 26.782,29.877 26.707,29.793 26.623,29.718 26.532,29.653 26.434,29.599 26.330,29.556 26.223,29.525 26.112,29.506 26.000,29.500" />
+<polyline class="leaf " points="26.000,30.500 27.000,30.500" />
+<circle class="lock" cx="25.430" cy="30.000" r="0.340" />
+<text class="lock-t" x="25.430" y="30.122" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-glas">
+<polyline class="threshold" points="31.000,23.000 32.000,23.000" />
+<polyline class="swing glass" points="32.000,24.000 31.888,23.994 31.777,23.975 31.670,23.944 31.566,23.901 31.468,23.847 31.377,23.782 31.293,23.707 31.218,23.623 31.153,23.532 31.099,23.434 31.056,23.330 31.025,23.223 31.006,23.112 31.000,23.000" />
+<polyline class="leaf glass" points="32.000,23.000 32.000,24.000" />
+<circle class="lock" cx="31.500" cy="22.430" r="0.340" />
+<text class="lock-t" x="31.500" y="22.552" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-glas2">
+<polyline class="threshold" points="35.800,23.000 37.200,23.000" />
+<polyline class="swing glass" points="35.800,23.700 35.878,23.696 35.956,23.682 36.031,23.661 36.104,23.631 36.172,23.593 36.236,23.547 36.295,23.495 36.347,23.436 36.393,23.372 36.431,23.304 36.461,23.231 36.482,23.156 36.496,23.078 36.500,23.000" />
+<polyline class="leaf glass" points="35.800,23.000 35.800,23.700" />
+<polyline class="swing glass" points="37.200,23.700 37.122,23.696 37.044,23.682 36.969,23.661 36.896,23.631 36.828,23.593 36.764,23.547 36.705,23.495 36.653,23.436 36.607,23.372 36.569,23.304 36.539,23.231 36.518,23.156 36.504,23.078 36.500,23.000" />
+<polyline class="leaf glass" points="37.200,23.000 37.200,23.700" />
+<circle class="lock" cx="36.500" cy="22.430" r="0.340" />
+<text class="lock-t" x="36.500" y="22.552" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-schiebe">
+<polyline class="threshold" points="42.500,23.000 45.500,23.000" />
+<rect class="slide" x="42.500" y="23.025" width="1.600" height="0.050" />
+<rect class="slide" x="43.900" y="22.925" width="1.600" height="0.050" />
+<circle class="lock" cx="44.000" cy="22.430" r="0.340" />
+<text class="lock-t" x="44.000" y="22.552" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="35.700,29.000 37.300,29.000" />
+<polyline class="swing " points="35.700,28.200 35.790,28.205 35.878,28.220 35.964,28.245 36.047,28.279 36.126,28.323 36.199,28.375 36.266,28.434 36.325,28.501 36.377,28.574 36.421,28.653 36.455,28.736 36.480,28.822 36.495,28.910 36.500,29.000" />
+<polyline class="leaf " points="35.700,29.000 35.700,28.200" />
+<polyline class="swing " points="37.300,28.200 37.210,28.205 37.122,28.220 37.036,28.245 36.953,28.279 36.874,28.323 36.801,28.375 36.734,28.434 36.675,28.501 36.623,28.574 36.579,28.653 36.545,28.736 36.520,28.822 36.505,28.910 36.500,29.000" />
+<polyline class="leaf " points="37.300,29.000 37.300,28.200" />
+</g>
+<g class="door dt-offen">
+<polyline class="threshold" points="33.000,30.700 33.000,29.300" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="30.050,29.000 30.950,29.000" />
+<polyline class="swing " points="30.950,28.100 30.849,28.106 30.750,28.123 30.653,28.151 30.560,28.189 30.471,28.238 30.389,28.296 30.314,28.364 30.246,28.439 30.188,28.521 30.139,28.610 30.101,28.703 30.073,28.800 30.056,28.899 30.050,29.000" />
+<polyline class="leaf " points="30.950,29.000 30.950,28.100" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="33.000,26.500 33.000,25.500" />
+<polyline class="swing " points="34.000,25.500 33.994,25.612 33.975,25.723 33.944,25.830 33.901,25.934 33.847,26.032 33.782,26.123 33.707,26.207 33.623,26.282 33.532,26.347 33.434,26.401 33.330,26.444 33.223,26.475 33.112,26.494 33.000,26.500" />
+<polyline class="leaf " points="33.000,25.500 34.000,25.500" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="26.800,26.500 27.700,26.500" />
+<polyline class="swing " points="26.800,25.600 26.901,25.606 27.000,25.623 27.097,25.651 27.190,25.689 27.279,25.738 27.361,25.796 27.436,25.864 27.504,25.939 27.562,26.021 27.611,26.110 27.649,26.203 27.677,26.300 27.694,26.399 27.700,26.500" />
+<polyline class="leaf " points="26.800,26.500 26.800,25.600" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="27.300,31.000 28.200,31.000" />
+<polyline class="swing " points="27.300,31.900 27.401,31.894 27.500,31.877 27.597,31.849 27.690,31.811 27.779,31.762 27.861,31.704 27.936,31.636 28.004,31.561 28.062,31.479 28.111,31.390 28.149,31.297 28.177,31.200 28.194,31.101 28.200,31.000" />
+<polyline class="leaf " points="27.300,31.000 27.300,31.900" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="30.800,31.000 31.700,31.000" />
+<polyline class="swing " points="31.700,31.900 31.599,31.894 31.500,31.877 31.403,31.849 31.310,31.811 31.221,31.762 31.139,31.704 31.064,31.636 30.996,31.561 30.938,31.479 30.889,31.390 30.851,31.297 30.823,31.200 30.806,31.101 30.800,31.000" />
+<polyline class="leaf " points="31.700,31.000 31.700,31.900" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="30.800,34.500 31.700,34.500" />
+<polyline class="swing " points="30.800,35.400 30.901,35.394 31.000,35.377 31.097,35.349 31.190,35.311 31.279,35.262 31.361,35.204 31.436,35.136 31.504,35.061 31.562,34.979 31.611,34.890 31.649,34.797 31.677,34.700 31.694,34.601 31.700,34.500" />
+<polyline class="leaf " points="30.800,34.500 30.800,35.400" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="34.800,36.550 34.800,35.650" />
+<polyline class="swing " points="35.700,36.550 35.694,36.449 35.677,36.350 35.649,36.253 35.611,36.160 35.562,36.071 35.504,35.989 35.436,35.914 35.361,35.846 35.279,35.788 35.190,35.739 35.097,35.701 35.000,35.673 34.901,35.656 34.800,35.650" />
+<polyline class="leaf " points="34.800,36.550 35.700,36.550" />
+<circle class="lock" cx="35.295" cy="36.100" r="0.340" />
+<text class="lock-t" x="35.295" y="36.222" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="40.000,30.800 40.000,29.400" />
+<polyline class="swing " points="40.700,30.800 40.696,30.722 40.682,30.644 40.661,30.569 40.631,30.496 40.593,30.428 40.547,30.364 40.495,30.305 40.436,30.253 40.372,30.207 40.304,30.169 40.231,30.139 40.156,30.118 40.078,30.104 40.000,30.100" />
+<polyline class="leaf " points="40.000,30.800 40.700,30.800" />
+<polyline class="swing " points="40.700,29.400 40.696,29.478 40.682,29.556 40.661,29.631 40.631,29.704 40.593,29.772 40.547,29.836 40.495,29.895 40.436,29.947 40.372,29.993 40.304,30.031 40.231,30.061 40.156,30.082 40.078,30.096 40.000,30.100" />
+<polyline class="leaf " points="40.000,29.400 40.700,29.400" />
+</g>
+<g class="door dt-offen">
+<polyline class="threshold" points="40.000,26.800 40.000,24.800" />
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="42.800,32.000 44.400,32.000" />
+<polyline class="swing " points="42.800,32.800 42.890,32.795 42.978,32.780 43.064,32.755 43.147,32.721 43.226,32.677 43.299,32.625 43.366,32.566 43.425,32.499 43.477,32.426 43.521,32.347 43.555,32.264 43.580,32.178 43.595,32.090 43.600,32.000" />
+<polyline class="leaf " points="42.800,32.000 42.800,32.800" />
+<polyline class="swing " points="44.400,32.800 44.310,32.795 44.222,32.780 44.136,32.755 44.053,32.721 43.974,32.677 43.901,32.625 43.834,32.566 43.775,32.499 43.723,32.426 43.679,32.347 43.645,32.264 43.620,32.178 43.605,32.090 43.600,32.000" />
+<polyline class="leaf " points="44.400,32.000 44.400,32.800" />
+</g>
+<g class="door dt-geheim">
+<polyline class="threshold" points="46.000,36.200 46.000,35.300" />
+<polyline class="swing secret" points="45.100,36.200 45.106,36.099 45.123,36.000 45.151,35.903 45.189,35.810 45.238,35.721 45.296,35.639 45.364,35.564 45.439,35.496 45.521,35.438 45.610,35.389 45.703,35.351 45.800,35.323 45.899,35.306 46.000,35.300" />
+<polyline class="leaf secret" points="46.000,36.200 45.100,36.200" />
+</g>
+<g class="door dt-tor">
+<polyline class="threshold" points="8.000,35.000 13.000,35.000" />
+<polyline class="gate-panel" points="8.100,34.650 12.900,34.650" />
+<circle class="lock" cx="10.500" cy="35.570" r="0.340" />
+<text class="lock-t" x="10.500" y="35.692" font-size="0.374" text-anchor="middle" >E</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="14.000,33.450 14.000,32.550" />
+<polyline class="swing " points="14.900,33.450 14.894,33.349 14.877,33.250 14.849,33.153 14.811,33.060 14.762,32.971 14.704,32.889 14.636,32.814 14.561,32.746 14.479,32.688 14.390,32.639 14.297,32.601 14.200,32.573 14.101,32.556 14.000,32.550" />
+<polyline class="leaf " points="14.000,33.450 14.900,33.450" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="19.000,33.900 19.000,32.900" />
+<polyline class="swing " points="18.000,33.900 18.006,33.788 18.025,33.677 18.056,33.570 18.099,33.466 18.153,33.368 18.218,33.277 18.293,33.193 18.377,33.118 18.468,33.053 18.566,32.999 18.670,32.956 18.777,32.925 18.888,32.906 19.000,32.900" />
+<polyline class="leaf " points="19.000,33.900 18.000,33.900" />
+<circle class="lock" cx="19.570" cy="33.400" r="0.340" />
+<text class="lock-t" x="19.570" y="33.522" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="19.000,29.750 19.000,28.750" />
+<polyline class="swing " points="20.000,29.750 19.994,29.638 19.975,29.527 19.944,29.420 19.901,29.316 19.847,29.218 19.782,29.127 19.707,29.043 19.623,28.968 19.532,28.903 19.434,28.849 19.330,28.806 19.223,28.775 19.112,28.756 19.000,28.750" />
+<polyline class="leaf " points="19.000,29.750 20.000,29.750" />
+<circle class="lock" cx="18.430" cy="29.250" r="0.340" />
+<text class="lock-t" x="18.430" y="29.372" font-size="0.374" text-anchor="middle" >2</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="8.050,28.000 8.950,28.000" />
+<polyline class="swing " points="8.950,28.900 8.849,28.894 8.750,28.877 8.653,28.849 8.560,28.811 8.471,28.762 8.389,28.704 8.314,28.636 8.246,28.561 8.188,28.479 8.139,28.390 8.101,28.297 8.073,28.200 8.056,28.101 8.050,28.000" />
+<polyline class="leaf " points="8.950,28.000 8.950,28.900" />
+<circle class="lock" cx="8.500" cy="27.430" r="0.340" />
+<text class="lock-t" x="8.500" y="27.552" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<polyline class="retaining" points="49.750,28.700 49.750,23.000" />
+<polyline class="retaining-low" points="48.150,28.700 49.750,28.700" />
+<rect class="balcony-outline" x="41.000" y="21.200" width="6.000" height="1.800" />
+<text class="room-t" x="27.750" y="34.118" font-size="0.429" text-anchor="middle" >Hauswirtschaft</text>
+<text class="room-t" x="31.250" y="35.901" font-size="0.550" text-anchor="middle" >Gäste-WC</text>
+<text class="room-t" x="31.250" y="32.901" font-size="0.550" text-anchor="middle" >Garderobe</text>
+<text class="room-t" x="29.500" y="30.151" font-size="0.550" text-anchor="middle" >Flur</text>
+<text class="room-t" x="30.300" y="24.401" font-size="0.550" text-anchor="middle" >Küche</text>
+<text class="room-t" x="27.250" y="27.613" font-size="0.550" text-anchor="middle" >Speise-</text>
+<text class="room-t" x="27.250" y="28.190" font-size="0.550" text-anchor="middle" >kammer</text>
+<text class="room-t" x="36.500" y="32.151" font-size="0.550" text-anchor="middle" >Halle</text>
+<text class="room-t" x="36.500" y="24.701" font-size="0.550" text-anchor="middle" >Esszimmer</text>
+<text class="room-t" x="43.200" y="34.551" font-size="0.550" text-anchor="middle" >Bibliothek</text>
+<text class="room-t" x="47.000" y="35.643" font-size="0.429" text-anchor="middle" >Geheim-</text>
+<text class="room-t" x="47.000" y="36.093" font-size="0.429" text-anchor="middle" >kammer</text>
+<text class="room-t" x="44.000" y="27.651" font-size="0.550" text-anchor="middle" >Wohnzimmer</text>
+<text class="room-t" x="10.800" y="29.301" font-size="0.550" text-anchor="middle" >Doppelgarage</text>
+<text class="room-t" x="16.500" y="32.901" font-size="0.550" text-anchor="middle" >Werkstatt</text>
+<text class="room-t" x="16.500" y="29.401" font-size="0.550" text-anchor="middle" >Geräteraum</text>
+<g class="trees">
+<circle class="tree t-laub" cx="7.200" cy="48.800" r="2.800" />
+<circle class="tree-inner" cx="7.200" cy="48.800" r="1.736" />
+<circle class="trunk" cx="7.200" cy="48.800" r="0.160" />
+<circle class="tree t-laub" cx="19.500" cy="49.000" r="3.200" />
+<circle class="tree-inner" cx="19.500" cy="49.000" r="1.984" />
+<circle class="trunk" cx="19.500" cy="49.000" r="0.160" />
+<circle class="tree t-laub" cx="27.500" cy="48.800" r="3.000" />
+<circle class="tree-inner" cx="27.500" cy="48.800" r="1.860" />
+<circle class="trunk" cx="27.500" cy="48.800" r="0.160" />
+<circle class="tree t-laub" cx="46.500" cy="49.000" r="3.000" />
+<circle class="tree-inner" cx="46.500" cy="49.000" r="1.860" />
+<circle class="trunk" cx="46.500" cy="49.000" r="0.160" />
+<circle class="tree t-laub" cx="54.500" cy="48.800" r="3.200" />
+<circle class="tree-inner" cx="54.500" cy="48.800" r="1.984" />
+<circle class="trunk" cx="54.500" cy="48.800" r="0.160" />
+<circle class="tree t-laub" cx="60.200" cy="46.000" r="2.600" />
+<circle class="tree-inner" cx="60.200" cy="46.000" r="1.612" />
+<circle class="trunk" cx="60.200" cy="46.000" r="0.160" />
+<circle class="tree t-laub" cx="7.600" cy="22.500" r="3.000" />
+<circle class="tree-inner" cx="7.600" cy="22.500" r="1.860" />
+<circle class="trunk" cx="7.600" cy="22.500" r="0.160" />
+<circle class="tree t-laub" cx="8.200" cy="11.500" r="3.600" />
+<circle class="tree-inner" cx="8.200" cy="11.500" r="2.232" />
+<circle class="trunk" cx="8.200" cy="11.500" r="0.160" />
+<circle class="tree t-nadel" cx="16.000" cy="9.400" r="2.800" />
+<circle class="trunk" cx="16.000" cy="9.400" r="0.160" />
+<circle class="tree t-laub" cx="23.600" cy="9.800" r="2.400" />
+<circle class="tree-inner" cx="23.600" cy="9.800" r="1.488" />
+<circle class="trunk" cx="23.600" cy="9.800" r="0.160" />
+<circle class="tree t-obst" cx="55.500" cy="39.500" r="2.000" />
+<circle class="trunk" cx="55.500" cy="39.500" r="0.160" />
+<circle class="tree t-obst" cx="59.200" cy="35.500" r="2.000" />
+<circle class="trunk" cx="59.200" cy="35.500" r="0.160" />
+<circle class="tree t-obst" cx="55.500" cy="31.500" r="2.000" />
+<circle class="trunk" cx="55.500" cy="31.500" r="0.160" />
+<circle class="tree t-obst" cx="59.200" cy="27.500" r="2.000" />
+<circle class="trunk" cx="59.200" cy="27.500" r="0.160" />
+<circle class="tree t-obst" cx="55.800" cy="23.200" r="2.200" />
+<circle class="trunk" cx="55.800" cy="23.200" r="0.160" />
+<circle class="tree t-laub" cx="60.200" cy="9.400" r="3.200" />
+<circle class="tree-inner" cx="60.200" cy="9.400" r="1.984" />
+<circle class="trunk" cx="60.200" cy="9.400" r="0.160" />
+<circle class="tree t-nadel" cx="50.200" cy="11.800" r="1.800" />
+<circle class="trunk" cx="50.200" cy="11.800" r="0.160" />
+<circle class="tree t-laub" cx="15.500" cy="17.000" r="2.600" />
+<circle class="tree-inner" cx="15.500" cy="17.000" r="1.612" />
+<circle class="trunk" cx="15.500" cy="17.000" r="0.160" />
+</g>
+<g class="fence">
+<polyline class="fence-line" points="4.000,53.000 10.000,53.000" />
+<rect class="fence-post" x="3.890" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="6.890" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="9.890" y="52.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="14.000,53.000 35.900,53.000" />
+<rect class="fence-post" x="13.890" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="16.628" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="19.365" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="22.102" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="24.840" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="27.578" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="30.315" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="33.052" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="35.790" y="52.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="37.100,53.000 64.000,53.000" />
+<rect class="fence-post" x="36.990" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="39.680" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="42.370" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="45.060" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="47.750" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="50.440" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="53.130" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="55.820" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="58.510" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="61.200" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="52.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="64.000,53.000 64.000,5.000" />
+<rect class="fence-post" x="63.890" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="50.364" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="47.837" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="45.311" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="42.785" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="40.258" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="37.732" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="35.206" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="32.679" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="30.153" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="27.627" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="25.101" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="22.574" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="20.048" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="17.522" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="14.995" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="12.469" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="9.943" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="7.416" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="4.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="4.000,5.000 56.000,5.000" />
+<rect class="fence-post" x="3.890" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="6.490" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="9.090" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="11.690" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="14.290" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="16.890" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="19.490" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="22.090" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="24.690" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="27.290" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="29.890" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="32.490" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="35.090" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="37.690" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="40.290" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="42.890" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="45.490" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="48.090" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="50.690" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="53.290" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="55.890" y="4.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="57.200,5.000 64.000,5.000" />
+<rect class="fence-post" x="57.090" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="60.490" y="4.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="63.890" y="4.890" width="0.220" height="0.220" />
+<polyline class="fence-line" points="4.000,53.000 4.000,5.000" />
+<rect class="fence-post" x="3.890" y="52.890" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="50.364" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="47.837" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="45.311" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="42.785" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="40.258" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="37.732" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="35.206" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="32.679" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="30.153" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="27.627" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="25.101" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="22.574" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="20.048" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="17.522" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="14.995" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="12.469" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="9.943" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="7.416" width="0.220" height="0.220" />
+<rect class="fence-post" x="3.890" y="4.890" width="0.220" height="0.220" />
+</g>
+<g class="door dt-schiebetor">
+<polyline class="gate-bar" points="10.000,53.000 14.000,53.000" />
+<polyline class="gate-arrow" points="13.600,53.550 10.400,53.550" />
+<polygon class="gate-arrow-head" points="10.400,53.330 10.050,53.550 10.400,53.770" />
+<circle class="lock" cx="12.000" cy="53.495" r="0.340" />
+<text class="lock-t" x="12.000" y="53.617" font-size="0.374" text-anchor="middle" >E</text>
+</g>
+<g class="door dt-pforte">
+<polyline class="threshold" points="35.900,53.000 37.100,53.000" />
+<polyline class="swing " points="35.900,51.800 36.034,51.808 36.167,51.830 36.296,51.867 36.421,51.919 36.538,51.984 36.648,52.062 36.749,52.151 36.838,52.252 36.916,52.362 36.981,52.479 37.033,52.604 37.070,52.733 37.092,52.866 37.100,53.000" />
+<polyline class="leaf " points="35.900,53.000 35.900,51.800" />
+<circle class="lock" cx="36.500" cy="53.495" r="0.340" />
+<text class="lock-t" x="36.500" y="53.617" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-pforte">
+<polyline class="threshold" points="56.000,5.000 57.200,5.000" />
+<polyline class="swing " points="56.000,6.200 56.134,6.192 56.267,6.170 56.396,6.133 56.521,6.081 56.638,6.016 56.748,5.938 56.849,5.849 56.938,5.748 57.016,5.638 57.081,5.521 57.133,5.396 57.170,5.267 57.192,5.134 57.200,5.000" />
+<polyline class="leaf " points="56.000,5.000 56.000,6.200" />
+<circle class="lock" cx="56.600" cy="4.505" r="0.340" />
+<text class="lock-t" x="56.600" y="4.627" font-size="0.374" text-anchor="middle" >2</text>
+</g>
+<g class="lyr-licht">
+<circle class="light-glow" cx="9.400" cy="52.300" r="5.000" />
+<circle class="light-glow" cx="14.600" cy="52.300" r="5.000" />
+<circle class="light-glow" cx="35.400" cy="52.300" r="4.000" />
+<circle class="light-glow" cx="14.600" cy="49.500" r="2.500" />
+<circle class="light-glow" cx="14.600" cy="45.500" r="2.500" />
+<circle class="light-glow" cx="9.600" cy="42.000" r="2.500" />
+<circle class="light-glow" cx="31.600" cy="42.000" r="2.500" />
+<circle class="light-glow" cx="41.400" cy="42.000" r="2.500" />
+<circle class="light-glow" cx="36.500" cy="50.400" r="2.500" />
+<circle class="light-glow" cx="34.850" cy="37.450" r="4.000" />
+<circle class="light-glow" cx="38.150" cy="37.450" r="4.000" />
+<circle class="light-bm" cx="25.500" cy="29.000" r="8.000" />
+<circle class="light-bm" cx="7.600" cy="35.500" r="9.000" />
+<circle class="light-bm" cx="13.400" cy="35.500" r="9.000" />
+<circle class="light-glow" cx="19.450" cy="32.400" r="3.500" />
+<circle class="light-glow" cx="32.350" cy="22.550" r="3.500" />
+<circle class="light-glow" cx="40.400" cy="22.550" r="4.000" />
+<circle class="light-glow" cx="48.450" cy="22.550" r="4.000" />
+<circle class="light-bm" cx="50.250" cy="28.100" r="7.000" />
+<circle class="light-glow" cx="34.500" cy="16.700" r="3.000" />
+<circle class="light-glow" cx="38.000" cy="16.700" r="3.000" />
+<circle class="light-glow" cx="41.500" cy="16.700" r="3.000" />
+<circle class="light-glow" cx="52.000" cy="38.000" r="2.500" />
+<circle class="light-glow" cx="52.000" cy="31.000" r="2.500" />
+<circle class="light-glow" cx="52.000" cy="24.000" r="2.500" />
+<circle class="light-glow" cx="56.250" cy="11.300" r="3.500" />
+<circle class="light-glow" cx="59.200" cy="12.000" r="3.000" />
+<circle class="light-glow" cx="28.000" cy="47.000" r="3.000" />
+<circle class="light-glow" cx="23.500" cy="35.000" r="2.500" />
+<circle class="light-glow" cx="23.500" cy="25.000" r="2.500" />
+</g>
+<g class="lights">
+<circle class="lamp lamp-laterne" cx="9.400" cy="52.300" r="0.420" />
+<polyline class="lamp-x" points="9.106,52.594 9.694,52.006" />
+<polyline class="lamp-x" points="9.106,52.006 9.694,52.594" />
+<title>Torlaterne (laterne)</title>
+<circle class="lamp lamp-laterne" cx="14.600" cy="52.300" r="0.420" />
+<polyline class="lamp-x" points="14.306,52.594 14.894,52.006" />
+<polyline class="lamp-x" points="14.306,52.006 14.894,52.594" />
+<title>Torlaterne (laterne)</title>
+<circle class="lamp lamp-laterne" cx="35.400" cy="52.300" r="0.420" />
+<polyline class="lamp-x" points="35.106,52.594 35.694,52.006" />
+<polyline class="lamp-x" points="35.106,52.006 35.694,52.594" />
+<title>Pfortenlaterne (laterne)</title>
+<circle class="lamp lamp-poller" cx="14.600" cy="49.500" r="0.240" />
+<circle class="lamp lamp-poller" cx="14.600" cy="45.500" r="0.240" />
+<circle class="lamp lamp-poller" cx="9.600" cy="42.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="31.600" cy="42.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="41.400" cy="42.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="36.500" cy="50.400" r="0.240" />
+<circle class="lamp lamp-wand" cx="34.850" cy="37.450" r="0.300" />
+<polyline class="lamp-x" points="34.640,37.660 35.060,37.240" />
+<polyline class="lamp-x" points="34.640,37.240 35.060,37.660" />
+<title>Haustür (wand)</title>
+<circle class="lamp lamp-wand" cx="38.150" cy="37.450" r="0.300" />
+<polyline class="lamp-x" points="37.940,37.660 38.360,37.240" />
+<polyline class="lamp-x" points="37.940,37.240 38.360,37.660" />
+<title>Haustür (wand)</title>
+<circle class="lamp lamp-bm" cx="25.500" cy="29.000" r="0.340" />
+<polyline class="lamp-x" points="25.262,29.238 25.738,28.762" />
+<polyline class="lamp-x" points="25.262,28.762 25.738,29.238" />
+<title>Seiteneingang (bm)</title>
+<circle class="lamp lamp-bm" cx="7.600" cy="35.500" r="0.340" />
+<polyline class="lamp-x" points="7.362,35.738 7.838,35.262" />
+<polyline class="lamp-x" points="7.362,35.262 7.838,35.738" />
+<title>Garage (bm)</title>
+<circle class="lamp lamp-bm" cx="13.400" cy="35.500" r="0.340" />
+<polyline class="lamp-x" points="13.162,35.738 13.638,35.262" />
+<polyline class="lamp-x" points="13.162,35.262 13.638,35.738" />
+<title>Garage (bm)</title>
+<circle class="lamp lamp-wand" cx="19.450" cy="32.400" r="0.300" />
+<polyline class="lamp-x" points="19.240,32.610 19.660,32.190" />
+<polyline class="lamp-x" points="19.240,32.190 19.660,32.610" />
+<title>Werkstatt (wand)</title>
+<circle class="lamp lamp-wand" cx="32.350" cy="22.550" r="0.300" />
+<polyline class="lamp-x" points="32.140,22.760 32.560,22.340" />
+<polyline class="lamp-x" points="32.140,22.340 32.560,22.760" />
+<title>Küchentür (wand)</title>
+<circle class="lamp lamp-wand" cx="40.400" cy="22.550" r="0.300" />
+<polyline class="lamp-x" points="40.190,22.760 40.610,22.340" />
+<polyline class="lamp-x" points="40.190,22.340 40.610,22.760" />
+<title>Terrasse (wand)</title>
+<circle class="lamp lamp-wand" cx="48.450" cy="22.550" r="0.300" />
+<polyline class="lamp-x" points="48.240,22.760 48.660,22.340" />
+<polyline class="lamp-x" points="48.240,22.340 48.660,22.760" />
+<title>Terrasse (wand)</title>
+<circle class="lamp lamp-bm" cx="50.250" cy="28.100" r="0.340" />
+<polyline class="lamp-x" points="50.012,28.338 50.488,27.862" />
+<polyline class="lamp-x" points="50.012,27.862 50.488,28.338" />
+<title>Kelleraußentreppe (bm)</title>
+<circle class="lamp lamp-pool" cx="34.500" cy="16.700" r="0.260" />
+<circle class="lamp lamp-pool" cx="38.000" cy="16.700" r="0.260" />
+<circle class="lamp lamp-pool" cx="41.500" cy="16.700" r="0.260" />
+<circle class="lamp lamp-poller" cx="52.000" cy="38.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="52.000" cy="31.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="52.000" cy="24.000" r="0.240" />
+<circle class="lamp lamp-wand" cx="56.250" cy="11.300" r="0.300" />
+<polyline class="lamp-x" points="56.040,11.510 56.460,11.090" />
+<polyline class="lamp-x" points="56.040,11.090 56.460,11.510" />
+<title>Pavillon (wand)</title>
+<circle class="lamp lamp-boden" cx="59.200" cy="12.000" r="0.260" />
+<title>Eiche (boden)</title>
+<circle class="lamp lamp-boden" cx="28.000" cy="47.000" r="0.260" />
+<title>Linde (boden)</title>
+<circle class="lamp lamp-poller" cx="23.500" cy="35.000" r="0.240" />
+<circle class="lamp lamp-poller" cx="23.500" cy="25.000" r="0.240" />
+</g>
+<g class="site-labels">
+<text class="site-t st-path" x="12.000" y="47.500" font-size="0.900" text-anchor="middle" >Einfahrt</text>
+<text class="site-t st-path" x="13.000" y="38.100" font-size="0.900" text-anchor="middle" >Vorplatz</text>
+<text class="site-t st-path" x="36.500" y="47.700" font-size="0.800" text-anchor="middle" >Vorfahrt</text>
+<text class="site-t st-area" x="38.000" y="21.000" font-size="1.000" text-anchor="middle" >Terrasse</text>
+<text class="site-t st-water" x="38.000" y="14.400" font-size="1.000" text-anchor="middle" >Pool 12 × 5 m</text>
+<text class="site-t st-area" x="56.250" y="12.750" font-size="0.800" text-anchor="middle" >Pavillon</text>
+<text class="site-t st-area" x="21.000" y="17.400" font-size="0.800" text-anchor="middle" >Kräuter</text>
+<text class="site-t st-lawn" x="59.300" y="18.000" font-size="1.000" text-anchor="middle" >Obstwiese</text>
+<text class="site-t st-lawn" x="15.000" y="13.000" font-size="1.200" text-anchor="middle" >Garten</text>
+<text class="site-t st-lawn" x="34.000" y="8.000" font-size="1.000" text-anchor="middle" >Liegewiese</text>
+<text class="site-t st-street" x="38.000" y="58.600" font-size="1.300" text-anchor="middle" >Lindenallee</text>
+<text class="site-t st-street" x="38.000" y="3.000" font-size="1.000" text-anchor="middle" >Feldweg</text>
+<text class="site-t st-street" x="74.000" y="19.000" font-size="1.000" text-anchor="middle" >Nachbargrundstück</text>
+<text class="site-t st-building" x="13.000" y="26.700" font-size="1.100" text-anchor="middle" >Remise</text>
+<text class="site-t st-building" x="45.000" y="39.700" font-size="1.100" text-anchor="middle" >Haupthaus</text>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="37.400,37.545 38.205,38.350 37.400,39.155 36.595,38.350" />
+<text class="mk-t" x="37.400" y="38.588" font-size="0.665" text-anchor="middle" >E1</text>
+<title>E1 Haustür – Schloss 6, Alarm-Kontakt, von der Straße einsehbar</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="24.900,30.695 25.705,31.500 24.900,32.305 24.095,31.500" />
+<text class="mk-t" x="24.900" y="31.738" font-size="0.665" text-anchor="middle" >E2</text>
+<title>E2 Seiteneingang – Schloss 4, Bewegungsmelder</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="30.400,21.195 31.205,22.000 30.400,22.805 29.595,22.000" />
+<text class="mk-t" x="30.400" y="22.238" font-size="0.665" text-anchor="middle" >E3</text>
+<title>E3 Küchentür – Glas, Schloss 3, im Dunkeln</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="42.600,21.195 43.405,22.000 42.600,22.805 41.795,22.000" />
+<text class="mk-t" x="42.600" y="22.238" font-size="0.665" text-anchor="middle" >E4</text>
+<title>E4 Hebeschiebetür – aufhebeln oder Glas (sehr laut)</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="49.000,22.895 49.805,23.700 49.000,24.505 48.195,23.700" />
+<text class="mk-t" x="49.000" y="23.938" font-size="0.665" text-anchor="middle" >E5</text>
+<title>E5 Kelleraußentür – Stahl, Schloss 5, Bewegungsmelder</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="31.250,37.095 32.055,37.900 31.250,38.705 30.445,37.900" />
+<text class="mk-t" x="31.250" y="38.138" font-size="0.665" text-anchor="middle" >E6</text>
+<title>E6 Gäste-WC-Kippfenster – nur ohne Gepäck, Kraft/Geschick</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="45.800,20.995 46.605,21.800 45.800,22.605 44.995,21.800" />
+<text class="mk-t" x="45.800" y="22.038" font-size="0.665" text-anchor="middle" >E7</text>
+<title>E7 Balkon – Leiter aus dem Geräteraum, Balkontür aufhebeln</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="58.300,2.595 59.105,3.400 58.300,4.205 57.495,3.400" />
+<text class="mk-t" x="58.300" y="3.638" font-size="0.665" text-anchor="middle" >E8</text>
+<title>E8 Hintertor – Kette knacken, Weg im Dunkeln</title>
+</g>
+<g class="lyr-ziele mk mk-sicherheit">
+<rect class="mk-shape" x="14.970" y="53.370" width="1.260" height="1.260" />
+<text class="mk-t" x="15.600" y="54.238" font-size="0.665" text-anchor="middle" >A3</text>
+<title>A3 Kamera am Einfahrtstor</title>
+</g>
+<g class="lyr-ziele mk mk-sicherheit">
+<rect class="mk-shape" x="66.870" y="31.370" width="1.260" height="1.260" />
+<text class="mk-t" x="67.500" y="32.238" font-size="0.665" text-anchor="middle" >A4</text>
+<title>A4 Nachbar – hört Lärm durch die Hecke</title>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="4.000,0.700 64.000,0.700" />
+<polyline class="dim-line" points="4.000,1.000 4.000,0.400" />
+<polyline class="dim-tick" points="3.820,0.880 4.180,0.520" />
+<polyline class="dim-line" points="64.000,1.000 64.000,0.400" />
+<polyline class="dim-tick" points="63.820,0.880 64.180,0.520" />
+<text class="dim-t" x="34.000" y="0.480" font-size="0.800" text-anchor="middle" >60 m</text>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="1.400,53.000 1.400,5.000" />
+<polyline class="dim-line" points="1.100,53.000 1.700,53.000" />
+<polyline class="dim-tick" points="1.220,53.180 1.580,52.820" />
+<polyline class="dim-line" points="1.100,5.000 1.700,5.000" />
+<polyline class="dim-tick" points="1.220,5.180 1.580,4.820" />
+<text class="dim-t" x="1.180" y="29.000" font-size="0.800" text-anchor="middle" transform="rotate(-90 1.180 29.000)">48 m</text>
+</g>
+<g class="compass">
+<circle class="compass-ring" cx="79.400" cy="59.600" r="1.250" />
+<polygon class="compass-needle" points="79.400,58.550 79.820,60.150 79.400,59.800 78.980,60.150" />
+<text class="compass-t" x="79.400" y="58.050" font-size="0.900" text-anchor="middle" >N</text>
+</g>
+<g class="scale">
+<rect class="scale-a" x="66.000" y="60.080" width="5.000" height="0.320" />
+<rect class="scale-b" x="71.000" y="60.080" width="5.000" height="0.320" />
+<text class="scale-t" x="66.000" y="61.150" font-size="0.620" text-anchor="middle" ></text>
+<text class="scale-t" x="71.000" y="61.150" font-size="0.620" text-anchor="middle" >5</text>
+<text class="scale-t" x="76.000" y="61.150" font-size="0.620" text-anchor="middle" >1 m</text>
+</g>
+</svg></div>
+  <div class="legend"><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="2" y="7" width="30" height="6" style="fill:var(--wall)"/></svg><span>Wand (außen 30 cm, innen 15 cm)</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="2" y="6" width="30" height="8" style="fill:var(--win-bg);stroke:var(--wall);stroke-width:1"/><line x1="2" y1="9" x2="32" y2="9" style="stroke:var(--glass);stroke-width:1.2"/><line x1="2" y1="11" x2="32" y2="11" style="stroke:var(--glass);stroke-width:1.2"/></svg><span>Fenster</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="2" y="6" width="30" height="8" style="fill:var(--win-bg);stroke:var(--wall);stroke-width:1"/><polygon points="6,6 28,6 17,1" style="fill:var(--entry)"/></svg><span>Kippfenster (gekippt)</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="4" y="2" width="26" height="12" style="fill:url(#grate);stroke:var(--ink)"/><rect x="2" y="14" width="30" height="5" style="fill:var(--win-bg);stroke:var(--wall)"/></svg><span>Kellerfenster mit Lichtschacht</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><line x1="4" y1="18" x2="4" y2="2" style="stroke:var(--ink);stroke-width:2"/><path d="M4 2 A16 16 0 0 1 20 18" style="fill:none;stroke:var(--muted);stroke-width:1"/></svg><span>Tür mit Aufschlag</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="2" y="8" width="18" height="2" style="fill:var(--glass)"/><rect x="14" y="11" width="18" height="2" style="fill:var(--glass)"/></svg><span>Schiebetür (Glas)</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><circle cx="17" cy="10" r="8" style="fill:var(--sheet);stroke:var(--lock);stroke-width:1.6"/><text x="17" y="14" font-size="11" text-anchor="middle" style="fill:var(--lock);font-family:var(--font-data)">5</text></svg><span>verschlossen, Schloss-Stufe</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="9" y="1" width="16" height="18" style="fill:var(--stair);stroke:var(--ink)"/><line x1="9" y1="6" x2="25" y2="6" style="stroke:var(--ink)"/><line x1="9" y1="11" x2="25" y2="11" style="stroke:var(--ink)"/><line x1="17" y1="17" x2="17" y2="3" style="stroke:var(--accent);stroke-width:1.4"/></svg><span>Treppe, Pfeil = Laufrichtung</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><circle cx="17" cy="10" r="9" style="fill:url(#glow-s)"/><circle cx="17" cy="10" r="3" style="fill:var(--lamp);stroke:var(--lamp-edge)"/></svg><span>Leuchte mit Lichtkegel</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><circle cx="17" cy="10" r="8.5" style="fill:none;stroke:var(--lamp-edge);stroke-width:1.2;stroke-dasharray:3 2"/><circle cx="17" cy="10" r="3" style="fill:var(--lamp);stroke:var(--lamp-edge)"/></svg><span>Strahler mit Bewegungsmelder</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><circle cx="17" cy="10" r="9" style="fill:var(--tree);fill-opacity:.62;stroke:var(--tree-edge)"/></svg><span>Baum (Krone)</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="2" y="5" width="30" height="10" style="fill:var(--hedge)"/></svg><span>Hecke 2,2 m (heller: 1,2 m)</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><line x1="2" y1="10" x2="32" y2="10" style="stroke:var(--fence);stroke-width:1.6"/><rect x="2" y="8" width="4" height="4" style="fill:var(--fence)"/><rect x="28" y="8" width="4" height="4" style="fill:var(--fence)"/></svg><span>Zaun 1,8 m</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><polygon points="17,1 26,10 17,19 8,10" style="fill:var(--entry)"/></svg><span>E = möglicher Einstieg</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><circle cx="17" cy="10" r="8" style="fill:var(--target)"/></svg><span>Z = Ziel / Beute</span></div><div><svg viewBox="0 0 34 20" aria-hidden="true"><defs><radialGradient id="glow-s"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.6"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient></defs><rect x="10" y="3" width="14" height="14" style="fill:var(--security)"/></svg><span>A = Alarm / Sicherheit</span></div></div>
+  <div class="cols">
+    <div><h3>Wie man reinkommt</h3><ul class="markers"><li><span class="code code-einstieg">E1</span><span>Haustür – Schloss 6, Alarm-Kontakt, von der Straße einsehbar <em>· Erdgeschoss</em></span></li><li><span class="code code-einstieg">E2</span><span>Seiteneingang – Schloss 4, Bewegungsmelder <em>· Erdgeschoss</em></span></li><li><span class="code code-einstieg">E3</span><span>Küchentür – Glas, Schloss 3, im Dunkeln <em>· Erdgeschoss</em></span></li><li><span class="code code-einstieg">E4</span><span>Hebeschiebetür – aufhebeln oder Glas (sehr laut) <em>· Erdgeschoss</em></span></li><li><span class="code code-einstieg">E5</span><span>Kelleraußentür – Stahl, Schloss 5, Bewegungsmelder <em>· Keller</em></span></li><li><span class="code code-einstieg">E6</span><span>Gäste-WC-Kippfenster – nur ohne Gepäck, Kraft/Geschick <em>· Erdgeschoss</em></span></li><li><span class="code code-einstieg">E7</span><span>Balkon – Leiter aus dem Geräteraum, Balkontür aufhebeln <em>· 1. Stock</em></span></li><li><span class="code code-einstieg">E8</span><span>Hintertor – Kette knacken, Weg im Dunkeln <em>· Gelände</em></span></li></ul></div>
+    <div><h3>Licht und Schatten</h3>
+      <ul class="plain">
+        <li>Hell sind Tor, Vorfahrt und Haustür. Von der Straße sieht man über die niedrige Ligusterhecke bis zur Haustür.</li>
+        <li>Garage, Seiteneingang und Kelleraußentreppe haben Strahler mit Bewegungsmelder (gestrichelt). Sie gehen erst an,
+        wenn jemand vorbeigeht.</li>
+        <li>Dunkel bleiben die Westseite hinter der Remise, die Nordhecke mit dem Hintertor und die Obstwiese im Osten.</li>
+        <li>Der Pool leuchtet von unten. Wer über die Terrasse geht, steht im Licht.</li>
+        <li>Der Nachbar wohnt hinter der Osthecke. Was auf der Ostseite kracht, hört er zuerst.</li>
+      </ul>
+    </div>
+    <div><h3>Ziele und Sicherheit</h3><ul class="markers"><li><span class="code code-ziel">Z1</span><span>Tresorraum – großer Tresor, Bargeld, Gold (Hauptziel) <em>· Keller</em></span></li><li><span class="code code-ziel">Z2</span><span>Arbeitszimmer – Wandtresor hinter dem Gemälde, Laptop <em>· 1. Stock</em></span></li><li><span class="code code-ziel">Z3</span><span>Ankleide – Schmuck, Uhren, kleiner Möbeltresor <em>· 1. Stock</em></span></li><li><span class="code code-ziel">Z4</span><span>Geheimkammer – Gemäldesammlung (optional) <em>· Erdgeschoss</em></span></li><li><span class="code code-ziel">Z5</span><span>Weinkeller – Raritäten, schwer und zerbrechlich <em>· Keller</em></span></li><li><span class="code code-ziel">Z6</span><span>Esszimmer – Silberbesteck in der Anrichte <em>· Erdgeschoss</em></span></li><li><span class="code code-ziel">Z7</span><span>Garage – Oldtimer (später: Fluchtwagen?) <em>· Erdgeschoss</em></span></li></ul><ul class="markers"><li><span class="code code-sicherheit">A1</span><span>Alarm-Bedienteil neben der Haustür <em>· Erdgeschoss</em></span></li><li><span class="code code-sicherheit">A2</span><span>Alarmzentrale + Hauptsicherungen (Strom aus = Licht aus) <em>· Keller</em></span></li><li><span class="code code-sicherheit">A3</span><span>Kamera am Einfahrtstor <em>· Gelände</em></span></li><li><span class="code code-sicherheit">A4</span><span>Nachbar – hört Lärm durch die Hecke <em>· Gelände</em></span></li></ul></div>
+  </div>
+</section>
+
+<section id="eg">
+  <div class="sec-head"><h2>Erdgeschoss</h2><span class="tag">Haupthaus · Fußboden ± 0,00 m · Raumhöhe 2,80 m</span></div>
+  <div class="split"><div class="figure"><svg class="plan floor" viewBox="0 0 29.60 22.60" role="img" aria-label="Erdgeschoss Haupthaus" xmlns="http://www.w3.org/2000/svg">
+<title>Erdgeschoss Haupthaus</title>
+<defs>
+<radialGradient id="glow"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.55"/>
+<stop offset=".55" style="stop-color:var(--lamp);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient>
+<pattern id="hatch" width=".35" height=".35" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2=".35" style="stroke:var(--muted);stroke-width:.05"/></pattern>
+<pattern id="grate" width=".18" height=".18" patternUnits="userSpaceOnUse">
+<path d="M0 0H.18M0 0V.18" style="stroke:var(--ink);stroke-width:.03;fill:none"/></pattern>
+</defs>
+<rect class="paper" x="0.000" y="0.000" width="29.600" height="22.600" />
+<rect class="ctx" x="3.000" y="1.000" width="24.000" height="4.000" />
+<rect class="ctx" x="12.000" y="19.000" width="3.000" height="2.000" />
+<text class="ctx-t" x="15.000" y="2.600" font-size="0.550" text-anchor="middle" >Terrasse</text>
+<text class="ctx-t" x="16.900" y="20.250" font-size="0.420" text-anchor="middle" >Eingang</text>
+<rect class="stair" x="25.200" y="7.000" width="1.400" height="3.600" />
+<polyline class="tread" points="25.200,10.310 26.600,10.310" />
+<polyline class="tread" points="25.200,10.020 26.600,10.020" />
+<polyline class="tread" points="25.200,9.730 26.600,9.730" />
+<polyline class="tread" points="25.200,9.440 26.600,9.440" />
+<polyline class="tread" points="25.200,9.150 26.600,9.150" />
+<polyline class="tread" points="25.200,8.860 26.600,8.860" />
+<polyline class="tread" points="25.200,8.570 26.600,8.570" />
+<polyline class="tread" points="25.200,8.280 26.600,8.280" />
+<polyline class="tread" points="25.200,7.990 26.600,7.990" />
+<polyline class="tread" points="25.200,7.700 26.600,7.700" />
+<polyline class="tread" points="25.200,7.410 26.600,7.410" />
+<polyline class="tread" points="25.200,7.120 26.600,7.120" />
+<circle class="walk-dot" cx="25.900" cy="10.350" r="0.090" />
+<polyline class="walk" points="25.900,10.350 25.900,7.300" />
+<polyline class="walk" points="25.680,7.650 25.900,7.300 26.120,7.650" />
+<text class="stair-t" x="27.050" y="8.800" font-size="0.36" text-anchor="middle" transform="rotate(-90 27.050 8.800)">runter</text>
+<polyline class="retaining" points="26.750,10.700 26.750,5.000" />
+<rect class="room rk-wohnen" x="17.000" y="5.000" width="8.000" height="9.000" />
+<rect class="room rk-verkehr" x="10.000" y="11.000" width="7.000" height="8.000" />
+<rect class="room rk-service" x="3.000" y="5.000" width="7.000" height="6.000" />
+<rect class="room rk-wohnen" x="10.000" y="5.000" width="7.000" height="6.000" />
+<rect class="room rk-wohnen" x="17.000" y="14.000" width="8.000" height="5.000" />
+<rect class="room rk-service" x="3.000" y="13.000" width="3.500" height="6.000" />
+<rect class="room rk-verkehr" x="3.000" y="11.000" width="7.000" height="2.000" />
+<rect class="room rk-verkehr" x="6.500" y="13.000" width="3.500" height="3.500" />
+<rect class="room rk-verkehr" x="10.000" y="13.000" width="1.800" height="6.000" />
+<rect class="room rk-nass" x="6.500" y="16.500" width="3.500" height="2.500" />
+<rect class="room rk-service" x="3.000" y="8.500" width="2.500" height="2.500" />
+<rect class="room rk-wert" x="23.000" y="16.500" width="2.000" height="2.500" />
+<g class="lyr-moebel">
+<rect class="fixture" x="6.000" y="7.600" width="2.400" height="1.000" />
+<text class="fixture-t" x="7.200" y="8.100" font-size="0.300" text-anchor="middle" dominant-baseline="central">Insel</text>
+<rect class="fixture" x="11.900" y="8.100" width="3.600" height="1.400" />
+<text class="fixture-t" x="13.700" y="8.800" font-size="0.300" text-anchor="middle" dominant-baseline="central">Tafel</text>
+<rect class="fixture" x="10.200" y="8.400" width="0.500" height="1.700" />
+<text class="fixture-t" x="10.450" y="9.250" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 10.450 9.250)">Anrichte</text>
+<rect class="fixture" x="17.200" y="14.200" width="0.500" height="4.500" />
+<text class="fixture-t" x="17.450" y="16.450" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 17.450 16.450)">Regal</text>
+<rect class="fixture" x="17.800" y="14.200" width="1.900" height="0.500" />
+<rect class="fixture" x="22.450" y="16.600" width="0.450" height="2.100" />
+<rect class="fixture" x="24.300" y="14.200" width="0.500" height="2.000" />
+<rect class="fixture" x="19.200" y="17.500" width="2.200" height="0.700" />
+<text class="fixture-t" x="20.300" y="17.850" font-size="0.300" text-anchor="middle" dominant-baseline="central">Lesetisch</text>
+<rect class="fixture" x="24.400" y="8.600" width="0.450" height="1.800" />
+<text class="fixture-t" x="24.625" y="9.500" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 24.625 9.500)">Kamin</text>
+<rect class="fixture" x="18.200" y="6.400" width="2.000" height="2.600" />
+<text class="fixture-t" x="19.200" y="7.700" font-size="0.300" text-anchor="middle" dominant-baseline="central">Flügel</text>
+<rect class="fixture" x="21.300" y="10.600" width="2.300" height="0.900" />
+<text class="fixture-t" x="22.450" y="11.050" font-size="0.300" text-anchor="middle" dominant-baseline="central">Sofa</text>
+</g>
+<g class="walls">
+<rect class="wall" x="2.850" y="18.850" width="10.050" height="0.300" />
+<rect class="wall" x="14.100" y="18.850" width="11.050" height="0.300" />
+<rect class="wall" x="2.850" y="12.925" width="1.450" height="0.150" />
+<rect class="wall" x="5.200" y="12.925" width="2.600" height="0.150" />
+<rect class="wall" x="8.700" y="12.925" width="3.175" height="0.150" />
+<rect class="wall" x="6.425" y="16.425" width="1.375" height="0.150" />
+<rect class="wall" x="8.700" y="16.425" width="1.375" height="0.150" />
+<rect class="wall" x="22.925" y="16.425" width="2.225" height="0.150" />
+<rect class="wall" x="2.850" y="10.925" width="4.200" height="0.150" />
+<rect class="wall" x="7.950" y="10.925" width="4.750" height="0.150" />
+<rect class="wall" x="14.300" y="10.925" width="2.775" height="0.150" />
+<rect class="wall" x="2.850" y="4.850" width="5.150" height="0.300" />
+<rect class="wall" x="9.000" y="4.850" width="3.800" height="0.300" />
+<rect class="wall" x="14.200" y="4.850" width="5.300" height="0.300" />
+<rect class="wall" x="22.500" y="4.850" width="2.650" height="0.300" />
+<rect class="wall" x="2.850" y="8.425" width="0.950" height="0.150" />
+<rect class="wall" x="4.700" y="8.425" width="0.875" height="0.150" />
+<rect class="wall" x="16.925" y="13.925" width="2.875" height="0.150" />
+<rect class="wall" x="21.400" y="13.925" width="3.750" height="0.150" />
+<rect class="wall" x="-16.150" y="16.850" width="1.150" height="0.300" />
+<rect class="wall" x="-10.000" y="16.850" width="6.150" height="0.300" />
+<rect class="wall" x="-16.150" y="9.850" width="1.200" height="0.300" />
+<rect class="wall" x="-14.050" y="9.850" width="10.200" height="0.300" />
+<rect class="wall" x="-9.075" y="12.425" width="5.225" height="0.150" />
+<rect class="wall" x="2.850" y="12.500" width="0.300" height="6.650" />
+<rect class="wall" x="2.850" y="4.850" width="0.300" height="6.650" />
+<rect class="wall" x="6.425" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="9.925" y="12.700" width="0.150" height="6.450" />
+<rect class="wall" x="9.925" y="8.500" width="0.150" height="2.800" />
+<rect class="wall" x="9.925" y="4.850" width="0.150" height="2.650" />
+<rect class="wall" x="5.425" y="8.425" width="0.150" height="2.650" />
+<rect class="wall" x="16.925" y="12.800" width="0.150" height="6.350" />
+<rect class="wall" x="16.925" y="8.800" width="0.150" height="2.600" />
+<rect class="wall" x="16.925" y="4.850" width="0.150" height="1.950" />
+<rect class="wall" x="11.725" y="18.550" width="0.150" height="0.600" />
+<rect class="wall" x="11.725" y="12.925" width="0.150" height="4.725" />
+<rect class="wall" x="24.850" y="4.850" width="0.300" height="14.300" />
+<rect class="wall" x="22.925" y="18.200" width="0.150" height="0.950" />
+<rect class="wall" x="22.925" y="16.425" width="0.150" height="0.875" />
+<rect class="wall" x="-16.150" y="9.850" width="0.300" height="7.300" />
+<rect class="wall" x="-9.075" y="15.450" width="0.150" height="1.700" />
+<rect class="wall" x="-9.075" y="9.850" width="0.150" height="4.700" />
+<rect class="wall" x="-4.150" y="15.900" width="0.300" height="1.250" />
+<rect class="wall" x="-4.150" y="11.750" width="0.300" height="3.150" />
+<rect class="wall" x="-4.150" y="9.850" width="0.300" height="0.900" />
+</g>
+<rect class="win" x="4.150" y="18.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="4.150,19.050 5.350,19.050" />
+<polyline class="glass-line" points="4.150,18.950 5.350,18.950" />
+<rect class="win" x="7.900" y="18.850" width="0.700" height="0.300" />
+<polyline class="glass-line" points="7.900,19.050 8.600,19.050" />
+<polyline class="glass-line" points="7.900,18.950 8.600,18.950" />
+<polygon class="tilt" points="8.000,19.150 8.500,19.150 8.250,19.430" />
+<rect class="win" x="18.200" y="18.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="18.200,19.050 19.400,19.050" />
+<polyline class="glass-line" points="18.200,18.950 19.400,18.950" />
+<rect class="win" x="20.800" y="18.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="20.800,19.050 22.000,19.050" />
+<polyline class="glass-line" points="20.800,18.950 22.000,18.950" />
+<rect class="win" x="2.850" y="15.200" width="0.300" height="1.200" />
+<polyline class="glass-line" points="2.950,16.400 2.950,15.200" />
+<polyline class="glass-line" points="3.050,16.400 3.050,15.200" />
+<rect class="win" x="2.850" y="6.100" width="0.300" height="1.400" />
+<polyline class="glass-line" points="2.950,7.500 2.950,6.100" />
+<polyline class="glass-line" points="3.050,7.500 3.050,6.100" />
+<rect class="win" x="4.900" y="4.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="4.900,5.050 6.300,5.050" />
+<polyline class="glass-line" points="4.900,4.950 6.300,4.950" />
+<rect class="win" x="10.800" y="4.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="10.800,5.075 12.000,5.075" />
+<polyline class="glass-line" points="10.800,5.000 12.000,5.000" />
+<polyline class="glass-line" points="10.800,4.925 12.000,4.925" />
+<rect class="win" x="15.000" y="4.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="15.000,5.075 16.200,5.075" />
+<polyline class="glass-line" points="15.000,5.000 16.200,5.000" />
+<polyline class="glass-line" points="15.000,4.925 16.200,4.925" />
+<rect class="win" x="17.800" y="4.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="17.800,5.075 18.800,5.075" />
+<polyline class="glass-line" points="17.800,5.000 18.800,5.000" />
+<polyline class="glass-line" points="17.800,4.925 18.800,4.925" />
+<rect class="win" x="23.100" y="4.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="23.100,5.075 24.500,5.075" />
+<polyline class="glass-line" points="23.100,5.000 24.500,5.000" />
+<polyline class="glass-line" points="23.100,4.925 24.500,4.925" />
+<rect class="win" x="24.850" y="14.650" width="0.300" height="1.200" />
+<polyline class="glass-line" points="24.950,15.850 24.950,14.650" />
+<polyline class="glass-line" points="25.050,15.850 25.050,14.650" />
+<rect class="win" x="24.850" y="10.800" width="0.300" height="1.600" />
+<polyline class="glass-line" points="24.925,12.400 24.925,10.800" />
+<polyline class="glass-line" points="25.000,12.400 25.000,10.800" />
+<polyline class="glass-line" points="25.075,12.400 25.075,10.800" />
+<rect class="win" x="24.850" y="5.900" width="0.300" height="1.400" />
+<polyline class="glass-line" points="24.925,7.300 24.925,5.900" />
+<polyline class="glass-line" points="25.000,7.300 25.000,5.900" />
+<polyline class="glass-line" points="25.075,7.300 25.075,5.900" />
+<rect class="win" x="-16.150" y="13.900" width="0.300" height="1.200" />
+<polyline class="glass-line" points="-16.050,15.100 -16.050,13.900" />
+<polyline class="glass-line" points="-15.950,15.100 -15.950,13.900" />
+<rect class="win" x="-16.150" y="11.200" width="0.300" height="1.200" />
+<polyline class="glass-line" points="-16.050,12.400 -16.050,11.200" />
+<polyline class="glass-line" points="-15.950,12.400 -15.950,11.200" />
+<rect class="win" x="-7.300" y="16.850" width="1.600" height="0.300" />
+<polyline class="glass-line" points="-7.300,17.050 -5.700,17.050" />
+<polyline class="glass-line" points="-7.300,16.950 -5.700,16.950" />
+<rect class="win" x="-7.100" y="9.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="-7.100,10.050 -5.900,10.050" />
+<polyline class="glass-line" points="-7.100,9.950 -5.900,9.950" />
+<polygon class="tilt" points="-7.000,9.850 -6.000,9.850 -6.500,9.570" />
+<rect class="stair" x="15.200" y="13.400" width="1.600" height="5.000" />
+<polyline class="tread" points="15.200,18.110 16.800,18.110" />
+<polyline class="tread" points="15.200,17.820 16.800,17.820" />
+<polyline class="tread" points="15.200,17.530 16.800,17.530" />
+<polyline class="tread" points="15.200,17.240 16.800,17.240" />
+<polyline class="tread" points="15.200,16.950 16.800,16.950" />
+<polyline class="tread" points="15.200,16.660 16.800,16.660" />
+<polyline class="tread" points="15.200,16.370 16.800,16.370" />
+<polyline class="tread" points="15.200,16.080 16.800,16.080" />
+<polyline class="tread" points="15.200,15.790 16.800,15.790" />
+<polyline class="tread" points="15.200,15.500 16.800,15.500" />
+<polyline class="tread" points="15.200,15.210 16.800,15.210" />
+<polyline class="tread" points="15.200,14.920 16.800,14.920" />
+<polyline class="tread" points="15.200,14.630 16.800,14.630" />
+<polyline class="tread" points="15.200,14.340 16.800,14.340" />
+<polyline class="tread" points="15.200,14.050 16.800,14.050" />
+<polyline class="tread" points="15.200,13.760 16.800,13.760" />
+<polyline class="tread" points="15.200,13.470 16.800,13.470" />
+<circle class="walk-dot" cx="16.000" cy="18.150" r="0.090" />
+<polyline class="walk" points="16.000,18.150 16.000,13.700" />
+<polyline class="walk" points="15.780,14.050 16.000,13.700 16.220,14.050" />
+<text class="stair-t" x="14.980" y="15.900" font-size="0.36" text-anchor="middle" transform="rotate(-90 14.980 15.900)">hoch · 1. Stock</text>
+<rect class="stair" x="10.150" y="13.150" width="1.500" height="4.450" />
+<polyline class="tread" points="10.150,17.310 11.650,17.310" />
+<polyline class="tread" points="10.150,17.020 11.650,17.020" />
+<polyline class="tread" points="10.150,16.730 11.650,16.730" />
+<polyline class="tread" points="10.150,16.440 11.650,16.440" />
+<polyline class="tread" points="10.150,16.150 11.650,16.150" />
+<polyline class="tread" points="10.150,15.860 11.650,15.860" />
+<polyline class="tread" points="10.150,15.570 11.650,15.570" />
+<polyline class="tread" points="10.150,15.280 11.650,15.280" />
+<polyline class="tread" points="10.150,14.990 11.650,14.990" />
+<polyline class="tread" points="10.150,14.700 11.650,14.700" />
+<polyline class="tread" points="10.150,14.410 11.650,14.410" />
+<polyline class="tread" points="10.150,14.120 11.650,14.120" />
+<polyline class="tread" points="10.150,13.830 11.650,13.830" />
+<polyline class="tread" points="10.150,13.540 11.650,13.540" />
+<polyline class="tread" points="10.150,13.250 11.650,13.250" />
+<circle class="walk-dot" cx="10.900" cy="17.350" r="0.090" />
+<polyline class="walk" points="10.900,17.350 10.900,13.450" />
+<polyline class="walk" points="10.680,13.800 10.900,13.450 11.120,13.800" />
+<text class="stair-t" x="10.900" y="18.220" font-size="0.340" text-anchor="middle" >Keller</text>
+<g class="door dt-haustuer">
+<polyline class="threshold" points="12.900,19.000 14.100,19.000" />
+<polyline class="swing main" points="12.900,17.800 13.034,17.808 13.167,17.830 13.296,17.867 13.421,17.919 13.538,17.984 13.648,18.062 13.749,18.151 13.838,18.252 13.916,18.362 13.981,18.479 14.033,18.604 14.070,18.733 14.092,18.866 14.100,19.000" />
+<polyline class="leaf main" points="12.900,19.000 12.900,17.800" />
+<circle class="lock" cx="13.500" cy="19.570" r="0.340" />
+<text class="lock-t" x="13.500" y="19.692" font-size="0.374" text-anchor="middle" >6</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="3.000,12.500 3.000,11.500" />
+<polyline class="swing " points="4.000,12.500 3.994,12.388 3.975,12.277 3.944,12.170 3.901,12.066 3.847,11.968 3.782,11.877 3.707,11.793 3.623,11.718 3.532,11.653 3.434,11.599 3.330,11.556 3.223,11.525 3.112,11.506 3.000,11.500" />
+<polyline class="leaf " points="3.000,12.500 4.000,12.500" />
+<circle class="lock" cx="2.430" cy="12.000" r="0.340" />
+<text class="lock-t" x="2.430" y="12.122" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-glas">
+<polyline class="threshold" points="8.000,5.000 9.000,5.000" />
+<polyline class="swing glass" points="9.000,6.000 8.888,5.994 8.777,5.975 8.670,5.944 8.566,5.901 8.468,5.847 8.377,5.782 8.293,5.707 8.218,5.623 8.153,5.532 8.099,5.434 8.056,5.330 8.025,5.223 8.006,5.112 8.000,5.000" />
+<polyline class="leaf glass" points="9.000,5.000 9.000,6.000" />
+<circle class="lock" cx="8.500" cy="4.430" r="0.340" />
+<text class="lock-t" x="8.500" y="4.552" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-glas2">
+<polyline class="threshold" points="12.800,5.000 14.200,5.000" />
+<polyline class="swing glass" points="12.800,5.700 12.878,5.696 12.956,5.682 13.031,5.661 13.104,5.631 13.172,5.593 13.236,5.547 13.295,5.495 13.347,5.436 13.393,5.372 13.431,5.304 13.461,5.231 13.482,5.156 13.496,5.078 13.500,5.000" />
+<polyline class="leaf glass" points="12.800,5.000 12.800,5.700" />
+<polyline class="swing glass" points="14.200,5.700 14.122,5.696 14.044,5.682 13.969,5.661 13.896,5.631 13.828,5.593 13.764,5.547 13.705,5.495 13.653,5.436 13.607,5.372 13.569,5.304 13.539,5.231 13.518,5.156 13.504,5.078 13.500,5.000" />
+<polyline class="leaf glass" points="14.200,5.000 14.200,5.700" />
+<circle class="lock" cx="13.500" cy="4.430" r="0.340" />
+<text class="lock-t" x="13.500" y="4.552" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-schiebe">
+<polyline class="threshold" points="19.500,5.000 22.500,5.000" />
+<rect class="slide" x="19.500" y="5.025" width="1.600" height="0.050" />
+<rect class="slide" x="20.900" y="4.925" width="1.600" height="0.050" />
+<circle class="lock" cx="21.000" cy="4.430" r="0.340" />
+<text class="lock-t" x="21.000" y="4.552" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="12.700,11.000 14.300,11.000" />
+<polyline class="swing " points="12.700,10.200 12.790,10.205 12.878,10.220 12.964,10.245 13.047,10.279 13.126,10.323 13.199,10.375 13.266,10.434 13.325,10.501 13.377,10.574 13.421,10.653 13.455,10.736 13.480,10.822 13.495,10.910 13.500,11.000" />
+<polyline class="leaf " points="12.700,11.000 12.700,10.200" />
+<polyline class="swing " points="14.300,10.200 14.210,10.205 14.122,10.220 14.036,10.245 13.953,10.279 13.874,10.323 13.801,10.375 13.734,10.434 13.675,10.501 13.623,10.574 13.579,10.653 13.545,10.736 13.520,10.822 13.505,10.910 13.500,11.000" />
+<polyline class="leaf " points="14.300,11.000 14.300,10.200" />
+</g>
+<g class="door dt-offen">
+<polyline class="threshold" points="10.000,12.700 10.000,11.300" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="7.050,11.000 7.950,11.000" />
+<polyline class="swing " points="7.950,10.100 7.849,10.106 7.750,10.123 7.653,10.151 7.560,10.189 7.471,10.238 7.389,10.296 7.314,10.364 7.246,10.439 7.188,10.521 7.139,10.610 7.101,10.703 7.073,10.800 7.056,10.899 7.050,11.000" />
+<polyline class="leaf " points="7.950,11.000 7.950,10.100" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="10.000,8.500 10.000,7.500" />
+<polyline class="swing " points="11.000,7.500 10.994,7.612 10.975,7.723 10.944,7.830 10.901,7.934 10.847,8.032 10.782,8.123 10.707,8.207 10.623,8.282 10.532,8.347 10.434,8.401 10.330,8.444 10.223,8.475 10.112,8.494 10.000,8.500" />
+<polyline class="leaf " points="10.000,7.500 11.000,7.500" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="3.800,8.500 4.700,8.500" />
+<polyline class="swing " points="3.800,7.600 3.901,7.606 4.000,7.623 4.097,7.651 4.190,7.689 4.279,7.738 4.361,7.796 4.436,7.864 4.504,7.939 4.562,8.021 4.611,8.110 4.649,8.203 4.677,8.300 4.694,8.399 4.700,8.500" />
+<polyline class="leaf " points="3.800,8.500 3.800,7.600" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="4.300,13.000 5.200,13.000" />
+<polyline class="swing " points="4.300,13.900 4.401,13.894 4.500,13.877 4.597,13.849 4.690,13.811 4.779,13.762 4.861,13.704 4.936,13.636 5.004,13.561 5.062,13.479 5.111,13.390 5.149,13.297 5.177,13.200 5.194,13.101 5.200,13.000" />
+<polyline class="leaf " points="4.300,13.000 4.300,13.900" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="7.800,13.000 8.700,13.000" />
+<polyline class="swing " points="8.700,13.900 8.599,13.894 8.500,13.877 8.403,13.849 8.310,13.811 8.221,13.762 8.139,13.704 8.064,13.636 7.996,13.561 7.938,13.479 7.889,13.390 7.851,13.297 7.823,13.200 7.806,13.101 7.800,13.000" />
+<polyline class="leaf " points="8.700,13.000 8.700,13.900" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="7.800,16.500 8.700,16.500" />
+<polyline class="swing " points="7.800,17.400 7.901,17.394 8.000,17.377 8.097,17.349 8.190,17.311 8.279,17.262 8.361,17.204 8.436,17.136 8.504,17.061 8.562,16.979 8.611,16.890 8.649,16.797 8.677,16.700 8.694,16.601 8.700,16.500" />
+<polyline class="leaf " points="7.800,16.500 7.800,17.400" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="11.800,18.550 11.800,17.650" />
+<polyline class="swing " points="12.700,18.550 12.694,18.449 12.677,18.350 12.649,18.253 12.611,18.160 12.562,18.071 12.504,17.989 12.436,17.914 12.361,17.846 12.279,17.788 12.190,17.739 12.097,17.701 12.000,17.673 11.901,17.656 11.800,17.650" />
+<polyline class="leaf " points="11.800,18.550 12.700,18.550" />
+<circle class="lock" cx="12.295" cy="18.100" r="0.340" />
+<text class="lock-t" x="12.295" y="18.222" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="17.000,12.800 17.000,11.400" />
+<polyline class="swing " points="17.700,12.800 17.696,12.722 17.682,12.644 17.661,12.569 17.631,12.496 17.593,12.428 17.547,12.364 17.495,12.305 17.436,12.253 17.372,12.207 17.304,12.169 17.231,12.139 17.156,12.118 17.078,12.104 17.000,12.100" />
+<polyline class="leaf " points="17.000,12.800 17.700,12.800" />
+<polyline class="swing " points="17.700,11.400 17.696,11.478 17.682,11.556 17.661,11.631 17.631,11.704 17.593,11.772 17.547,11.836 17.495,11.895 17.436,11.947 17.372,11.993 17.304,12.031 17.231,12.061 17.156,12.082 17.078,12.096 17.000,12.100" />
+<polyline class="leaf " points="17.000,11.400 17.700,11.400" />
+</g>
+<g class="door dt-offen">
+<polyline class="threshold" points="17.000,8.800 17.000,6.800" />
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="19.800,14.000 21.400,14.000" />
+<polyline class="swing " points="19.800,14.800 19.890,14.795 19.978,14.780 20.064,14.755 20.147,14.721 20.226,14.677 20.299,14.625 20.366,14.566 20.425,14.499 20.477,14.426 20.521,14.347 20.555,14.264 20.580,14.178 20.595,14.090 20.600,14.000" />
+<polyline class="leaf " points="19.800,14.000 19.800,14.800" />
+<polyline class="swing " points="21.400,14.800 21.310,14.795 21.222,14.780 21.136,14.755 21.053,14.721 20.974,14.677 20.901,14.625 20.834,14.566 20.775,14.499 20.723,14.426 20.679,14.347 20.645,14.264 20.620,14.178 20.605,14.090 20.600,14.000" />
+<polyline class="leaf " points="21.400,14.000 21.400,14.800" />
+</g>
+<g class="door dt-geheim">
+<polyline class="threshold" points="23.000,18.200 23.000,17.300" />
+<polyline class="swing secret" points="22.100,18.200 22.106,18.099 22.123,18.000 22.151,17.903 22.189,17.810 22.238,17.721 22.296,17.639 22.364,17.564 22.439,17.496 22.521,17.438 22.610,17.389 22.703,17.351 22.800,17.323 22.899,17.306 23.000,17.300" />
+<polyline class="leaf secret" points="23.000,18.200 22.100,18.200" />
+</g>
+<text class="room-t" x="4.750" y="15.927" font-size="0.429" text-anchor="middle" >Hauswirtschaft</text>
+<text class="room-sub" x="4.750" y="16.326" font-size="0.285" text-anchor="middle" >3,5 × 6 m · 21 m²</text>
+<text class="room-t" x="8.250" y="17.686" font-size="0.460" text-anchor="middle" >Gäste-WC</text>
+<text class="room-sub" x="8.250" y="18.114" font-size="0.285" text-anchor="middle" >8,8 m²</text>
+<text class="room-t" x="8.250" y="14.686" font-size="0.460" text-anchor="middle" >Garderobe</text>
+<text class="room-sub" x="8.250" y="15.114" font-size="0.285" text-anchor="middle" >12 m²</text>
+<text class="room-t" x="6.500" y="11.936" font-size="0.460" text-anchor="middle" >Flur</text>
+<text class="room-sub" x="6.500" y="12.364" font-size="0.285" text-anchor="middle" >7 × 2 m · 14 m²</text>
+<text class="room-t" x="7.300" y="6.186" font-size="0.460" text-anchor="middle" >Küche</text>
+<text class="room-sub" x="7.300" y="6.614" font-size="0.285" text-anchor="middle" >36 m²</text>
+<text class="room-t" x="4.250" y="9.445" font-size="0.460" text-anchor="middle" >Speise-</text>
+<text class="room-t" x="4.250" y="9.928" font-size="0.460" text-anchor="middle" >kammer</text>
+<text class="room-sub" x="4.250" y="10.355" font-size="0.285" text-anchor="middle" >6,2 m²</text>
+<text class="room-t" x="13.500" y="13.936" font-size="0.460" text-anchor="middle" >Halle</text>
+<text class="room-sub" x="13.500" y="14.364" font-size="0.285" text-anchor="middle" >45 m²</text>
+<text class="room-t" x="13.500" y="6.486" font-size="0.460" text-anchor="middle" >Esszimmer</text>
+<text class="room-sub" x="13.500" y="6.914" font-size="0.285" text-anchor="middle" >7 × 6 m · 42 m²</text>
+<text class="room-t" x="20.200" y="16.336" font-size="0.460" text-anchor="middle" >Bibliothek</text>
+<text class="room-sub" x="20.200" y="16.764" font-size="0.285" text-anchor="middle" >35 m²</text>
+<text class="room-t" x="24.000" y="17.452" font-size="0.429" text-anchor="middle" >Geheim-</text>
+<text class="room-t" x="24.000" y="17.902" font-size="0.429" text-anchor="middle" >kammer</text>
+<text class="room-sub" x="24.000" y="18.301" font-size="0.285" text-anchor="middle" >5,0 m²</text>
+<text class="room-t" x="21.000" y="9.436" font-size="0.460" text-anchor="middle" >Wohnzimmer</text>
+<text class="room-sub" x="21.000" y="9.864" font-size="0.285" text-anchor="middle" >8 × 9 m · 72 m²</text>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="14.400,19.867 14.883,20.350 14.400,20.833 13.917,20.350" />
+<text class="mk-t" x="14.400" y="20.493" font-size="0.399" text-anchor="middle" >E1</text>
+<title>E1 Haustür – Schloss 6, Alarm-Kontakt, von der Straße einsehbar</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="1.900,13.017 2.383,13.500 1.900,13.983 1.417,13.500" />
+<text class="mk-t" x="1.900" y="13.643" font-size="0.399" text-anchor="middle" >E2</text>
+<title>E2 Seiteneingang – Schloss 4, Bewegungsmelder</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="7.400,3.517 7.883,4.000 7.400,4.483 6.917,4.000" />
+<text class="mk-t" x="7.400" y="4.143" font-size="0.399" text-anchor="middle" >E3</text>
+<title>E3 Küchentür – Glas, Schloss 3, im Dunkeln</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="19.600,3.517 20.083,4.000 19.600,4.483 19.117,4.000" />
+<text class="mk-t" x="19.600" y="4.143" font-size="0.399" text-anchor="middle" >E4</text>
+<title>E4 Hebeschiebetür – aufhebeln oder Glas (sehr laut)</title>
+</g>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="8.250,19.417 8.733,19.900 8.250,20.383 7.767,19.900" />
+<text class="mk-t" x="8.250" y="20.043" font-size="0.399" text-anchor="middle" >E6</text>
+<title>E6 Gäste-WC-Kippfenster – nur ohne Gepäck, Kraft/Geschick</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="21.950" cy="16.100" r="0.420" />
+<text class="mk-t" x="21.950" y="16.243" font-size="0.399" text-anchor="middle" >Z4</text>
+<title>Z4 Geheimkammer – Gemäldesammlung (optional)</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="11.250" cy="9.950" r="0.420" />
+<text class="mk-t" x="11.250" y="10.093" font-size="0.399" text-anchor="middle" >Z6</text>
+<title>Z6 Esszimmer – Silberbesteck in der Anrichte</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="-9.700" cy="11.300" r="0.420" />
+<text class="mk-t" x="-9.700" y="11.443" font-size="0.399" text-anchor="middle" >Z7</text>
+<title>Z7 Garage – Oldtimer (später: Fluchtwagen?)</title>
+</g>
+<g class="lyr-ziele mk mk-sicherheit">
+<rect class="mk-shape" x="12.072" y="16.372" width="0.756" height="0.756" />
+<text class="mk-t" x="12.450" y="16.893" font-size="0.399" text-anchor="middle" >A1</text>
+<title>A1 Alarm-Bedienteil neben der Haustür</title>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="3.000,21.800 25.000,21.800" />
+<polyline class="dim-line" points="3.000,22.025 3.000,21.575" />
+<polyline class="dim-tick" points="2.820,21.980 3.180,21.620" />
+<polyline class="dim-line" points="25.000,22.025 25.000,21.575" />
+<polyline class="dim-tick" points="24.820,21.980 25.180,21.620" />
+<text class="dim-t" x="14.000" y="21.580" font-size="0.420" text-anchor="middle" >22,00 m</text>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="0.750,19.000 0.750,5.000" />
+<polyline class="dim-line" points="0.525,19.000 0.975,19.000" />
+<polyline class="dim-tick" points="0.570,19.180 0.930,18.820" />
+<polyline class="dim-line" points="0.525,5.000 0.975,5.000" />
+<polyline class="dim-tick" points="0.570,5.180 0.930,4.820" />
+<text class="dim-t" x="0.530" y="12.000" font-size="0.420" text-anchor="middle" transform="rotate(-90 0.530 12.000)">14,00 m</text>
+</g>
+<g class="compass">
+<circle class="compass-ring" cx="28.400" cy="2.000" r="0.625" />
+<polygon class="compass-needle" points="28.400,1.475 28.610,2.275 28.400,2.100 28.190,2.275" />
+<text class="compass-t" x="28.400" y="1.225" font-size="0.450" text-anchor="middle" >N</text>
+</g>
+<g class="scale">
+<rect class="scale-a" x="22.000" y="1.240" width="2.500" height="0.160" />
+<rect class="scale-b" x="24.500" y="1.240" width="2.500" height="0.160" />
+<text class="scale-t" x="22.000" y="1.775" font-size="0.310" text-anchor="middle" ></text>
+<text class="scale-t" x="24.500" y="1.775" font-size="0.310" text-anchor="middle" >2</text>
+<text class="scale-t" x="27.000" y="1.775" font-size="0.310" text-anchor="middle" >5 m</text>
+</g>
+</svg></div>
+  <div class="below"><div class="table-wrap"><table class="rooms"><thead><tr><th>Raum</th><th class="num">Fläche</th><th>Was drin ist / wozu</th></tr></thead><tbody><tr><td><span class="sw rk-service"></span>Küche</td><td class="num">36&nbsp;m²</td><td>Kochinsel, Tür zum Kräutergarten</td></tr><tr><td><span class="sw rk-wohnen"></span>Esszimmer</td><td class="num">42&nbsp;m²</td><td>Tafel für 10, Anrichte mit Silberbesteck</td></tr><tr><td><span class="sw rk-wohnen"></span>Wohnzimmer</td><td class="num">72&nbsp;m²</td><td>Kamin, Flügel, große Schiebetür zur Terrasse</td></tr><tr><td><span class="sw rk-service"></span>Speisekammer</td><td class="num">6,2&nbsp;m²</td><td>Vorräte – Bargeld in der Mehldose?</td></tr><tr><td><span class="sw rk-verkehr"></span>Flur</td><td class="num">14&nbsp;m²</td><td>Wirtschaftsflur vom Seiteneingang zur Halle</td></tr><tr><td><span class="sw rk-verkehr"></span>Halle</td><td class="num">45&nbsp;m²</td><td>Eingangshalle mit Treppe nach oben, Alarm-Bedienteil an der Haustür</td></tr><tr><td><span class="sw rk-service"></span>Hauswirtschaft</td><td class="num">21&nbsp;m²</td><td>Waschmaschine, Putzschrank, Sicherungen fürs EG</td></tr><tr><td><span class="sw rk-verkehr"></span>Garderobe</td><td class="num">12&nbsp;m²</td><td>Mäntel, Schlüsselbrett (Garage, Kellertür)</td></tr><tr><td><span class="sw rk-verkehr"></span>Kellerabgang</td><td class="num">11&nbsp;m²</td><td>Treppe in den Keller hinter der Kellertür</td></tr><tr><td><span class="sw rk-wohnen"></span>Bibliothek</td><td class="num">35&nbsp;m²</td><td>Regale an allen Wänden, Kamin, Erstausgaben</td></tr><tr><td><span class="sw rk-nass"></span>Gäste-WC</td><td class="num">8,8&nbsp;m²</td><td>Kippfenster zur Straße – oft gekippt</td></tr><tr><td><span class="sw rk-wert"></span>Geheimkammer</td><td class="num">5,0&nbsp;m²</td><td>hinter einem drehbaren Bücherregal (optional)</td></tr></tbody></table></div>
+  <p class="note">Die Halle ist der Knoten: links die Kellertür, rechts die Treppe nach oben, geradeaus Esszimmer und
+  Wohnzimmer. Die Bibliothek erreicht man nur über das Wohnzimmer.</p></div></div>
+</section>
+
+<section id="og">
+  <div class="sec-head"><h2>1. Stock</h2><span class="tag">Haupthaus · Fußboden + 3,10 m · Raumhöhe 2,70 m</span></div>
+  <div class="split"><div class="figure"><svg class="plan floor" viewBox="0 0 29.60 22.60" role="img" aria-label="1. Stock Haupthaus" xmlns="http://www.w3.org/2000/svg">
+<title>1. Stock Haupthaus</title>
+<defs>
+<radialGradient id="glow"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.55"/>
+<stop offset=".55" style="stop-color:var(--lamp);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient>
+<pattern id="hatch" width=".35" height=".35" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2=".35" style="stroke:var(--muted);stroke-width:.05"/></pattern>
+<pattern id="grate" width=".18" height=".18" patternUnits="userSpaceOnUse">
+<path d="M0 0H.18M0 0V.18" style="stroke:var(--ink);stroke-width:.03;fill:none"/></pattern>
+</defs>
+<rect class="paper" x="0.000" y="0.000" width="29.600" height="22.600" />
+<rect class="balcony" x="18.000" y="3.200" width="6.000" height="1.800" />
+<polyline class="railing" points="18.000,3.200 24.000,3.200" />
+<text class="ctx-t" x="21.000" y="4.300" font-size="0.500" text-anchor="middle" >Balkon</text>
+<rect class="ctx-dash" x="11.600" y="19.000" width="3.800" height="2.000" />
+<text class="ctx-t" x="13.500" y="20.250" font-size="0.420" text-anchor="middle" >Vordach</text>
+<rect class="room rk-schlafen" x="17.000" y="5.000" width="8.000" height="9.000" />
+<rect class="room rk-wohnen" x="3.000" y="5.000" width="6.000" height="6.000" />
+<rect class="room rk-schlafen" x="3.000" y="13.000" width="5.000" height="6.000" />
+<rect class="room rk-schlafen" x="8.000" y="13.000" width="5.000" height="6.000" />
+<rect class="room rk-verkehr" x="3.000" y="11.000" width="14.000" height="2.000" />
+<rect class="room rk-verkehr" x="13.000" y="13.000" width="4.000" height="6.000" />
+<rect class="room rk-nass" x="9.000" y="5.000" width="4.000" height="6.000" />
+<rect class="room rk-schlafen" x="13.000" y="5.000" width="4.000" height="6.000" />
+<rect class="room rk-nass" x="20.500" y="14.000" width="4.500" height="5.000" />
+<rect class="room rk-wert" x="17.000" y="14.000" width="3.500" height="5.000" />
+<g class="lyr-moebel">
+<rect class="fixture" x="4.000" y="16.000" width="1.800" height="2.000" />
+<text class="fixture-t" x="4.900" y="17.000" font-size="0.300" text-anchor="middle" dominant-baseline="central">Bett</text>
+<rect class="fixture" x="10.000" y="16.400" width="1.000" height="2.000" />
+<text class="fixture-t" x="10.500" y="17.400" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 10.500 17.400)">Bett</text>
+<rect class="fixture" x="4.000" y="5.600" width="2.400" height="0.800" />
+<text class="fixture-t" x="5.200" y="6.000" font-size="0.300" text-anchor="middle" dominant-baseline="central">Schreibtisch</text>
+<rect class="fixture" x="8.400" y="8.400" width="0.450" height="1.200" />
+<text class="fixture-t" x="8.625" y="9.000" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 8.625 9.000)">Tresor</text>
+<rect class="fixture" x="9.300" y="5.200" width="1.700" height="1.500" />
+<text class="fixture-t" x="10.150" y="5.950" font-size="0.300" text-anchor="middle" dominant-baseline="central">Wanne</text>
+<rect class="fixture" x="15.850" y="8.700" width="1.000" height="2.000" />
+<text class="fixture-t" x="16.350" y="9.700" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 16.350 9.700)">Bett</text>
+<rect class="fixture" x="22.200" y="7.800" width="2.600" height="2.200" />
+<text class="fixture-t" x="23.500" y="8.900" font-size="0.300" text-anchor="middle" dominant-baseline="central">Bett</text>
+<rect class="fixture" x="17.200" y="14.200" width="0.600" height="2.600" />
+<rect class="fixture" x="19.600" y="17.700" width="0.700" height="1.100" />
+<text class="fixture-t" x="19.950" y="18.250" font-size="0.300" text-anchor="middle" dominant-baseline="central">Tresor</text>
+<rect class="fixture" x="23.400" y="17.400" width="1.400" height="1.350" />
+<text class="fixture-t" x="24.100" y="18.075" font-size="0.300" text-anchor="middle" dominant-baseline="central">Wanne</text>
+</g>
+<g class="walls">
+<rect class="wall" x="2.850" y="18.850" width="22.300" height="0.300" />
+<rect class="wall" x="2.850" y="12.925" width="2.200" height="0.150" />
+<rect class="wall" x="5.950" y="12.925" width="4.100" height="0.150" />
+<rect class="wall" x="10.950" y="12.925" width="2.200" height="0.150" />
+<rect class="wall" x="16.850" y="12.925" width="0.225" height="0.150" />
+<rect class="wall" x="2.850" y="10.925" width="3.700" height="0.150" />
+<rect class="wall" x="7.450" y="10.925" width="3.100" height="0.150" />
+<rect class="wall" x="11.450" y="10.925" width="3.100" height="0.150" />
+<rect class="wall" x="15.450" y="10.925" width="1.625" height="0.150" />
+<rect class="wall" x="2.850" y="4.850" width="17.650" height="0.300" />
+<rect class="wall" x="21.500" y="4.850" width="3.650" height="0.300" />
+<rect class="wall" x="16.925" y="13.925" width="1.025" height="0.150" />
+<rect class="wall" x="19.550" y="13.925" width="3.000" height="0.150" />
+<rect class="wall" x="23.450" y="13.925" width="1.700" height="0.150" />
+<rect class="wall" x="2.850" y="4.850" width="0.300" height="14.300" />
+<rect class="wall" x="7.925" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="12.925" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="12.925" y="4.850" width="0.150" height="6.225" />
+<rect class="wall" x="16.925" y="12.500" width="0.150" height="6.650" />
+<rect class="wall" x="16.925" y="4.850" width="0.150" height="6.650" />
+<rect class="wall" x="8.925" y="4.850" width="0.150" height="6.225" />
+<rect class="wall" x="24.850" y="4.850" width="0.300" height="14.300" />
+<rect class="wall" x="20.425" y="13.925" width="0.150" height="5.225" />
+</g>
+<rect class="win" x="4.800" y="18.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="4.800,19.050 6.200,19.050" />
+<polyline class="glass-line" points="4.800,18.950 6.200,18.950" />
+<rect class="win" x="9.800" y="18.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="9.800,19.050 11.200,19.050" />
+<polyline class="glass-line" points="9.800,18.950 11.200,18.950" />
+<rect class="win" x="13.700" y="18.850" width="1.800" height="0.300" />
+<polyline class="glass-line" points="13.700,19.050 15.500,19.050" />
+<polyline class="glass-line" points="13.700,18.950 15.500,18.950" />
+<rect class="win" x="18.250" y="18.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="18.250,19.050 19.250,19.050" />
+<polyline class="glass-line" points="18.250,18.950 19.250,18.950" />
+<rect class="win win-milch" x="22.250" y="18.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="22.250,19.050 23.250,19.050" />
+<polyline class="glass-line" points="22.250,18.950 23.250,18.950" />
+<rect class="win" x="2.850" y="15.400" width="0.300" height="1.200" />
+<polyline class="glass-line" points="2.950,16.600 2.950,15.400" />
+<polyline class="glass-line" points="3.050,16.600 3.050,15.400" />
+<rect class="win" x="2.850" y="11.600" width="0.300" height="0.800" />
+<polyline class="glass-line" points="2.950,12.400 2.950,11.600" />
+<polyline class="glass-line" points="3.050,12.400 3.050,11.600" />
+<rect class="win" x="2.850" y="7.300" width="0.300" height="1.400" />
+<polyline class="glass-line" points="2.950,8.700 2.950,7.300" />
+<polyline class="glass-line" points="3.050,8.700 3.050,7.300" />
+<rect class="win" x="5.300" y="4.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="5.300,5.050 6.700,5.050" />
+<polyline class="glass-line" points="5.300,4.950 6.700,4.950" />
+<rect class="win win-milch" x="10.500" y="4.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="10.500,5.050 11.500,5.050" />
+<polyline class="glass-line" points="10.500,4.950 11.500,4.950" />
+<rect class="win" x="14.300" y="4.850" width="1.400" height="0.300" />
+<polyline class="glass-line" points="14.300,5.050 15.700,5.050" />
+<polyline class="glass-line" points="14.300,4.950 15.700,4.950" />
+<polygon class="tilt" points="14.400,4.850 15.600,4.850 15.000,4.570" />
+<rect class="win" x="18.300" y="4.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="18.300,5.075 19.500,5.075" />
+<polyline class="glass-line" points="18.300,5.000 19.500,5.000" />
+<polyline class="glass-line" points="18.300,4.925 19.500,4.925" />
+<rect class="win" x="22.500" y="4.850" width="1.200" height="0.300" />
+<polyline class="glass-line" points="22.500,5.075 23.700,5.075" />
+<polyline class="glass-line" points="22.500,5.000 23.700,5.000" />
+<polyline class="glass-line" points="22.500,4.925 23.700,4.925" />
+<rect class="win win-milch" x="24.850" y="16.000" width="0.300" height="1.000" />
+<polyline class="glass-line" points="24.950,17.000 24.950,16.000" />
+<polyline class="glass-line" points="25.050,17.000 25.050,16.000" />
+<rect class="win" x="24.850" y="10.300" width="0.300" height="1.400" />
+<polyline class="glass-line" points="24.950,11.700 24.950,10.300" />
+<polyline class="glass-line" points="25.050,11.700 25.050,10.300" />
+<rect class="win" x="24.850" y="6.700" width="0.300" height="1.400" />
+<polyline class="glass-line" points="24.950,8.100 24.950,6.700" />
+<polyline class="glass-line" points="25.050,8.100 25.050,6.700" />
+<rect class="stair-hole" x="15.200" y="13.400" width="1.600" height="5.000" />
+<polyline class="stair-x" points="15.200,18.400 16.800,13.400" />
+<polyline class="stair-x" points="15.200,13.400 16.800,18.400" />
+<polyline class="railing" points="15.140,18.460 15.140,13.400" />
+<polyline class="railing" points="15.140,18.460 16.800,18.460" />
+<circle class="walk-dot" cx="16.000" cy="18.150" r="0.090" />
+<polyline class="walk" points="16.000,18.150 16.000,13.700" />
+<polyline class="walk" points="15.780,14.050 16.000,13.700 16.220,14.050" />
+<text class="stair-t" x="14.980" y="15.900" font-size="0.36" text-anchor="middle" transform="rotate(-90 14.980 15.900)">von der Halle</text>
+<g class="door dt-tuer">
+<polyline class="threshold" points="5.050,13.000 5.950,13.000" />
+<polyline class="swing " points="5.950,13.900 5.849,13.894 5.750,13.877 5.653,13.849 5.560,13.811 5.471,13.762 5.389,13.704 5.314,13.636 5.246,13.561 5.188,13.479 5.139,13.390 5.101,13.297 5.073,13.200 5.056,13.101 5.050,13.000" />
+<polyline class="leaf " points="5.950,13.000 5.950,13.900" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="10.050,13.000 10.950,13.000" />
+<polyline class="swing " points="10.950,13.900 10.849,13.894 10.750,13.877 10.653,13.849 10.560,13.811 10.471,13.762 10.389,13.704 10.314,13.636 10.246,13.561 10.188,13.479 10.139,13.390 10.101,13.297 10.073,13.200 10.056,13.101 10.050,13.000" />
+<polyline class="leaf " points="10.950,13.000 10.950,13.900" />
+</g>
+<g class="door dt-offen">
+<polyline class="threshold" points="13.150,13.000 16.850,13.000" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="6.550,11.000 7.450,11.000" />
+<polyline class="swing " points="6.550,10.100 6.651,10.106 6.750,10.123 6.847,10.151 6.940,10.189 7.029,10.238 7.111,10.296 7.186,10.364 7.254,10.439 7.312,10.521 7.361,10.610 7.399,10.703 7.427,10.800 7.444,10.899 7.450,11.000" />
+<polyline class="leaf " points="6.550,11.000 6.550,10.100" />
+<circle class="lock" cx="7.000" cy="11.495" r="0.340" />
+<text class="lock-t" x="7.000" y="11.617" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="10.550,11.000 11.450,11.000" />
+<polyline class="swing " points="10.550,10.100 10.651,10.106 10.750,10.123 10.847,10.151 10.940,10.189 11.029,10.238 11.111,10.296 11.186,10.364 11.254,10.439 11.312,10.521 11.361,10.610 11.399,10.703 11.427,10.800 11.444,10.899 11.450,11.000" />
+<polyline class="leaf " points="10.550,11.000 10.550,10.100" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="14.550,11.000 15.450,11.000" />
+<polyline class="swing " points="15.450,10.100 15.349,10.106 15.250,10.123 15.153,10.151 15.060,10.189 14.971,10.238 14.889,10.296 14.814,10.364 14.746,10.439 14.688,10.521 14.639,10.610 14.601,10.703 14.573,10.800 14.556,10.899 14.550,11.000" />
+<polyline class="leaf " points="15.450,11.000 15.450,10.100" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="17.000,12.500 17.000,11.500" />
+<polyline class="swing " points="18.000,11.500 17.994,11.612 17.975,11.723 17.944,11.830 17.901,11.934 17.847,12.032 17.782,12.123 17.707,12.207 17.623,12.282 17.532,12.347 17.434,12.401 17.330,12.444 17.223,12.475 17.112,12.494 17.000,12.500" />
+<polyline class="leaf " points="17.000,11.500 18.000,11.500" />
+</g>
+<g class="door dt-schiebe">
+<polyline class="threshold" points="17.950,14.000 19.550,14.000" />
+<rect class="slide" x="17.950" y="14.025" width="0.900" height="0.050" />
+<rect class="slide" x="18.650" y="13.925" width="0.900" height="0.050" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="22.550,14.000 23.450,14.000" />
+<polyline class="swing " points="23.450,14.900 23.349,14.894 23.250,14.877 23.153,14.849 23.060,14.811 22.971,14.762 22.889,14.704 22.814,14.636 22.746,14.561 22.688,14.479 22.639,14.390 22.601,14.297 22.573,14.200 22.556,14.101 22.550,14.000" />
+<polyline class="leaf " points="23.450,14.000 23.450,14.900" />
+</g>
+<g class="door dt-glas">
+<polyline class="threshold" points="20.500,5.000 21.500,5.000" />
+<polyline class="swing glass" points="20.500,6.000 20.612,5.994 20.723,5.975 20.830,5.944 20.934,5.901 21.032,5.847 21.123,5.782 21.207,5.707 21.282,5.623 21.347,5.532 21.401,5.434 21.444,5.330 21.475,5.223 21.494,5.112 21.500,5.000" />
+<polyline class="leaf glass" points="20.500,5.000 20.500,6.000" />
+<circle class="lock" cx="21.000" cy="4.430" r="0.340" />
+<text class="lock-t" x="21.000" y="4.552" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<text class="room-t" x="5.500" y="15.936" font-size="0.460" text-anchor="middle" >Gästezimmer</text>
+<text class="room-sub" x="5.500" y="16.364" font-size="0.285" text-anchor="middle" >5 × 6 m · 30 m²</text>
+<text class="room-t" x="10.500" y="15.936" font-size="0.460" text-anchor="middle" >Kinderzimmer</text>
+<text class="room-sub" x="10.500" y="16.364" font-size="0.285" text-anchor="middle" >5 × 6 m · 30 m²</text>
+<text class="room-t" x="14.100" y="15.936" font-size="0.460" text-anchor="middle" >Galerie</text>
+<text class="room-sub" x="14.100" y="16.364" font-size="0.285" text-anchor="middle" >4 × 6 m · 24 m²</text>
+<text class="room-t" x="9.000" y="11.936" font-size="0.460" text-anchor="middle" >Flur</text>
+<text class="room-sub" x="9.000" y="12.364" font-size="0.285" text-anchor="middle" >14 × 2 m · 28 m²</text>
+<text class="room-t" x="6.000" y="7.936" font-size="0.460" text-anchor="middle" >Arbeitszimmer</text>
+<text class="room-sub" x="6.000" y="8.364" font-size="0.285" text-anchor="middle" >6 × 6 m · 36 m²</text>
+<text class="room-t" x="11.000" y="7.936" font-size="0.460" text-anchor="middle" >Bad</text>
+<text class="room-sub" x="11.000" y="8.364" font-size="0.285" text-anchor="middle" >4 × 6 m · 24 m²</text>
+<text class="room-t" x="15.000" y="7.936" font-size="0.460" text-anchor="middle" >Jugendzimmer</text>
+<text class="room-sub" x="15.000" y="8.364" font-size="0.285" text-anchor="middle" >4 × 6 m · 24 m²</text>
+<text class="room-t" x="19.900" y="8.936" font-size="0.460" text-anchor="middle" >Elternschlafzimmer</text>
+<text class="room-sub" x="19.900" y="9.364" font-size="0.285" text-anchor="middle" >8 × 9 m · 72 m²</text>
+<text class="room-t" x="18.750" y="16.436" font-size="0.460" text-anchor="middle" >Ankleide</text>
+<text class="room-sub" x="18.750" y="16.864" font-size="0.285" text-anchor="middle" >3,5 × 5 m · 18 m²</text>
+<text class="room-t" x="22.750" y="16.436" font-size="0.460" text-anchor="middle" >Elternbad</text>
+<text class="room-sub" x="22.750" y="16.864" font-size="0.285" text-anchor="middle" >4,5 × 5 m · 22 m²</text>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="22.800,3.317 23.283,3.800 22.800,4.283 22.317,3.800" />
+<text class="mk-t" x="22.800" y="3.943" font-size="0.399" text-anchor="middle" >E7</text>
+<title>E7 Balkon – Leiter aus dem Geräteraum, Balkontür aufhebeln</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="7.400" cy="9.000" r="0.420" />
+<text class="mk-t" x="7.400" y="9.143" font-size="0.399" text-anchor="middle" >Z2</text>
+<title>Z2 Arbeitszimmer – Wandtresor hinter dem Gemälde, Laptop</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="18.800" cy="17.000" r="0.420" />
+<text class="mk-t" x="18.800" y="17.143" font-size="0.399" text-anchor="middle" >Z3</text>
+<title>Z3 Ankleide – Schmuck, Uhren, kleiner Möbeltresor</title>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="3.000,21.800 25.000,21.800" />
+<polyline class="dim-line" points="3.000,22.025 3.000,21.575" />
+<polyline class="dim-tick" points="2.820,21.980 3.180,21.620" />
+<polyline class="dim-line" points="25.000,22.025 25.000,21.575" />
+<polyline class="dim-tick" points="24.820,21.980 25.180,21.620" />
+<text class="dim-t" x="14.000" y="21.580" font-size="0.420" text-anchor="middle" >22,00 m</text>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="0.750,19.000 0.750,5.000" />
+<polyline class="dim-line" points="0.525,19.000 0.975,19.000" />
+<polyline class="dim-tick" points="0.570,19.180 0.930,18.820" />
+<polyline class="dim-line" points="0.525,5.000 0.975,5.000" />
+<polyline class="dim-tick" points="0.570,5.180 0.930,4.820" />
+<text class="dim-t" x="0.530" y="12.000" font-size="0.420" text-anchor="middle" transform="rotate(-90 0.530 12.000)">14,00 m</text>
+</g>
+<g class="compass">
+<circle class="compass-ring" cx="28.400" cy="2.000" r="0.625" />
+<polygon class="compass-needle" points="28.400,1.475 28.610,2.275 28.400,2.100 28.190,2.275" />
+<text class="compass-t" x="28.400" y="1.225" font-size="0.450" text-anchor="middle" >N</text>
+</g>
+<g class="scale">
+<rect class="scale-a" x="22.000" y="1.240" width="2.500" height="0.160" />
+<rect class="scale-b" x="24.500" y="1.240" width="2.500" height="0.160" />
+<text class="scale-t" x="22.000" y="1.775" font-size="0.310" text-anchor="middle" ></text>
+<text class="scale-t" x="24.500" y="1.775" font-size="0.310" text-anchor="middle" >2</text>
+<text class="scale-t" x="27.000" y="1.775" font-size="0.310" text-anchor="middle" >5 m</text>
+</g>
+</svg></div>
+  <div class="below"><div class="table-wrap"><table class="rooms"><thead><tr><th>Raum</th><th class="num">Fläche</th><th>Was drin ist / wozu</th></tr></thead><tbody><tr><td><span class="sw rk-wohnen"></span>Arbeitszimmer</td><td class="num">36&nbsp;m²</td><td>Schreibtisch, Wandtresor hinter dem Gemälde, Laptop</td></tr><tr><td><span class="sw rk-nass"></span>Bad</td><td class="num">24&nbsp;m²</td><td>Familienbad mit Wanne</td></tr><tr><td><span class="sw rk-schlafen"></span>Jugendzimmer</td><td class="num">24&nbsp;m²</td><td>Laptop, Kopfhörer</td></tr><tr><td><span class="sw rk-schlafen"></span>Elternschlafzimmer</td><td class="num">72&nbsp;m²</td><td>Bett, Nachttische (Schatulle), Balkon über der Terrasse</td></tr><tr><td><span class="sw rk-verkehr"></span>Flur</td><td class="num">28&nbsp;m²</td><td>Flur 1. Stock</td></tr><tr><td><span class="sw rk-schlafen"></span>Gästezimmer</td><td class="num">30&nbsp;m²</td><td>Doppelbett, Schrank</td></tr><tr><td><span class="sw rk-schlafen"></span>Kinderzimmer</td><td class="num">30&nbsp;m²</td><td>Spardose, Spielkonsole</td></tr><tr><td><span class="sw rk-verkehr"></span>Galerie</td><td class="num">24&nbsp;m²</td><td>Treppe kommt hier an, Fenster über dem Eingang</td></tr><tr><td><span class="sw rk-wert"></span>Ankleide</td><td class="num">18&nbsp;m²</td><td>Schmuck, Uhrenbox, kleiner Möbeltresor</td></tr><tr><td><span class="sw rk-nass"></span>Elternbad</td><td class="num">22&nbsp;m²</td><td>Dusche, Wanne, Milchglas</td></tr></tbody></table></div>
+  <p class="note">Die Treppe kommt in der Galerie an. Alles liegt an einem Flur. Die Elternsuite im Osten hat Ankleide,
+  Bad und den Balkon über der Terrasse.</p></div></div>
+</section>
+
+<section id="kg">
+  <div class="sec-head"><h2>Keller</h2><span class="tag">Haupthaus · Fußboden − 2,90 m · Raumhöhe 2,55 m</span></div>
+  <div class="split"><div class="figure"><svg class="plan floor" viewBox="0 0 29.60 22.60" role="img" aria-label="Keller Haupthaus" xmlns="http://www.w3.org/2000/svg">
+<title>Keller Haupthaus</title>
+<defs>
+<radialGradient id="glow"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.55"/>
+<stop offset=".55" style="stop-color:var(--lamp);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient>
+<pattern id="hatch" width=".35" height=".35" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2=".35" style="stroke:var(--muted);stroke-width:.05"/></pattern>
+<pattern id="grate" width=".18" height=".18" patternUnits="userSpaceOnUse">
+<path d="M0 0H.18M0 0V.18" style="stroke:var(--ink);stroke-width:.03;fill:none"/></pattern>
+</defs>
+<rect class="paper" x="0.000" y="0.000" width="29.600" height="22.600" />
+<rect class="ctx" x="25.150" y="5.000" width="1.600" height="5.700" />
+<polyline class="retaining" points="26.750,10.700 26.750,5.000" />
+<rect class="room rk-wohnen" x="10.000" y="5.000" width="8.000" height="6.000" />
+<rect class="room rk-verkehr" x="3.000" y="11.000" width="22.000" height="2.000" />
+<rect class="room rk-wert" x="18.000" y="13.000" width="7.000" height="6.000" />
+<rect class="room rk-wohnen" x="3.000" y="5.000" width="7.000" height="6.000" />
+<rect class="room rk-wert" x="11.800" y="13.000" width="6.200" height="6.000" />
+<rect class="room rk-technik" x="3.000" y="13.000" width="4.000" height="6.000" />
+<rect class="room rk-verkehr" x="21.000" y="5.000" width="4.000" height="6.000" />
+<rect class="room rk-service" x="7.000" y="13.000" width="3.000" height="6.000" />
+<rect class="room rk-service" x="18.000" y="5.000" width="3.000" height="6.000" />
+<rect class="room rk-verkehr" x="10.000" y="13.000" width="1.800" height="6.000" />
+<rect class="room rk-nass" x="7.500" y="5.000" width="2.500" height="2.500" />
+<g class="lyr-moebel">
+<rect class="fixture" x="3.300" y="17.400" width="1.300" height="1.300" />
+<text class="fixture-t" x="3.950" y="18.050" font-size="0.300" text-anchor="middle" dominant-baseline="central">Heizung</text>
+<rect class="fixture" x="5.600" y="13.250" width="1.200" height="0.850" />
+<text class="fixture-t" x="6.200" y="13.675" font-size="0.300" text-anchor="middle" dominant-baseline="central">Alarm</text>
+<rect class="fixture" x="12.100" y="18.200" width="5.600" height="0.500" />
+<text class="fixture-t" x="14.900" y="18.450" font-size="0.300" text-anchor="middle" dominant-baseline="central">Weinregale</text>
+<rect class="fixture" x="12.100" y="16.200" width="5.600" height="0.500" />
+<rect class="fixture" x="23.000" y="17.000" width="1.700" height="1.700" />
+<text class="fixture-t" x="23.850" y="17.850" font-size="0.300" text-anchor="middle" dominant-baseline="central">Tresor</text>
+<rect class="fixture" x="10.700" y="6.200" width="2.800" height="1.600" />
+<text class="fixture-t" x="12.100" y="7.000" font-size="0.300" text-anchor="middle" dominant-baseline="central">Billard</text>
+<rect class="fixture" x="16.400" y="6.000" width="1.300" height="4.000" />
+<text class="fixture-t" x="17.050" y="8.000" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 17.050 8.000)">Bar</text>
+<rect class="fixture" x="3.600" y="9.600" width="1.800" height="0.800" />
+</g>
+<g class="walls">
+<rect class="wall" x="2.850" y="18.850" width="22.300" height="0.300" />
+<rect class="wall" x="2.850" y="12.925" width="1.700" height="0.150" />
+<rect class="wall" x="5.450" y="12.925" width="2.600" height="0.150" />
+<rect class="wall" x="8.950" y="12.925" width="1.200" height="0.150" />
+<rect class="wall" x="11.650" y="12.925" width="2.850" height="0.150" />
+<rect class="wall" x="15.500" y="12.925" width="5.500" height="0.150" />
+<rect class="wall" x="22.000" y="12.925" width="3.150" height="0.150" />
+<rect class="wall" x="2.850" y="10.925" width="3.200" height="0.150" />
+<rect class="wall" x="6.950" y="10.925" width="6.250" height="0.150" />
+<rect class="wall" x="14.800" y="10.925" width="4.250" height="0.150" />
+<rect class="wall" x="19.950" y="10.925" width="2.550" height="0.150" />
+<rect class="wall" x="23.500" y="10.925" width="1.650" height="0.150" />
+<rect class="wall" x="2.850" y="4.850" width="22.300" height="0.300" />
+<rect class="wall" x="7.425" y="7.425" width="0.875" height="0.150" />
+<rect class="wall" x="9.200" y="7.425" width="0.875" height="0.150" />
+<rect class="wall" x="2.850" y="4.850" width="0.300" height="14.300" />
+<rect class="wall" x="6.925" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="9.925" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="9.925" y="4.850" width="0.150" height="6.225" />
+<rect class="wall" x="11.725" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="17.925" y="12.925" width="0.150" height="6.225" />
+<rect class="wall" x="17.925" y="4.850" width="0.150" height="6.225" />
+<rect class="wall" x="24.850" y="6.600" width="0.300" height="12.550" />
+<rect class="wall" x="24.850" y="4.850" width="0.300" height="0.750" />
+<rect class="wall" x="7.425" y="4.850" width="0.150" height="2.725" />
+<rect class="wall" x="20.925" y="4.850" width="0.150" height="6.225" />
+</g>
+<rect class="lightwell" x="2.100" y="15.400" width="0.750" height="1.200" />
+<rect class="win" x="2.850" y="15.500" width="0.300" height="1.000" />
+<polyline class="glass-line" points="2.950,16.500 2.950,15.500" />
+<polyline class="glass-line" points="3.050,16.500 3.050,15.500" />
+<rect class="lightwell" x="2.100" y="7.400" width="0.750" height="1.200" />
+<rect class="win" x="2.850" y="7.500" width="0.300" height="1.000" />
+<polyline class="glass-line" points="2.950,8.500 2.950,7.500" />
+<polyline class="glass-line" points="3.050,8.500 3.050,7.500" />
+<rect class="lightwell" x="8.000" y="19.150" width="1.000" height="0.750" />
+<rect class="win" x="8.100" y="18.850" width="0.800" height="0.300" />
+<polyline class="glass-line" points="8.100,19.050 8.900,19.050" />
+<polyline class="glass-line" points="8.100,18.950 8.900,18.950" />
+<rect class="lightwell" x="11.900" y="4.100" width="1.200" height="0.750" />
+<rect class="win" x="12.000" y="4.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="12.000,5.050 13.000,5.050" />
+<polyline class="glass-line" points="12.000,4.950 13.000,4.950" />
+<rect class="lightwell" x="15.400" y="4.100" width="1.200" height="0.750" />
+<rect class="win" x="15.500" y="4.850" width="1.000" height="0.300" />
+<polyline class="glass-line" points="15.500,5.050 16.500,5.050" />
+<polyline class="glass-line" points="15.500,4.950 16.500,4.950" />
+<rect class="stair" x="10.150" y="13.150" width="1.500" height="4.450" />
+<polyline class="tread" points="10.150,13.440 11.650,13.440" />
+<polyline class="tread" points="10.150,13.730 11.650,13.730" />
+<polyline class="tread" points="10.150,14.020 11.650,14.020" />
+<polyline class="tread" points="10.150,14.310 11.650,14.310" />
+<polyline class="tread" points="10.150,14.600 11.650,14.600" />
+<polyline class="tread" points="10.150,14.890 11.650,14.890" />
+<polyline class="tread" points="10.150,15.180 11.650,15.180" />
+<polyline class="tread" points="10.150,15.470 11.650,15.470" />
+<polyline class="tread" points="10.150,15.760 11.650,15.760" />
+<polyline class="tread" points="10.150,16.050 11.650,16.050" />
+<polyline class="tread" points="10.150,16.340 11.650,16.340" />
+<polyline class="tread" points="10.150,16.630 11.650,16.630" />
+<polyline class="tread" points="10.150,16.920 11.650,16.920" />
+<polyline class="tread" points="10.150,17.210 11.650,17.210" />
+<polyline class="tread" points="10.150,17.500 11.650,17.500" />
+<circle class="walk-dot" cx="10.900" cy="13.400" r="0.090" />
+<polyline class="walk" points="10.900,13.400 10.900,17.300" />
+<polyline class="walk" points="10.680,16.950 10.900,17.300 11.120,16.950" />
+<text class="stair-t" x="10.900" y="12.770" font-size="0.340" text-anchor="middle" >hoch</text>
+<rect class="stair" x="25.200" y="7.000" width="1.400" height="3.600" />
+<polyline class="tread" points="25.200,7.290 26.600,7.290" />
+<polyline class="tread" points="25.200,7.580 26.600,7.580" />
+<polyline class="tread" points="25.200,7.870 26.600,7.870" />
+<polyline class="tread" points="25.200,8.160 26.600,8.160" />
+<polyline class="tread" points="25.200,8.450 26.600,8.450" />
+<polyline class="tread" points="25.200,8.740 26.600,8.740" />
+<polyline class="tread" points="25.200,9.030 26.600,9.030" />
+<polyline class="tread" points="25.200,9.320 26.600,9.320" />
+<polyline class="tread" points="25.200,9.610 26.600,9.610" />
+<polyline class="tread" points="25.200,9.900 26.600,9.900" />
+<polyline class="tread" points="25.200,10.190 26.600,10.190" />
+<polyline class="tread" points="25.200,10.480 26.600,10.480" />
+<circle class="walk-dot" cx="25.900" cy="7.250" r="0.090" />
+<polyline class="walk" points="25.900,7.250 25.900,10.300" />
+<polyline class="walk" points="25.680,9.950 25.900,10.300 26.120,9.950" />
+<text class="stair-t" x="27.050" y="8.800" font-size="0.36" text-anchor="middle" transform="rotate(-90 27.050 8.800)">hoch (außen)</text>
+<g class="door dt-offen">
+<polyline class="threshold" points="10.150,13.000 11.650,13.000" />
+</g>
+<g class="door dt-stahl">
+<polyline class="threshold" points="4.550,13.000 5.450,13.000" />
+<polyline class="swing steel" points="4.550,13.900 4.651,13.894 4.750,13.877 4.847,13.849 4.940,13.811 5.029,13.762 5.111,13.704 5.186,13.636 5.254,13.561 5.312,13.479 5.361,13.390 5.399,13.297 5.427,13.200 5.444,13.101 5.450,13.000" />
+<polyline class="leaf steel" points="4.550,13.000 4.550,13.900" />
+<circle class="lock" cx="5.000" cy="12.505" r="0.340" />
+<text class="lock-t" x="5.000" y="12.627" font-size="0.374" text-anchor="middle" >4</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="8.050,13.000 8.950,13.000" />
+<polyline class="swing " points="8.950,13.900 8.849,13.894 8.750,13.877 8.653,13.849 8.560,13.811 8.471,13.762 8.389,13.704 8.314,13.636 8.246,13.561 8.188,13.479 8.139,13.390 8.101,13.297 8.073,13.200 8.056,13.101 8.050,13.000" />
+<polyline class="leaf " points="8.950,13.000 8.950,13.900" />
+</g>
+<g class="door dt-gitter">
+<polyline class="threshold" points="14.500,13.000 15.500,13.000" />
+<polyline class="swing grid" points="14.500,14.000 14.612,13.994 14.723,13.975 14.830,13.944 14.934,13.901 15.032,13.847 15.123,13.782 15.207,13.707 15.282,13.623 15.347,13.532 15.401,13.434 15.444,13.330 15.475,13.223 15.494,13.112 15.500,13.000" />
+<polyline class="leaf grid" points="14.500,13.000 14.500,14.000" />
+<circle class="lock" cx="15.000" cy="12.505" r="0.340" />
+<text class="lock-t" x="15.000" y="12.627" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-panzer">
+<polyline class="threshold" points="21.000,13.000 22.000,13.000" />
+<polyline class="swing armour" points="21.000,14.000 21.112,13.994 21.223,13.975 21.330,13.944 21.434,13.901 21.532,13.847 21.623,13.782 21.707,13.707 21.782,13.623 21.847,13.532 21.901,13.434 21.944,13.330 21.975,13.223 21.994,13.112 22.000,13.000" />
+<polyline class="leaf armour" points="21.000,13.000 21.000,14.000" />
+<circle class="lock" cx="21.500" cy="12.505" r="0.340" />
+<text class="lock-t" x="21.500" y="12.627" font-size="0.374" text-anchor="middle" >8</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="6.050,11.000 6.950,11.000" />
+<polyline class="swing " points="6.050,10.100 6.151,10.106 6.250,10.123 6.347,10.151 6.440,10.189 6.529,10.238 6.611,10.296 6.686,10.364 6.754,10.439 6.812,10.521 6.861,10.610 6.899,10.703 6.927,10.800 6.944,10.899 6.950,11.000" />
+<polyline class="leaf " points="6.050,11.000 6.050,10.100" />
+</g>
+<g class="door dt-glas">
+<polyline class="threshold" points="8.300,7.500 9.200,7.500" />
+<polyline class="swing glass" points="9.200,8.400 9.099,8.394 9.000,8.377 8.903,8.349 8.810,8.311 8.721,8.262 8.639,8.204 8.564,8.136 8.496,8.061 8.438,7.979 8.389,7.890 8.351,7.797 8.323,7.700 8.306,7.601 8.300,7.500" />
+<polyline class="leaf glass" points="9.200,7.500 9.200,8.400" />
+</g>
+<g class="door dt-doppel">
+<polyline class="threshold" points="13.200,11.000 14.800,11.000" />
+<polyline class="swing " points="13.200,10.200 13.290,10.205 13.378,10.220 13.464,10.245 13.547,10.279 13.626,10.323 13.699,10.375 13.766,10.434 13.825,10.501 13.877,10.574 13.921,10.653 13.955,10.736 13.980,10.822 13.995,10.910 14.000,11.000" />
+<polyline class="leaf " points="13.200,11.000 13.200,10.200" />
+<polyline class="swing " points="14.800,10.200 14.710,10.205 14.622,10.220 14.536,10.245 14.453,10.279 14.374,10.323 14.301,10.375 14.234,10.434 14.175,10.501 14.123,10.574 14.079,10.653 14.045,10.736 14.020,10.822 14.005,10.910 14.000,11.000" />
+<polyline class="leaf " points="14.800,11.000 14.800,10.200" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="19.050,11.000 19.950,11.000" />
+<polyline class="swing " points="19.050,10.100 19.151,10.106 19.250,10.123 19.347,10.151 19.440,10.189 19.529,10.238 19.611,10.296 19.686,10.364 19.754,10.439 19.812,10.521 19.861,10.610 19.899,10.703 19.927,10.800 19.944,10.899 19.950,11.000" />
+<polyline class="leaf " points="19.050,11.000 19.050,10.100" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="22.500,11.000 23.500,11.000" />
+<polyline class="swing " points="23.500,10.000 23.388,10.006 23.277,10.025 23.170,10.056 23.066,10.099 22.968,10.153 22.877,10.218 22.793,10.293 22.718,10.377 22.653,10.468 22.599,10.566 22.556,10.670 22.525,10.777 22.506,10.888 22.500,11.000" />
+<polyline class="leaf " points="23.500,11.000 23.500,10.000" />
+</g>
+<g class="door dt-stahl">
+<polyline class="threshold" points="25.000,6.600 25.000,5.600" />
+<polyline class="swing steel" points="24.000,5.600 24.006,5.712 24.025,5.823 24.056,5.930 24.099,6.034 24.153,6.132 24.218,6.223 24.293,6.307 24.377,6.382 24.468,6.447 24.566,6.501 24.670,6.544 24.777,6.575 24.888,6.594 25.000,6.600" />
+<polyline class="leaf steel" points="25.000,5.600 24.000,5.600" />
+<circle class="lock" cx="25.570" cy="6.100" r="0.340" />
+<text class="lock-t" x="25.570" y="6.222" font-size="0.374" text-anchor="middle" >5</text>
+</g>
+<text class="room-t" x="5.000" y="15.936" font-size="0.460" text-anchor="middle" >Technik</text>
+<text class="room-sub" x="5.000" y="16.364" font-size="0.285" text-anchor="middle" >4 × 6 m · 24 m²</text>
+<text class="room-t" x="8.500" y="15.936" font-size="0.460" text-anchor="middle" >Lager</text>
+<text class="room-sub" x="8.500" y="16.364" font-size="0.285" text-anchor="middle" >18 m²</text>
+<text class="room-t" x="14.900" y="15.936" font-size="0.460" text-anchor="middle" >Weinkeller</text>
+<text class="room-sub" x="14.900" y="16.364" font-size="0.285" text-anchor="middle" >6,2 × 6 m · 37 m²</text>
+<text class="room-t" x="21.500" y="15.936" font-size="0.460" text-anchor="middle" >Tresorraum</text>
+<text class="room-sub" x="21.500" y="16.364" font-size="0.285" text-anchor="middle" >7 × 6 m · 42 m²</text>
+<text class="room-t" x="18.000" y="11.936" font-size="0.460" text-anchor="middle" >Kellerflur</text>
+<text class="room-sub" x="18.000" y="12.364" font-size="0.285" text-anchor="middle" >22 × 2 m · 44 m²</text>
+<text class="room-t" x="5.600" y="7.936" font-size="0.460" text-anchor="middle" >Fitness</text>
+<text class="room-sub" x="5.600" y="8.364" font-size="0.285" text-anchor="middle" >36 m²</text>
+<text class="room-t" x="8.750" y="6.186" font-size="0.460" text-anchor="middle" >Sauna</text>
+<text class="room-sub" x="8.750" y="6.614" font-size="0.285" text-anchor="middle" >6,2 m²</text>
+<text class="room-t" x="14.600" y="7.936" font-size="0.460" text-anchor="middle" >Hobbyraum</text>
+<text class="room-sub" x="14.600" y="8.364" font-size="0.285" text-anchor="middle" >8 × 6 m · 48 m²</text>
+<text class="room-t" x="19.500" y="7.695" font-size="0.460" text-anchor="middle" >Abstell-</text>
+<text class="room-t" x="19.500" y="8.178" font-size="0.460" text-anchor="middle" >raum</text>
+<text class="room-sub" x="19.500" y="8.605" font-size="0.285" text-anchor="middle" >18 m²</text>
+<text class="room-t" x="23.000" y="7.936" font-size="0.460" text-anchor="middle" >Kellervorraum</text>
+<text class="room-sub" x="23.000" y="8.364" font-size="0.285" text-anchor="middle" >4 × 6 m · 24 m²</text>
+<g class="lyr-einstiege mk mk-einstieg">
+<polygon class="mk-shape" points="26.000,5.217 26.483,5.700 26.000,6.183 25.517,5.700" />
+<text class="mk-t" x="26.000" y="5.843" font-size="0.399" text-anchor="middle" >E5</text>
+<title>E5 Kelleraußentür – Stahl, Schloss 5, Bewegungsmelder</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="24.000" cy="16.250" r="0.420" />
+<text class="mk-t" x="24.000" y="16.393" font-size="0.399" text-anchor="middle" >Z1</text>
+<title>Z1 Tresorraum – großer Tresor, Bargeld, Gold (Hauptziel)</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="14.900" cy="14.700" r="0.420" />
+<text class="mk-t" x="14.900" y="14.843" font-size="0.399" text-anchor="middle" >Z5</text>
+<title>Z5 Weinkeller – Raritäten, schwer und zerbrechlich</title>
+</g>
+<g class="lyr-ziele mk mk-sicherheit">
+<rect class="mk-shape" x="4.222" y="14.222" width="0.756" height="0.756" />
+<text class="mk-t" x="4.600" y="14.743" font-size="0.399" text-anchor="middle" >A2</text>
+<title>A2 Alarmzentrale + Hauptsicherungen (Strom aus = Licht aus)</title>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="3.000,21.800 25.000,21.800" />
+<polyline class="dim-line" points="3.000,22.025 3.000,21.575" />
+<polyline class="dim-tick" points="2.820,21.980 3.180,21.620" />
+<polyline class="dim-line" points="25.000,22.025 25.000,21.575" />
+<polyline class="dim-tick" points="24.820,21.980 25.180,21.620" />
+<text class="dim-t" x="14.000" y="21.580" font-size="0.420" text-anchor="middle" >22,00 m</text>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="0.750,19.000 0.750,5.000" />
+<polyline class="dim-line" points="0.525,19.000 0.975,19.000" />
+<polyline class="dim-tick" points="0.570,19.180 0.930,18.820" />
+<polyline class="dim-line" points="0.525,5.000 0.975,5.000" />
+<polyline class="dim-tick" points="0.570,5.180 0.930,4.820" />
+<text class="dim-t" x="0.530" y="12.000" font-size="0.420" text-anchor="middle" transform="rotate(-90 0.530 12.000)">14,00 m</text>
+</g>
+<g class="compass">
+<circle class="compass-ring" cx="28.400" cy="2.000" r="0.625" />
+<polygon class="compass-needle" points="28.400,1.475 28.610,2.275 28.400,2.100 28.190,2.275" />
+<text class="compass-t" x="28.400" y="1.225" font-size="0.450" text-anchor="middle" >N</text>
+</g>
+<g class="scale">
+<rect class="scale-a" x="22.000" y="1.240" width="2.500" height="0.160" />
+<rect class="scale-b" x="24.500" y="1.240" width="2.500" height="0.160" />
+<text class="scale-t" x="22.000" y="1.775" font-size="0.310" text-anchor="middle" ></text>
+<text class="scale-t" x="24.500" y="1.775" font-size="0.310" text-anchor="middle" >2</text>
+<text class="scale-t" x="27.000" y="1.775" font-size="0.310" text-anchor="middle" >5 m</text>
+</g>
+</svg></div>
+  <div class="below"><div class="table-wrap"><table class="rooms"><thead><tr><th>Raum</th><th class="num">Fläche</th><th>Was drin ist / wozu</th></tr></thead><tbody><tr><td><span class="sw rk-wohnen"></span>Fitness</td><td class="num">36&nbsp;m²</td><td>Geräte, Sauna in der Ecke</td></tr><tr><td><span class="sw rk-nass"></span>Sauna</td><td class="num">6,2&nbsp;m²</td><td>Holzkabine</td></tr><tr><td><span class="sw rk-wohnen"></span>Hobbyraum</td><td class="num">48&nbsp;m²</td><td>Billard, Bar mit Spirituosen</td></tr><tr><td><span class="sw rk-service"></span>Abstellraum</td><td class="num">18&nbsp;m²</td><td>alte Möbel, Koffer, Bilder</td></tr><tr><td><span class="sw rk-verkehr"></span>Kellervorraum</td><td class="num">24&nbsp;m²</td><td>Stahltür zur Kelleraußentreppe</td></tr><tr><td><span class="sw rk-verkehr"></span>Kellerflur</td><td class="num">44&nbsp;m²</td><td>langer Gang, eine Lampe</td></tr><tr><td><span class="sw rk-technik"></span>Technik</td><td class="num">24&nbsp;m²</td><td>Heizung, Hauptsicherungen, Alarmzentrale</td></tr><tr><td><span class="sw rk-service"></span>Lager</td><td class="num">18&nbsp;m²</td><td>Regale, Kartons, Werkzeugkiste</td></tr><tr><td><span class="sw rk-verkehr"></span>Treppe</td><td class="num">11&nbsp;m²</td><td>Kellertreppe</td></tr><tr><td><span class="sw rk-wert"></span>Weinkeller</td><td class="num">37&nbsp;m²</td><td>Regale mit Raritäten – schwer und zerbrechlich</td></tr><tr><td><span class="sw rk-wert"></span>Tresorraum</td><td class="num">42&nbsp;m²</td><td>Hauptziel: Panzertür, großer Tresor, Bargeld, Gold</td></tr></tbody></table></div>
+  <p class="note">Zwei Wege führen in den Keller: die Treppe aus der Halle und die Außentreppe im Osten. Der Tresorraum
+  liegt unter der Bibliothek. Technik mit Alarmzentrale liegt am anderen Ende des Flurs.</p></div></div>
+</section>
+
+<section id="remise">
+  <div class="sec-head"><h2>Remise</h2><span class="tag">Nebengebäude · eingeschossig · 12 × 7 m</span></div>
+  <div class="split"><div class="figure"><svg class="plan small" viewBox="0 0 17.00 13.40" role="img" aria-label="Remise mit Garage, Werkstatt und Geräteraum" xmlns="http://www.w3.org/2000/svg">
+<title>Remise mit Garage, Werkstatt und Geräteraum</title>
+<defs>
+<radialGradient id="glow"><stop offset="0" style="stop-color:var(--lamp);stop-opacity:.55"/>
+<stop offset=".55" style="stop-color:var(--lamp);stop-opacity:.22"/><stop offset="1" style="stop-color:var(--lamp);stop-opacity:0"/></radialGradient>
+<pattern id="hatch" width=".35" height=".35" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+<line x1="0" y1="0" x2="0" y2=".35" style="stroke:var(--muted);stroke-width:.05"/></pattern>
+<pattern id="grate" width=".18" height=".18" patternUnits="userSpaceOnUse">
+<path d="M0 0H.18M0 0V.18" style="stroke:var(--ink);stroke-width:.03;fill:none"/></pattern>
+</defs>
+<rect class="paper" x="0.000" y="0.000" width="17.000" height="13.400" />
+<rect class="ctx" x="2.400" y="10.800" width="12.000" height="2.600" />
+<text class="ctx-t" x="8.400" y="12.400" font-size="0.500" text-anchor="middle" >Vorplatz</text>
+<rect class="room rk-garage" x="2.400" y="3.800" width="7.000" height="7.000" />
+<rect class="room rk-service" x="9.400" y="6.300" width="5.000" height="4.500" />
+<rect class="room rk-service" x="9.400" y="3.800" width="5.000" height="2.500" />
+<g class="lyr-moebel">
+<rect class="fixture" x="2.800" y="5.800" width="1.900" height="4.500" />
+<text class="fixture-t" x="3.750" y="8.050" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 3.750 8.050)">Auto</text>
+<rect class="fixture" x="7.000" y="5.800" width="2.000" height="4.500" />
+<text class="fixture-t" x="8.000" y="8.050" font-size="0.300" text-anchor="middle" dominant-baseline="central" transform="rotate(-90 8.000 8.050)">Oldtimer</text>
+<rect class="fixture" x="9.700" y="6.600" width="3.100" height="0.600" />
+<text class="fixture-t" x="11.250" y="6.900" font-size="0.300" text-anchor="middle" dominant-baseline="central">Werkbank</text>
+</g>
+<g class="walls">
+<rect class="wall" x="2.250" y="3.800" width="0.300" height="7.000" />
+<rect class="wall" x="9.325" y="9.250" width="0.150" height="1.550" />
+<rect class="wall" x="9.325" y="3.800" width="0.150" height="4.550" />
+<rect class="wall" x="14.250" y="9.700" width="0.300" height="1.100" />
+<rect class="wall" x="14.250" y="5.550" width="0.300" height="3.150" />
+<rect class="wall" x="14.250" y="3.800" width="0.300" height="0.750" />
+</g>
+<rect class="win" x="2.250" y="7.700" width="0.300" height="1.200" />
+<polyline class="glass-line" points="2.350,8.900 2.350,7.700" />
+<polyline class="glass-line" points="2.450,8.900 2.450,7.700" />
+<rect class="win" x="2.250" y="5.000" width="0.300" height="1.200" />
+<polyline class="glass-line" points="2.350,6.200 2.350,5.000" />
+<polyline class="glass-line" points="2.450,6.200 2.450,5.000" />
+<g class="door dt-tor">
+<polyline class="threshold" points="3.400,10.800 8.400,10.800" />
+<polyline class="gate-panel" points="3.500,10.450 8.300,10.450" />
+<circle class="lock" cx="5.900" cy="11.295" r="0.340" />
+<text class="lock-t" x="5.900" y="11.417" font-size="0.374" text-anchor="middle" >E</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="9.400,9.250 9.400,8.350" />
+<polyline class="swing " points="10.300,9.250 10.294,9.149 10.277,9.050 10.249,8.953 10.211,8.860 10.162,8.771 10.104,8.689 10.036,8.614 9.961,8.546 9.879,8.488 9.790,8.439 9.697,8.401 9.600,8.373 9.501,8.356 9.400,8.350" />
+<polyline class="leaf " points="9.400,9.250 10.300,9.250" />
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="14.400,9.700 14.400,8.700" />
+<polyline class="swing " points="13.400,9.700 13.406,9.588 13.425,9.477 13.456,9.370 13.499,9.266 13.553,9.168 13.618,9.077 13.693,8.993 13.777,8.918 13.868,8.853 13.966,8.799 14.070,8.756 14.177,8.725 14.288,8.706 14.400,8.700" />
+<polyline class="leaf " points="14.400,9.700 13.400,9.700" />
+<circle class="lock" cx="14.970" cy="9.200" r="0.340" />
+<text class="lock-t" x="14.970" y="9.322" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="14.400,5.550 14.400,4.550" />
+<polyline class="swing " points="15.400,5.550 15.394,5.438 15.375,5.327 15.344,5.220 15.301,5.116 15.247,5.018 15.182,4.927 15.107,4.843 15.023,4.768 14.932,4.703 14.834,4.649 14.730,4.606 14.623,4.575 14.512,4.556 14.400,4.550" />
+<polyline class="leaf " points="14.400,5.550 15.400,5.550" />
+<circle class="lock" cx="13.830" cy="5.050" r="0.340" />
+<text class="lock-t" x="13.830" y="5.172" font-size="0.374" text-anchor="middle" >2</text>
+</g>
+<g class="door dt-tuer">
+<polyline class="threshold" points="3.450,3.800 4.350,3.800" />
+<polyline class="swing " points="4.350,4.700 4.249,4.694 4.150,4.677 4.053,4.649 3.960,4.611 3.871,4.562 3.789,4.504 3.714,4.436 3.646,4.361 3.588,4.279 3.539,4.190 3.501,4.097 3.473,4.000 3.456,3.901 3.450,3.800" />
+<polyline class="leaf " points="4.350,3.800 4.350,4.700" />
+<circle class="lock" cx="3.900" cy="3.305" r="0.340" />
+<text class="lock-t" x="3.900" y="3.427" font-size="0.374" text-anchor="middle" >3</text>
+</g>
+<text class="room-t" x="6.200" y="4.886" font-size="0.460" text-anchor="middle" >Doppelgarage</text>
+<text class="room-sub" x="6.200" y="5.314" font-size="0.285" text-anchor="middle" >7 × 7 m · 49 m²</text>
+<text class="room-t" x="11.900" y="8.486" font-size="0.460" text-anchor="middle" >Werkstatt</text>
+<text class="room-sub" x="11.900" y="8.914" font-size="0.285" text-anchor="middle" >5 × 4,5 m · 22 m²</text>
+<text class="room-t" x="11.900" y="4.986" font-size="0.460" text-anchor="middle" >Geräteraum</text>
+<text class="room-sub" x="11.900" y="5.414" font-size="0.285" text-anchor="middle" >5 × 2,5 m · 12 m²</text>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="40.350" cy="9.900" r="0.420" />
+<text class="mk-t" x="40.350" y="10.043" font-size="0.399" text-anchor="middle" >Z4</text>
+<title>Z4 Geheimkammer – Gemäldesammlung (optional)</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="29.650" cy="3.750" r="0.420" />
+<text class="mk-t" x="29.650" y="3.893" font-size="0.399" text-anchor="middle" >Z6</text>
+<title>Z6 Esszimmer – Silberbesteck in der Anrichte</title>
+</g>
+<g class="lyr-ziele mk mk-ziel">
+<circle class="mk-shape" cx="8.700" cy="5.100" r="0.420" />
+<text class="mk-t" x="8.700" y="5.243" font-size="0.399" text-anchor="middle" >Z7</text>
+<title>Z7 Garage – Oldtimer (später: Fluchtwagen?)</title>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="2.400,1.600 14.400,1.600" />
+<polyline class="dim-line" points="2.400,1.825 2.400,1.375" />
+<polyline class="dim-tick" points="2.220,1.780 2.580,1.420" />
+<polyline class="dim-line" points="14.400,1.825 14.400,1.375" />
+<polyline class="dim-tick" points="14.220,1.780 14.580,1.420" />
+<text class="dim-t" x="8.400" y="1.380" font-size="0.420" text-anchor="middle" >12,00 m</text>
+</g>
+<g class="dim">
+<polyline class="dim-line" points="1.000,10.800 1.000,3.800" />
+<polyline class="dim-line" points="0.775,10.800 1.225,10.800" />
+<polyline class="dim-tick" points="0.820,10.980 1.180,10.620" />
+<polyline class="dim-line" points="0.775,3.800 1.225,3.800" />
+<polyline class="dim-tick" points="0.820,3.980 1.180,3.620" />
+<text class="dim-t" x="0.780" y="7.300" font-size="0.420" text-anchor="middle" transform="rotate(-90 0.780 7.300)">7,00 m</text>
+</g>
+<g class="compass">
+<circle class="compass-ring" cx="16.000" cy="1.400" r="0.562" />
+<polygon class="compass-needle" points="16.000,0.928 16.189,1.648 16.000,1.490 15.811,1.648" />
+<text class="compass-t" x="16.000" y="0.703" font-size="0.405" text-anchor="middle" >N</text>
+</g>
+<g class="scale">
+<rect class="scale-a" x="10.200" y="0.756" width="2.500" height="0.144" />
+<rect class="scale-b" x="12.700" y="0.756" width="2.500" height="0.144" />
+<text class="scale-t" x="10.200" y="1.238" font-size="0.279" text-anchor="middle" ></text>
+<text class="scale-t" x="12.700" y="1.238" font-size="0.279" text-anchor="middle" >2</text>
+<text class="scale-t" x="15.200" y="1.238" font-size="0.279" text-anchor="middle" >5 m</text>
+</g>
+</svg></div>
+  <div class="below"><div class="table-wrap"><table class="rooms"><thead><tr><th>Raum</th><th class="num">Fläche</th><th>Was drin ist / wozu</th></tr></thead><tbody><tr><td><span class="sw rk-garage"></span>Doppelgarage</td><td class="num">49&nbsp;m²</td><td>zwei Autos, Sektionaltor elektrisch</td></tr><tr><td><span class="sw rk-service"></span>Geräteraum</td><td class="num">12&nbsp;m²</td><td>Rasenmäher, Leiter (reicht bis zum Balkon)</td></tr><tr><td><span class="sw rk-service"></span>Werkstatt</td><td class="num">22&nbsp;m²</td><td>Werkbank: Bolzenschneider, Brecheisen, Akkuschrauber</td></tr></tbody></table></div>
+  <p class="note">Die Remise ist ein Werkzeuglager: Wer zuerst hierher geht, findet Brecheisen, Bolzenschneider und die Leiter
+  für den Balkon. Dafür steht man vor der Garage im Licht des Bewegungsmelders.</p></div></div>
+</section>
+
+<section id="tueren">
+  <div class="sec-head"><h2>Türen und Tore</h2><span class="tag">Schloss-Stufe wie im Spiel (0–10) · Durchgänge ohne Tür nicht aufgeführt</span></div>
+  <div class="table-wrap"><table class="doors"><thead><tr><th>Tür / Tor</th><th>Wo</th><th>Art</th><th class="num">Breite</th><th>Schloss</th><th>Hinweis</th></tr></thead><tbody><tr><td>Gartenpforte</td><td>Zaun</td><td>Gartentür</td><td class="num">1,2&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>Klingel, Briefkasten</td></tr><tr><td>Hintertor</td><td>Zaun</td><td>Gartentür</td><td class="num">1,2&nbsp;m</td><td><span class="pill pill-lock">2</span></td><td>Kette mit Vorhängeschloss, zum Feldweg</td></tr><tr><td>Einfahrtstor</td><td>Zaun</td><td>Schiebetor</td><td class="num">4&nbsp;m</td><td><span class="pill pill-lock">elektr.</span></td><td>elektrisch, Kamera und Gegensprechanlage</td></tr><tr><td>Haustür</td><td>Erdgeschoss</td><td>Haustür (massiv)</td><td class="num">1,2&nbsp;m</td><td><span class="pill pill-lock">6</span></td><td>massiv, Mehrfachverriegelung, Alarm-Kontakt</td></tr><tr><td>Seiteneingang</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">4</span></td><td>Lieferanteneingang, Bewegungsmelder-Lampe</td></tr><tr><td>Terrassentür Esszimmer</td><td>Erdgeschoss</td><td>Glas-Flügeltür</td><td class="num">1,4&nbsp;m</td><td><span class="pill pill-lock">4</span></td><td>nur innen verriegelt: aufhebeln oder Glas</td></tr><tr><td>Hebeschiebetür Wohnzimmer</td><td>Erdgeschoss</td><td>Schiebetür</td><td class="num">3&nbsp;m</td><td><span class="pill pill-lock">4</span></td><td>Glas einschlagen = sehr laut</td></tr><tr><td>Küchentür</td><td>Erdgeschoss</td><td>Glastür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>Glastür zum Kräutergarten</td></tr><tr><td>Kellertür</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>Schlüssel hängt in der Garderobe</td></tr><tr><td>Werkstatt-Seitentür</td><td>Remise</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td></td></tr><tr><td>Garage hinten</td><td>Remise</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>Tür zum Garten</td></tr><tr><td>Geräteraum</td><td>Remise</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">2</span></td><td>Vorhängeschloss außen</td></tr><tr><td>Garagentor</td><td>Remise</td><td>Sektionaltor</td><td class="num">5&nbsp;m</td><td><span class="pill pill-lock">elektr.</span></td><td>Sektionaltor, elektrisch (Elektronik oder Handsender)</td></tr><tr><td>Halle → Esszimmer</td><td>Erdgeschoss</td><td>Flügeltür</td><td class="num">1,6&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Flügeltür</td></tr><tr><td>Flur → Küche</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Küche → Esszimmer</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Pendeltür</td></tr><tr><td>Speisekammer</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Hauswirtschaft</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Garderobe</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Gäste-WC</td><td>Erdgeschoss</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Riegel innen</td></tr><tr><td>Halle → Wohnzimmer</td><td>Erdgeschoss</td><td>Flügeltür</td><td class="num">1,4&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Flügeltür</td></tr><tr><td>Wohnzimmer → Bibliothek</td><td>Erdgeschoss</td><td>Flügeltür</td><td class="num">1,6&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Flügeltür</td></tr><tr><td>Geheimtür</td><td>Erdgeschoss</td><td>Geheimtür (Regal)</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Bücherregal dreht sich – erst finden</td></tr><tr><td>Garage → Werkstatt</td><td>Remise</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Arbeitszimmer</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-lock">4</span></td><td>abgesperrt, Hausherr hat den Schlüssel</td></tr><tr><td>Balkontür</td><td>1. Stock</td><td>Glastür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>von außen nur aufhebeln (Leiter nötig)</td></tr><tr><td>Gästezimmer</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Kinderzimmer</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Bad</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Jugendzimmer</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Elternschlafzimmer</td><td>1. Stock</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Ankleide</td><td>1. Stock</td><td>Schiebetür</td><td class="num">1,6&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Schiebetür</td></tr><tr><td>Elternbad</td><td>1. Stock</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Tresorraum</td><td>Keller</td><td>Panzertür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">8</span></td><td>Panzertür: nur knacken (Tresore 8), nicht aufzubrechen</td></tr><tr><td>Kelleraußentür</td><td>Keller</td><td>Stahltür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">5</span></td><td>Stahltür am Fuß der Außentreppe</td></tr><tr><td>Technik</td><td>Keller</td><td>Stahltür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-lock">4</span></td><td>Feuerschutztür</td></tr><tr><td>Weinkeller</td><td>Keller</td><td>Gittertür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-lock">3</span></td><td>Gittertür</td></tr><tr><td>Lager</td><td>Keller</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td>Lattentür</td></tr><tr><td>Fitness</td><td>Keller</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Sauna</td><td>Keller</td><td>Glastür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Hobbyraum</td><td>Keller</td><td>Flügeltür</td><td class="num">1,6&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Abstellraum</td><td>Keller</td><td>Holztür</td><td class="num">0,9&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr><tr><td>Kellervorraum</td><td>Keller</td><td>Holztür</td><td class="num">1&nbsp;m</td><td><span class="pill pill-open">offen</span></td><td></td></tr></tbody></table></div>
+</section>
+
+<section id="spiel">
+  <div class="sec-head"><h2>Für das Spiel</h2></div>
+  <div class="cols">
+    <div><h3>Vier Wege zum Tresor</h3>
+      <ul class="plain">
+        <li><b>Frech:</b> Pforte → Haustür (Schloss 6) → Alarm am Bedienteil ausschalten → Halle → Kellertür → Tresorraum.
+        Kurz, aber im Licht und von der Straße zu sehen.</li>
+        <li><b>Leise:</b> Hintertor → Trittsteine → Küchentür (Glas, Schloss 3) → Flur → Halle → Keller.
+        Lang und dunkel.</li>
+        <li><b>Handwerker:</b> Garage hinten → Werkzeug holen → Seiteneingang (Schloss 4). Bewegungsmelder an der Garage.</li>
+        <li><b>Keller direkt:</b> Ostseite → Kelleraußentür (Stahl, Schloss 5) → Kellerflur. Nah am Nachbarn.</li>
+      </ul>
+    </div>
+    <div><h3>Laufzeiten bei 2,5 m/s</h3>
+      <ul class="plain">
+        <li>Einfahrtstor → Haustür: ca. 30 m, 12 s</li>
+        <li>Hintertor → Küchentür: ca. 32 m, 13 s</li>
+        <li>Haustür → Tresorraum (über die Kellertreppe): ca. 22 m, 9 s</li>
+        <li>Garage → Seiteneingang: ca. 14 m, 6 s</li>
+        <li>Mit voller Last (Tempo 58 %) fast doppelt so lang.</li>
+      </ul>
+    </div>
+    <div><h3>Maße für den Bau</h3>
+      <ul class="plain">
+        <li>Ebenen: Keller − 2,90 m, Erdgeschoss ± 0, 1. Stock + 3,10 m.</li>
+        <li>Haupttreppe 1,6 m breit, 5 m lang, 18 Stufen. Kellertreppe 1,5 m breit, 4,45 m lang, 16 Stufen.</li>
+        <li>Türen mindestens 0,9 m breit, damit die Wegfindung (Radius 30 cm) durchpasst.</li>
+        <li>Daten: <code>Scripts/Levels/villa_layout.py</code>. Diese Seite: <code>Scripts/Levels/villa_plan.py</code>.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="fragen">
+  <div class="sec-head"><h2>Offene Fragen</h2><span class="tag">vor dem Bauen klären</span></div>
+  <ol class="q">
+    <li><b>Stockwerke in der Kamera.</b> Von oben verdeckt der 1. Stock das Erdgeschoss. Mein Vorschlag: Die Kamera zeigt eine
+    Ebene, alles darüber wird ausgeblendet. Sie folgt der ausgewählten Figur, umschalten geht zusätzlich mit Bild auf / Bild ab.</li>
+    <li><b>Fenster als Einstieg.</b> Das Kippfenster im Gäste-WC und der Balkon mit Leiter wären neue Mechaniken. Gleich mit
+    einbauen oder erst Türen und später Fenster?</li>
+    <li><b>Umfang der Demo.</b> Alles auf einmal bauen, oder zuerst Erdgeschoss und Keller, und der 1. Stock folgt?</li>
+    <li><b>Bewohner.</b> Ist das Haus leer (Urlaub) oder schläft oben jemand? Schlafende Bewohner würden den 1. Stock spannend
+    machen. Wachen, Hund und Kameras sind noch nicht geplant.</li>
+    <li><b>Geheimkammer</b> hinter dem Bücherregal: drin lassen? Sie braucht eine Such-Mechanik.</li>
+    <li><b>Pool und Garten</b> bleiben vorerst Kulisse. Soll der Pool etwas können, zum Beispiel Beute verstecken?</li>
+    <li><b>Bewegungsmelder.</b> Vorschlag: Lampe geht an, der Nachbar wird misstrauischer, wenn er in Sichtweite ist.</li>
+  </ol>
+</section>
+</div>
+<script>
+(function(){
+  var key = "villa-layers";
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch (e) { saved = {}; }
+  var boxes = document.querySelectorAll(".controls input[data-layer]");
+  function apply(){
+    var state = {};
+    boxes.forEach(function(b){
+      document.body.classList.toggle("hide-" + b.dataset.layer, !b.checked);
+      state[b.dataset.layer] = b.checked;
+    });
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+  }
+  boxes.forEach(function(b){
+    if (saved.hasOwnProperty(b.dataset.layer)) b.checked = !!saved[b.dataset.layer];
+    b.addEventListener("change", apply);
+  });
+  apply();
+})();
+</script>
