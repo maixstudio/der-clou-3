@@ -16,7 +16,7 @@ class UTextRenderComponent;
  * "desk_drawer/jewelry_box". If the container already has a fixed part of this kind that is not
  * configured yet (the desk's drawer), the entry configures that part instead of adding a new item.
  */
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FDCContentSpec
 {
 	GENERATED_BODY()

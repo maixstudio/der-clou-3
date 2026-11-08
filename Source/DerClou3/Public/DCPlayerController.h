@@ -142,6 +142,8 @@ private:
 	void StartPlanViewSelfTest();
 	/** -DCSelfTest=DoorWay: Rosa walks out through the back door Vic opens: the plan waits for the door, playback too. */
 	void StartDoorWaySelfTest();
+	/** -DCSelfTest=House (map L_House01): rooms, doors, crew in the garden; Vic plans through two locked doors into the office and gets there. */
+	void StartHouseSelfTest();
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 

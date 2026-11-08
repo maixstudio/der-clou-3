@@ -22,6 +22,7 @@
 #include "DCNoiseHud.h"
 #include "DCNoiseListener.h"
 #include "DCRadialMenu.h"
+#include "DCRoomVolume.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -166,6 +167,10 @@ void ADCPlayerController::BeginPlay()
 	else if (SelfTest == TEXT("DoorWay"))
 	{
 		StartDoorWaySelfTest();
+	}
+	else if (SelfTest == TEXT("House"))
+	{
+		StartHouseSelfTest();
 	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
@@ -2977,6 +2982,176 @@ void ADCPlayerController::StartDoorWaySelfTest()
 		Expect(Rosa && Rosa->GetPlanRunner()->GetStatus(0) == EDCTaskStatus::Done, TEXT("Rosa's walk is done, not failed"));
 		const double Distance = Rosa ? FVector::Dist2D(Rosa->GetActorLocation(), *Outside) : 1e9;
 		Expect(Distance < 80.0, FString::Printf(TEXT("Rosa stands outside (%.0f cm from the spot)"), Distance));
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartHouseSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test House started"));
+	UDCPlanSubsystem::Get(this)->bAutoDecideFinds = true;
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = FPlatformTime::Seconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto DoorNamed = [this](const TCHAR* Name) -> ADCDoor*
+	{
+		for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+		{
+			if (It->GetInteractableName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto RoomNamed = [this](const TCHAR* Name) -> ADCRoomVolume*
+	{
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			if (It->GetRoomName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	SelfTestSteps.Add(Wait(2.f));
+	// The house as built by Scripts/Levels/build_house.py.
+	SelfTestSteps.Add([this, Expect, CrewNamed, DoorNamed, RoomNamed]()
+	{
+		int32 Rooms = 0;
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			++Rooms;
+		}
+		Expect(Rooms == 4, FString::Printf(TEXT("four rooms on the floor plan (%d)"), Rooms));
+		Expect(DoorNamed(TEXT("Hintertür")) && DoorNamed(TEXT("Bürotür")) && DoorNamed(TEXT("Schlafzimmertür")), TEXT("back door, office door, bedroom door"));
+		for (const TCHAR* Name : { TEXT("Vic"), TEXT("Rosa") })
+		{
+			const ADCCrewCharacter* Member = CrewNamed(Name);
+			const ADCRoomVolume* Room = Member ? ADCRoomVolume::FindAt(this, Member->GetActorLocation()) : nullptr;
+			Expect(Room && Room->GetRoomName().ToString() == TEXT("Garten"), FString::Printf(TEXT("%s starts in the garden"), Name));
+		}
+		const ADCItemPickup* Safe = FindPickup(TEXT("safe"));
+		const ADCRoomVolume* SafeRoom = Safe ? ADCRoomVolume::FindAt(this, Safe->GetActorLocation()) : nullptr;
+		Expect(SafeRoom && SafeRoom->GetRoomName().ToString() == TEXT("Büro"), TEXT("the safe stands in the office"));
+
+		// Vic plans to walk into the office: two locked doors on the way.
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCRoomVolume* Office = RoomNamed(TEXT("Büro"));
+		ADCDoor* Back = DoorNamed(TEXT("Hintertür"));
+		ADCDoor* OfficeDoor = DoorNamed(TEXT("Bürotür"));
+		if (!Vic || !Office || !Back || !OfficeDoor)
+		{
+			return true;
+		}
+		Select(Vic);
+		FDCPlanTask Go;
+		Go.Type = EDCPlanTaskType::Move;
+		Go.Location = Office->GetActorLocation() - FVector(0.0, 0.0, 120.0);
+		Plans->AddTask(Vic->GetFName(), Go);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Heist->Refresh();
+		const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Vic->GetFName());
+		const bool bBlocked = Plan && Plan->Tasks.Num() == 1 && Plan->Tasks[0].bBlocked;
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: straight into the office: %s"), Plan && Plan->Tasks.Num() ? *Plan->Tasks[0].WaitReason.ToString() : TEXT("-"));
+		Expect(bBlocked && Plan->Tasks[0].WaitReason.ToString().Contains(TEXT("Hintertür")) && Plan->Tasks[0].WaitReason.ToString().Contains(TEXT("Bürotür")),
+			TEXT("walking straight into the office waits for both doors - and they never open"));
+
+		// Now with the doors: pick and open the back door, then the office door, then walk in.
+		Plans->ClearAll();
+		const auto DoorStep = [](ADCDoor* Door, EDCDoorAction Action)
+		{
+			FDCPlanTask Task;
+			Task.Type = EDCPlanTaskType::Door;
+			Task.Target = Door->GetFName();
+			Task.Action = static_cast<uint8>(Action);
+			return Task;
+		};
+		Plans->AddTask(Vic->GetFName(), DoorStep(Back, EDCDoorAction::PickLock));
+		Plans->AddTask(Vic->GetFName(), DoorStep(Back, EDCDoorAction::Open));
+		Plans->AddTask(Vic->GetFName(), DoorStep(OfficeDoor, EDCDoorAction::PickLock));
+		Plans->AddTask(Vic->GetFName(), DoorStep(OfficeDoor, EDCDoorAction::Open));
+		Plans->AddTask(Vic->GetFName(), Go);
+		Heist->Refresh();
+		Plan = Heist->GetSchedule().Find(Vic->GetFName());
+		bool bAllPossible = Plan && Plan->Tasks.Num() == 5;
+		for (const FDCScheduledTask& Task : Plan ? Plan->Tasks : TArray<FDCScheduledTask>())
+		{
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: Vic %d. %s %.1f-%.1f%s %s"), Task.Index + 1, *Task.Label.ToString(), Task.Start, Task.End,
+				Task.bBlocked ? TEXT(" BLOCKED") : TEXT(""), *Task.WaitReason.ToString());
+			bAllPossible &= !Task.bBlocked;
+		}
+		Expect(bAllPossible, TEXT("with both doors picked and opened, Vic's way into the office can happen"));
+		Plans->SetSpeed(2.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("house_plan.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this]() { StartPlayback(); return true; });
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = FPlatformTime::Seconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 90.0;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Shot(TEXT("house_done.png")));
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		const ADCRoomVolume* Room = Vic ? ADCRoomVolume::FindAt(this, Vic->GetActorLocation()) : nullptr;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s), Vic in %s"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration,
+			Room ? *Room->GetRoomName().ToString() : TEXT("-"));
+		Expect(Room && Room->GetRoomName().ToString() == TEXT("Büro"), TEXT("Vic stands in the office"));
+		for (int32 Index = 0; Vic && Index < 5; ++Index)
+		{
+			Expect(Vic->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("Vic step %d done"), Index + 1));
+		}
 		FinishSelfTest(*bPassed);
 		return true;
 	});

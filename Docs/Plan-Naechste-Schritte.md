@@ -85,16 +85,36 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
   tun?“ mit: Nochmal versuchen · Schritt überspringen · Selbst steuern (danach auf der Karte „Plan
   fortsetzen“). Die anderen laufen nach dem Dialog weiter.
 
-### 5. Wissensstufen und Nebel
-- Jedes Objekt (Tür, Möbel, Gegenstand, Inhalt) hat eine Wissensstufe, im Level eingestellt:
-  **unbekannt** (in der Planung unsichtbar) · **vermutet** („im Raum ist ein Tresor“, Symbol ohne genaue
-  Lage) · **bekannt** (Position) · **genau** (Schloss, Alarm, Chance).
-- Planung: Unbekanntes wird nicht gezeichnet oder ist abgedunkelt. Der Raum ist nur so weit sichtbar, wie
-  ein Bauplan reicht. Im Einbruch deckt auf, was eine Figur sieht (Sichtlinie, Raum betreten).
-- **Umschalter „wiederholbar / einmalig“** zum Testen. Wiederholbar: Wissen aus einem Durchlauf bleibt.
-  Einmalig: kein „Zurück zur Planung“ nach dem Start.
+### 5. Nebel im Haus – **entschieden 2026-11-08** (User), Bau in Teilschritten
+**Entscheidungen des Users:**
 
-### 6. Absichten bei vermuteten Dingen (Claudes Vorschlag)
+| Thema | Entscheidung |
+|---|---|
+| Bauplan (Wissen vorher) | Räume mit Namen, Wände und Türen sind bekannt. Ob eine Tür versperrt ist und was in den Räumen steht, sieht man erst vor Ort. |
+| Planen im Unbekannten | Plan-Schritt „Raum durchsuchen“ (Zeit nur geschätzt); vor Ort hält das Spiel bei Funden an und fragt bei Versperrtem (knacken / aufbrechen / auslassen). **Dazu live umplanen:** in der Pause neue Schritte anhängen, sobald etwas entdeckt wurde. |
+| Sicht | **Sichtlinie:** gesehen ist nur, was eine Figur im Blick hat, auch durch offene Türen; hinter Möbeln bleibt es dunkel. |
+| Testhaus | Garten (Start) → Hintertür (versperrt) → Flur (Kommode, Gemälde) → Büro (versperrt: Schreibtisch, Wandtresor) und Schlafzimmer (Kleiderschrank, Schmuckschatulle). Nachbar hinter der Wand bleibt. |
+| Wiederholbar / einmalig | weiterhin als Umschalter (Wissen bleibt bei „wiederholbar“ nach „Zurück zur Planung“) |
+
+**Bau-Reihenfolge (jeder Teil im Spiel sichtbar):**
+- **N1 Haus-Level – gebaut 2026-11-08** (CLAUDE.md, Schritt 16). `L_House01` (per Python-Skript gebaut): Garten, Flur, Büro, Schlafzimmer, Türen, Möbel
+  mit Inhalt, Nachbar, Licht; Räume als `ADCRoomVolume` (Name, Grenzen). Crew startet im Garten.
+  `L_Room01` bleibt für die Selbsttests.
+- **N2 Wissen + Nebel in der Planung:** Wissen je Objekt und je Bodenfeld (`UDCKnowledgeSubsystem` in der
+  GameInstance). Unbekannte Bodenfelder dunkel (Nebelfelder ca. 50 cm), Raumnamen sichtbar, unbekannte
+  Möbel/Gegenstände unsichtbar und nicht anklickbar, Türen mit „Schloss ?“ (Knacken: Spanne, „zeigt sich vor
+  Ort“).
+- **N3 Sichtlinie im Einbruch:** jede Figur deckt regelmäßig auf, was sie sieht (Linien von Augenhöhe zu
+  Bodenfeldern und Objekt-Messpunkten, Wände/Möbel/geschlossene Türen verdecken). Entdecktes blendet ein,
+  Meldung „Vic entdeckt: Wandtresor“.
+- **N4 „Raum durchsuchen“:** Plan-Schritt für einen Raum; live arbeitet die Figur die entdeckten Möbel ab
+  (nächstes zuerst), Funde → Fund-Pause, Versperrtes → Frage-Pause (knacken / aufbrechen / auslassen).
+  Zeitleiste: unsichere Dauer schraffiert (Spanne).
+- **N5 Live umplanen:** in jeder Pause (Leertaste, Fund, Frage) kann man mit den Planungs-Menüs Schritte an
+  den Rest eines Plans anhängen; der Runner übernimmt sie.
+- **N6 Umschalter „wiederholbar / einmalig“** und Wissen über „Zurück zur Planung“ hinweg.
+
+### 6. Absichten bei vermuteten Dingen (Claudes Vorschlag, später – für Hinweise wie „im Haus ist ein Tresor“)
 - Ein **vermutetes** Objekt erscheint als Symbol an der vermuteten Stelle (z. B. Raummitte: „Tresor?“).
   Das Radialmenü bietet die üblichen Aktionen mit **Spannen** an („knacken: 15–30 s, Chance erst bekannt,
   wenn das Schloss gesehen wurde“).
@@ -115,6 +135,8 @@ Auskundschaften als eigene Phase · Polizei und Zeitlimit · Wachen und Hunde ·
 ## Offen
 
 - Einmalig oder wiederholbar – nach dem Testen entscheiden.
+- Nebel: ob Entdeckungen das Spiel automatisch anhalten sollen (bisher geplant: nur Meldung, anhalten mit
+  Leertaste; Funde und Versperrtes halten ohnehin an) – nach dem Testen entscheiden.
 - Ob die Absichten (Schritt 6) so verständlich sind – der User korrigiert nach.
 
 ## Zusammenarbeit

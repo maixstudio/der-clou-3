@@ -132,6 +132,13 @@ namespace
 				.Look(P::Box, FVector(160, 90, 75), FLinearColor(0.5f, 0.34f, 0.18f)).Note(LOCTEXT("DiningTableDesc", "Eiche, für sechs Personen.")),
 			FDef(TEXT("chair"), LOCTEXT("Chair", "Stuhl"), Furniture, 6.f, None, S::Large, 40)
 				.Look(P::Box, FVector(45, 45, 90), FLinearColor(0.45f, 0.3f, 0.16f)).Note(LOCTEXT("ChairDesc", "Ein einfacher Holzstuhl.")),
+			// The house (L_House01): no models yet – they show as coloured boxes until the Blender chat makes them.
+			FDef(TEXT("dresser"), LOCTEXT("Dresser", "Kommode"), Furniture, 40.f, None, S::Huge, 250).Holds({ 6, 2 }, S::Medium).Openable()
+				.Look(P::Box, FVector(100, 45, 85), FLinearColor(0.42f, 0.27f, 0.14f)).Note(LOCTEXT("DresserDesc", "Breite Kommode mit Schubladen.")),
+			FDef(TEXT("bed"), LOCTEXT("Bed", "Bett"), Furniture, 70.f, None, S::Huge, 300).Holds({ 3, 1 }, S::Small)
+				.Look(P::Box, FVector(200, 150, 55), FLinearColor(0.55f, 0.52f, 0.62f)).Note(LOCTEXT("BedDesc", "Unter der Matratze lässt sich Kleines verstecken.")),
+			FDef(TEXT("nightstand"), LOCTEXT("Nightstand", "Nachttisch"), Furniture, 12.f, None, S::Large, 80).Holds({ 3, 2 }, S::Small).Openable()
+				.Look(P::Box, FVector(45, 40, 55), FLinearColor(0.4f, 0.26f, 0.15f)).Note(LOCTEXT("NightstandDesc", "Mit einer kleinen Schublade.")),
 		};
 
 		TArray<FDCItemDef> Items;

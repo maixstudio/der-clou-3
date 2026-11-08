@@ -245,6 +245,23 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   + `UDCHeistStateSubsystem::FindClosedDoorsOnWay` lassen die Figur warten (Ausprobieren: sofort
   „geht nicht“). Türen bleiben im NavMesh eine Null-Sperre (ein Versuch mit eigener NavArea ließ hinter
   der Öffnung eine Lücke). Selbsttest `-DCSelfTest=DoorWay`.
+- **Haus für den Nebel (Schritt 16 = N1 aus `Docs/Plan-Naechste-Schritte.md`, Abschnitt 5):**
+  - Map `/Game/DerClou/Maps/L_House01` (Editor-Startmap; `L_Room01` bleibt Spiel-Startmap für die
+    Selbsttests). Gebaut von `Scripts/Levels/build_house.py` (Commandlet, Editor zu; vorher
+    `Content/DerClou/Maps/L_House01.umap` löschen – das Skript überschreibt nicht). Es kopiert L_Room01
+    (Himmel, Mond, Nachbearbeitung, Crew, Nachbar, NavMesh-Akteure), entfernt den Raum und baut: Garten
+    (Start, Rucksack/Weste/Brecheisen), Flur (Kommode, Gemälde), Büro (Schreibtisch mit versperrter
+    Schublade: Laptop, Akten; Wandtresor: Uhr, Kette, Geld), Schlafzimmer (Bett mit Geld unter der
+    Matratze, Nachttisch mit versperrter Schatulle: Ring, Brosche; Kleiderschrank: Mantel > Brieftasche >
+    Geld). Türen: Hintertür (versperrt, Schloss 3), Bürotür (versperrt, 5), Schlafzimmertür (zu).
+    `Scripts/Levels/dump_level.py` listet die Akteure einer Map.
+  - `ADCRoomVolume` (Raumname liegt lesbar auf dem Boden, `HalfSize`, `bOutdoors`, `FindAt`).
+  - Neue Möbel im Katalog ohne Modell (farbige Kisten, bis der Blender-Chat sie baut): Kommode
+    (`dresser`, 6×2), Bett (`bed`, Versteck 3×1), Nachttisch (`nightstand`, 3×2).
+  - Selbsttest `-DCSelfTest=House` auf der Haus-Map (`UnrealEditor.exe DerClou3.uproject L_House01 -game
+    -DCSelfTest=House`): Räume, Türen, Crew im Garten, Weg ins Büro wartet auf beide Türen, mit Knacken
+    und Öffnen kommt Vic hin (Screenshots `house_plan.png`, `house_done.png`).
+  - Noch kein Nebel – das ist N2.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -265,7 +282,7 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` (Map L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.
