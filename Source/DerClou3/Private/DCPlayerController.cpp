@@ -185,6 +185,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartPlanHelpSelfTest();
 	}
+	else if (SelfTest == TEXT("PlanLook"))
+	{
+		StartPlanLookSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -4081,6 +4085,151 @@ void ADCPlayerController::StartPlanHelpSelfTest()
 	SelfTestSteps.Add(Shot(TEXT("planhelp_fine.png")));
 	SelfTestSteps.Add([this, bPassed]()
 	{
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartPlanLookSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test PlanLook started"));
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [](float Seconds)
+	{
+		return [Seconds, End = -1.0]() mutable
+		{
+			const double Now = FPlatformTime::Seconds();
+			End = End < 0.0 ? Now + Seconds : End;
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto DoorNamed = [this](const TCHAR* Name) -> ADCDoor*
+	{
+		for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+		{
+			if (It->GetInteractableName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	SelfTestSteps.Add(Wait(2.f));
+	// Vic picks the back door, Rosa walks into the hallway (and opens it on the way).
+	SelfTestSteps.Add([this, Expect, CrewNamed, DoorNamed]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCDoor* Back = DoorNamed(TEXT("Hintert\u00fcr"));
+		ADCRoomVolume* Hall = nullptr;
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			Hall = It->GetRoomName().ToString() == TEXT("Flur") ? *It : Hall;
+		}
+		if (!Vic || !Rosa || !Back || !Hall)
+		{
+			Expect(false, TEXT("Vic, Rosa, back door and hallway are there"));
+			return true;
+		}
+		FDCPlanTask Pick;
+		Pick.Type = EDCPlanTaskType::Door;
+		Pick.Target = Back->GetFName();
+		Pick.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+		Plans->AddTask(Vic->GetFName(), Pick);
+		FDCPlanTask Go;
+		Go.Type = EDCPlanTaskType::Move;
+		Go.Location = Hall->GetActorLocation() - FVector(0.0, 0.0, 120.0);
+		Plans->AddTask(Rosa->GetFName(), Go);
+		Heist->SetFocus(NAME_None);
+		Heist->Refresh();
+		const FDCSchedule& Schedule = Heist->GetSchedule();
+		const FDCCrewSchedule* VicPlan = Schedule.Find(Vic->GetFName());
+		const float Picked = VicPlan && VicPlan->Tasks.Num() == 1 ? VicPlan->Tasks[0].End : -1.f;
+		FDCSimDoor At;
+		const FDCDoorChange* By = nullptr;
+		Expect(Schedule.GetDoorAt(Back->GetFName(), 0.f, At, &By) && At.bLocked && !At.bOpen && !By, TEXT("at 0:00 the back door is locked"));
+		Expect(Schedule.GetDoorAt(Back->GetFName(), Picked + 0.05f, At, &By) && !At.bLocked && !At.bOpen && By && Schedule.Crews.IsValidIndex(By->CrewIndex)
+			&& Schedule.Crews[By->CrewIndex].Crew == Vic->GetFName(), TEXT("after Vic's pick it is unlocked, still shut - by Vic"));
+		Expect(Schedule.GetDoorAt(Back->GetFName(), Schedule.Duration, At, &By) && At.bOpen && By && Schedule.Crews.IsValidIndex(By->CrewIndex)
+			&& Schedule.Crews[By->CrewIndex].Crew == Rosa->GetFName() && At.Swing != 0.f, TEXT("at the end it is open - Rosa opened it on her way"));
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s / %s"), *Heist->DescribeViewMoment().ToString(), *Heist->DescribePlannedDoor(Back).ToString());
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.2f));
+	SelfTestSteps.Add(Shot(TEXT("plan_look_end.png")));
+	SelfTestSteps.Add([this, Expect, CrewNamed, DoorNamed]()
+	{
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCDoor* Back = DoorNamed(TEXT("Hintert\u00fcr"));
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		if (!Back || !Vic)
+		{
+			return true;
+		}
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: end look: padlock %d, shown %.2f, sign \"%s\", real open %d locked %d"), Back->IsPadlockShown() ? 1 : 0, Back->GetShownOpenAmount(),
+			*Back->GetPlanLabel().ToString(), Back->IsOpen() ? 1 : 0, Back->IsLocked() ? 1 : 0);
+		Expect(Back->IsPlanLookOn() && !Back->IsPadlockShown(), TEXT("the room shows the end of the plan: no padlock on the back door"));
+		Expect(Back->GetShownOpenAmount() > 0.95f, TEXT("... its panel stands open"));
+		Expect(Back->GetPlanLabel().ToString().Contains(TEXT("Rosa")), TEXT("... the sign says Rosa opens it"));
+		Expect(!Back->IsOpen() && Back->IsLocked(), TEXT("... only the look: the real door is still shut and locked"));
+		Expect(Heist->DescribeViewMoment().ToString().Contains(TEXT("nach dem Plan")), TEXT("the frame says \u201eRaum zeigt: nach dem Plan\u201c"));
+		// Picking Vic's step 1: the room shows the moment after it - unlocked, still shut.
+		FocusStep(Vic->GetFName(), 0);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.2f));
+	SelfTestSteps.Add(Shot(TEXT("plan_look_step1.png")));
+	SelfTestSteps.Add([this, Expect, DoorNamed]()
+	{
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		ADCDoor* Back = DoorNamed(TEXT("Hintert\u00fcr"));
+		if (!Back)
+		{
+			return true;
+		}
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: step look: %s, padlock %d, shown %.2f"), *Heist->DescribeViewMoment().ToString(), Back->IsPadlockShown() ? 1 : 0, Back->GetShownOpenAmount());
+		Expect(Heist->DescribeViewMoment().ToString().Contains(TEXT("nach Vics Schritt 1")), TEXT("the frame says \u201eRaum zeigt: nach Vics Schritt 1\u201c"));
+		Expect(!Back->IsPadlockShown() && Back->GetShownOpenAmount() < 0.05f, TEXT("... the back door: no padlock, still shut"));
+		// Playing shows the real doors again.
+		StartPlayback();
+		return true;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this, Expect, DoorNamed, bPassed]()
+	{
+		const ADCDoor* Back = DoorNamed(TEXT("Hintert\u00fcr"));
+		Expect(Back && !Back->IsPlanLookOn(), TEXT("playing: the doors show their real state again"));
 		FinishSelfTest(*bPassed);
 		return true;
 	});

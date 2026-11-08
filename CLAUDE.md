@@ -323,6 +323,18 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     „hängt bei 1: Hintertür bleibt verschlossen“. Menüeinträge sagen rot „kommt nicht dran – Rosa hängt bei
     Schritt 1“, wenn die Figur vorher schon hängt (`EDCOptionTone`).
   - Selbsttest `-DCSelfTest=PlanHelp` (L_House01, Screenshots `planhelp_bar.png`, `planhelp_fine.png`).
+- **Türen zeigen den Plan im Raum (Schritt 21 = Bauschritt 5):**
+  - In der Planung zeigen Türen den geplanten Zustand zu dem Moment, den der Raum zeigt. Oben links neben
+    „Planung“ steht „Raum zeigt: nach dem Plan (0:06)“, „… nach Vics Schritt 1 (0:03)“ oder „… 0:20
+    (Zeitleiste)“ (`GetViewTime`, `DescribeViewMoment`). Ist das Knacken geplant, ist das Vorhängeschloss weg.
+    Geht jemand im Plan durch, steht das Türblatt offen, vom Öffnenden weg geschwenkt. Über Türen, die der Plan
+    ändert, steht ein Schild („aufgesperrt 0:03 · Vic“, „offen 0:05 · Rosa“, „offen ab 0:05 · Rosa“).
+  - Das ist nur das Aussehen (`ADCDoor::SetPlanLook`, `ShownAmount`, `PlanLabel`). Echter Zustand, NavMesh und
+    Regeln bleiben. Beim Abspielen und Ausprobieren zeigen die Türen wieder ihren echten Zustand.
+  - Die Simulation führt ein Tür-Protokoll: `FDCSchedule::StartDoors` und `DoorChanges` (`FDCDoorChange`: wer,
+    wann, vorher/nachher; Schwenkrichtung in `FDCSimDoor::Swing`, `ADCDoor::SwingSignFor`), dazu `GetDoorAt`.
+    Der Menütitel lautet dann z. B. „Hintertür · offen (Rosa öffnet 0:05)“.
+  - Selbsttest `-DCSelfTest=PlanLook` (L_House01, Screenshots `plan_look_end.png`, `plan_look_step1.png`).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -344,7 +356,7 @@ Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem U
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`, `PlanHelp` (L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook` (beide L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

@@ -1,6 +1,7 @@
 #include "DCHeistState.h"
 
 #include "Algo/Reverse.h"
+#include "Misc/ScopeExit.h"
 
 #include "DCCrewCharacter.h"
 #include "DCDoor.h"
@@ -463,6 +464,35 @@ const FDCCrewSchedule* FDCSchedule::Find(FName Crew) const
 	return Crews.FindByPredicate([Crew](const FDCCrewSchedule& Entry) { return Entry.Crew == Crew; });
 }
 
+bool FDCSchedule::GetDoorAt(FName Door, float Time, FDCSimDoor& Out, const FDCDoorChange** By) const
+{
+	const FDCSimDoor* Start = StartDoors.FindByPredicate([Door](const FDCSimDoor& Entry) { return Entry.Actor == Door; });
+	if (!Start)
+	{
+		return false;
+	}
+	Out = *Start;
+	if (By)
+	{
+		*By = nullptr;
+	}
+	for (const FDCDoorChange& Change : DoorChanges)
+	{
+		if (Change.Door != Door || Change.Time > Time + KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		Out.bLocked = Change.bLocked;
+		Out.bOpen = Change.bOpen;
+		Out.Swing = Change.Swing;
+		if (By)
+		{
+			*By = &Change;
+		}
+	}
+	return true;
+}
+
 TArray<FDCPlanProblem> FDCSchedule::FindProblems() const
 {
 	TArray<FDCPlanProblem> Problems;
@@ -538,6 +568,7 @@ void UDCHeistStateSubsystem::OnPlanChanged()
 	{
 		UpdateMarkers();
 	}
+	UpdateWorldLook();
 }
 
 ADCDoor* UDCHeistStateSubsystem::FindDoor(FName Actor) const
@@ -771,6 +802,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 	UDCItem::FMuteScope Mute;
 	FDCSchedule Result;
 	FDCWorldSnapshot State = TakeSnapshot();
+	Result.StartDoors = State.Doors;
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(World);
 
 	TArray<FCursor> Cursors;
@@ -957,9 +989,12 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bLocked = false; } });
 				break;
 			case EDCDoorAction::Open:
+			{
 				Duration = HandSeconds;
-				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				const float Swing = Door->SwingSignFor(Cursor.Location);
+				AddEvent(Cursor, T + Duration, [DoorName, Swing](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->Swing = D->bOpen ? D->Swing : Swing; D->bOpen = true; } });
 				break;
+			}
 			case EDCDoorAction::Close:
 				Duration = HandSeconds;
 				AddEvent(Cursor, T + Duration, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = false; } });
@@ -969,7 +1004,8 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				const FVector Pass = Door->GetStandPoint(Cursor.Location, true);
 				Duration = HandSeconds + SwingSeconds + WalkSeconds(World, Cursor.Location, Pass, Cursor.Speed, &Out.WorkPath);
 				Out.WorkPathDelay = HandSeconds + SwingSeconds;
-				AddEvent(Cursor, T + HandSeconds, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				const float Swing = Door->SwingSignFor(Cursor.Location);
+				AddEvent(Cursor, T + HandSeconds, [DoorName, Swing](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->Swing = D->bOpen ? D->Swing : Swing; D->bOpen = true; } });
 				Cursor.Location = Pass;
 				Out.EndLocation = Pass;
 				break;
@@ -1257,7 +1293,16 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				const float Reached = From + static_cast<float>(Crossing.Value / FMath::Max(50.f, Cursor.Speed)) + Extra;
 				Extra += HandSeconds + SwingSeconds;
 				const FName DoorName = Crossing.Key;
-				AddEvent(Cursor, Reached + HandSeconds, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				// The panel swings away from the side she comes from.
+				double Length = 0.0;
+				for (int32 Point = 1; Point < Path.Num(); ++Point)
+				{
+					Length += FVector::Dist2D(Path[Point - 1], Path[Point]);
+				}
+				const ADCDoor* Actor = FindDoor(DoorName);
+				const FVector Before = AlongPath(Path, Length > 0.0 ? static_cast<float>(FMath::Max(0.0, Crossing.Value - 40.0) / Length) : 0.f);
+				const float Swing = Actor ? Actor->SwingSignFor(Before) : 0.f;
+				AddEvent(Cursor, Reached + HandSeconds, [DoorName, Swing](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->Swing = D->bOpen ? D->Swing : Swing; D->bOpen = true; } });
 				Out.OpenedOnWay.AddUnique(DoorName);
 			}
 			return Extra;
@@ -1333,6 +1378,29 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 	// Applies an event; crew members waiting for it may continue.
 	const auto ApplyEvent = [&](const FSimEvent& Event)
 	{
+		// Every change to a door goes into the log (who, when, how).
+		const TArray<FDCSimDoor> DoorsBeforeEvent = State.Doors;
+		ON_SCOPE_EXIT
+		{
+			for (int32 DoorIndex = 0; DoorIndex < State.Doors.Num() && DoorIndex < DoorsBeforeEvent.Num(); ++DoorIndex)
+			{
+				const FDCSimDoor& Now = State.Doors[DoorIndex];
+				const FDCSimDoor& Was = DoorsBeforeEvent[DoorIndex];
+				if (Now.bLocked != Was.bLocked || Now.bOpen != Was.bOpen)
+				{
+					FDCDoorChange& Change = Result.DoorChanges.AddDefaulted_GetRef();
+					Change.Time = Event.Time;
+					Change.Door = Now.Actor;
+					Change.bLocked = Now.bLocked;
+					Change.bOpen = Now.bOpen;
+					Change.Swing = Now.Swing;
+					Change.CrewIndex = Event.CrewIndex;
+					Change.TaskIndex = Event.TaskIndex;
+					Change.bWasLocked = Was.bLocked;
+					Change.bWasOpen = Was.bOpen;
+				}
+			}
+		};
 		// The doors that waiting walks stand at, as they were before: only the right change frees them.
 		TMap<FName, TPair<bool, bool>> DoorsBefore;
 		for (const FCursor& Cursor : Cursors)
@@ -1586,6 +1654,7 @@ void UDCHeistStateSubsystem::Refresh(bool bMarkers)
 	{
 		UpdateGhosts();
 	}
+	UpdateWorldLook();
 }
 
 void UDCHeistStateSubsystem::UpdateMarkers()
@@ -1686,6 +1755,7 @@ void UDCHeistStateSubsystem::SetFocus(FName Crew, int32 Step)
 		FocusCrew = Crew;
 		FocusStep = Step;
 		UpdateMarkers();
+		UpdateWorldLook();
 	}
 }
 
@@ -1693,6 +1763,7 @@ void UDCHeistStateSubsystem::SetPreviewTime(float Time)
 {
 	PreviewTime = Time < 0.f ? -1.f : FMath::Min(Time, FMath::Max(Schedule.Duration, 0.f));
 	UpdateGhosts();
+	UpdateWorldLook();
 }
 
 const UDCInventoryComponent* UDCHeistStateSubsystem::GetPlannedInventory(FName Crew) const
@@ -1833,7 +1904,88 @@ FText UDCHeistStateSubsystem::DescribePlannedDoor(const ADCDoor* Door) const
 		}
 	}
 	const FText State = bOpen ? LOCTEXT("DoorStateOpen", "offen") : bLocked ? LOCTEXT("DoorStateLocked", "verschlossen") : LOCTEXT("DoorStateShut", "zu");
+	// Who changes it in the plan, and when: "Hintertür · zu (Vic knackt 0:04)".
+	const FDCDoorChange* Last = nullptr;
+	FDCSimDoor Ignored;
+	if (Plans && Plans->GetMode() == EDCPlanMode::Planning && Schedule.GetDoorAt(Door->GetFName(), Schedule.Duration, Ignored, &Last) && Last && Schedule.Crews.IsValidIndex(Last->CrewIndex))
+	{
+		const int32 Whole = FMath::RoundToInt(Last->Time);
+		const FText Clock = FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
+		const FText What = Last->bWasLocked && !Last->bLocked ? LOCTEXT("ChangeUnlocks", "sperrt auf") : Last->bOpen ? LOCTEXT("ChangeOpens", "öffnet") : LOCTEXT("ChangeCloses", "schließt");
+		return FText::Format(LOCTEXT("PlannedDoorBy", "{0} · {1} ({2} {3} {4})"), Door->GetInteractableName(), State, Schedule.Crews[Last->CrewIndex].Name, What, Clock);
+	}
 	return FText::Format(LOCTEXT("PlannedDoor", "{0} · {1}"), Door->GetInteractableName(), State);
+}
+
+float UDCHeistStateSubsystem::GetViewTime() const
+{
+	if (PreviewTime >= 0.f)
+	{
+		return PreviewTime;
+	}
+	if (const FDCCrewSchedule* Crew = Schedule.Find(FocusCrew); Crew && FocusStep != INDEX_NONE)
+	{
+		if (const FDCScheduledTask* Task = Crew->Tasks.FindByPredicate([this](const FDCScheduledTask& Entry) { return Entry.Index == FocusStep; }))
+		{
+			return Task->End;
+		}
+	}
+	return Schedule.Duration;
+}
+
+FText UDCHeistStateSubsystem::DescribeViewMoment() const
+{
+	const auto Clock = [](float Time)
+	{
+		const int32 Whole = FMath::RoundToInt(Time);
+		return FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
+	};
+	if (PreviewTime >= 0.f)
+	{
+		return FText::Format(LOCTEXT("ViewPreview", "Raum zeigt: {0} (Zeitleiste)"), Clock(PreviewTime));
+	}
+	if (const FDCCrewSchedule* Crew = Schedule.Find(FocusCrew); Crew && FocusStep != INDEX_NONE)
+	{
+		if (const FDCScheduledTask* Task = Crew->Tasks.FindByPredicate([this](const FDCScheduledTask& Entry) { return Entry.Index == FocusStep; }))
+		{
+			return FText::Format(LOCTEXT("ViewStep", "Raum zeigt: nach {0}s Schritt {1} ({2})"), Crew->Name, FText::AsNumber(FocusStep + 1), Clock(Task->End));
+		}
+	}
+	return FText::Format(LOCTEXT("ViewEnd", "Raum zeigt: nach dem Plan ({0})"), Clock(Schedule.Duration));
+}
+
+void UDCHeistStateSubsystem::UpdateWorldLook()
+{
+	UWorld* World = GetWorld();
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(World);
+	const bool bPlanning = Plans && Plans->GetMode() == EDCPlanMode::Planning;
+	const float Time = GetViewTime();
+	for (TActorIterator<ADCDoor> It(World); It; ++It)
+	{
+		FDCSimDoor At;
+		const FDCDoorChange* By = nullptr;
+		if (!bPlanning || !Schedule.GetDoorAt(It->GetFName(), Time, At, &By))
+		{
+			It->SetPlanLook(false, false, false, 0.f, FText::GetEmpty());
+			continue;
+		}
+		// A sign only on doors the plan changes: the last change up to this moment, or the first one ahead.
+		const FDCDoorChange* Shown = By;
+		if (!Shown)
+		{
+			Shown = Schedule.DoorChanges.FindByPredicate([&It](const FDCDoorChange& Change) { return Change.Door == It->GetFName(); });
+		}
+		FText Label;
+		if (Shown && Schedule.Crews.IsValidIndex(Shown->CrewIndex))
+		{
+			const int32 Whole = FMath::RoundToInt(Shown->Time);
+			const FText Clock = FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
+			const FText What = Shown->bWasLocked && !Shown->bLocked ? LOCTEXT("SignUnlocked", "aufgesperrt")
+				: Shown->bOpen ? LOCTEXT("SignOpen", "offen") : LOCTEXT("SignShut", "zu");
+			Label = FText::Format(Shown == By ? LOCTEXT("SignDone", "{0} {1} · {2}") : LOCTEXT("SignAhead", "{0} ab {1} · {2}"), What, Clock, Schedule.Crews[Shown->CrewIndex].Name);
+		}
+		It->SetPlanLook(true, At.bLocked, At.bOpen, At.Swing, Label);
+	}
 }
 
 FText UDCHeistStateSubsystem::DescribeWaited(const FDCScheduledTask& Task, float Waited)
@@ -1925,6 +2077,7 @@ void UDCHeistStateSubsystem::StartPlayback()
 	bWorldUsed = true;
 	PlaybackStart = World->GetTimeSeconds();
 	Plans->SetMode(EDCPlanMode::Playing);
+	UpdateWorldLook();
 	UGameplayStatics::SetGlobalTimeDilation(World, Plans->GetSpeed());
 	for (TActorIterator<ADCCrewCharacter> It(World); It; ++It)
 	{

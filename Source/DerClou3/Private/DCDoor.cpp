@@ -3,6 +3,9 @@
 #include "Components/StaticMeshComponent.h"
 #include "DCNavBlockerComponent.h"
 #include "DCVisuals.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Components/TextRenderComponent.h"
+#include "GameFramework/PlayerController.h"
 #include "AI/NavigationSystemBase.h"
 
 #define LOCTEXT_NAMESPACE "DCDoor"
@@ -48,6 +51,17 @@ ADCDoor::ADCDoor()
 
 	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
+
+	PlanLabel = CreateDefaultSubobject<UTextRenderComponent>(TEXT("PlanLabel"));
+	PlanLabel->SetupAttachment(Root);
+	PlanLabel->SetHorizontalAlignment(EHTA_Center);
+	PlanLabel->SetVerticalAlignment(EVRTA_TextCenter);
+	PlanLabel->SetWorldSize(24.f);
+	PlanLabel->SetTextRenderColor(FColor(110, 225, 255));
+	PlanLabel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	PlanLabel->SetCastShadow(false);
+	PlanLabel->SetHiddenInGame(false);
+	PlanLabel->SetVisibility(false);
 
 	Hinge = CreateDefaultSubobject<USceneComponent>(TEXT("Hinge"));
 	Hinge->SetupAttachment(Root);
@@ -136,12 +150,53 @@ void ADCDoor::ApplyLayout()
 	Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
 }
 
-void ADCDoor::UpdateState()
+void ADCDoor::RefreshLook()
 {
+	const bool bShowLock = bPlanLook ? bLookLocked : bLocked;
 	for (UStaticMeshComponent* Part : LockParts)
 	{
-		Part->SetVisibility(bLocked);
+		Part->SetVisibility(bShowLock);
 	}
+	if (PlanLabel)
+	{
+		PlanLabel->SetText(DCVisuals::PlainText(LookLabel));
+		PlanLabel->SetVisibility(bPlanLook && !LookLabel.IsEmpty());
+	}
+}
+
+bool ADCDoor::IsPadlockShown() const
+{
+	return !LockParts.IsEmpty() && LockParts[0]->IsVisible();
+}
+
+float ADCDoor::SwingSignFor(const FVector& Opener) const
+{
+	// Rotating the closed panel (+Y) by +90 degrees points it along -X, by -90 along +X.
+	return FVector::DotProduct(Opener - GetCenter(), GetActorForwardVector()) >= 0.0 ? 1.f : -1.f;
+}
+
+void ADCDoor::SetPlanLook(bool bShow, bool bShowLocked, bool bShowOpen, float ShowSwing, const FText& Label)
+{
+	const float Swing = ShowSwing == 0.f ? SwingSign : ShowSwing;
+	if (bPlanLook == bShow && (!bShow || (bLookLocked == bShowLocked && bLookOpen == bShowOpen && LookSwing == Swing && LookLabel.EqualTo(Label))))
+	{
+		return;
+	}
+	bPlanLook = bShow;
+	bLookLocked = bShowLocked;
+	bLookOpen = bShowOpen;
+	LookSwing = Swing;
+	LookLabel = bShow ? Label : FText::GetEmpty();
+	if (PlanLabel)
+	{
+		PlanLabel->SetWorldLocation(GetCenter() + FVector(0.0, 0.0, Height + 30.0));
+	}
+	RefreshLook();
+}
+
+void ADCDoor::UpdateState()
+{
+	RefreshLook();
 	// The open panel's blocker sits where the panel ends up, not where it is right now, so that
 	// the nav mesh is only rebuilt once per open/close and not on every frame of the swing.
 	// It starts a bit away from the hinge: the nav system grows it by the agent radius, and in the
@@ -173,10 +228,8 @@ bool ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)
 	}
 	if (!bOpen)
 	{
-		// Rotating the closed panel (+Y) by +90 degrees points it along -X, by -90 along +X.
 		// Swing to the side the opener is not on.
-		const bool bOpenerOnPlusX = FVector::DotProduct(OpenerLocation - GetCenter(), GetActorForwardVector()) >= 0.0;
-		SwingSign = bOpenerOnPlusX ? 1.f : -1.f;
+		SwingSign = SwingSignFor(OpenerLocation);
 		bOpen = true;
 		UpdateState();
 	}
@@ -308,7 +361,25 @@ void ADCDoor::Tick(float DeltaSeconds)
 	if (!FMath::IsNearlyEqual(OpenAmount, Target))
 	{
 		OpenAmount = FMath::FInterpConstantTo(OpenAmount, Target, DeltaSeconds, SwingSpeed);
-		Hinge->SetRelativeRotation(FRotator(0.0, SwingSign * OpenAngle * OpenAmount, 0.0));
+	}
+	// The panel shows the real state - or, while planning, the state the plan leads to.
+	const float Before = ShownAmount;
+	const float Sign = bPlanLook ? LookSwing : SwingSign;
+	ShownAmount = bPlanLook ? FMath::FInterpConstantTo(ShownAmount, bLookOpen ? 1.f : 0.f, DeltaSeconds, SwingSpeed) : OpenAmount;
+	if (!FMath::IsNearlyEqual(Before, ShownAmount) || Sign != ShownSign)
+	{
+		ShownSign = Sign;
+		Hinge->SetRelativeRotation(FRotator(0.0, Sign * OpenAngle * ShownAmount, 0.0));
+	}
+	// The sign above the door faces the camera, like the names over the crew.
+	if (PlanLabel && PlanLabel->IsVisible())
+	{
+		const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+		if (Player && Player->PlayerCameraManager)
+		{
+			const FQuat CameraRotation = Player->PlayerCameraManager->GetCameraRotation().Quaternion();
+			PlanLabel->SetWorldRotation(FRotationMatrix::MakeFromXZ(-CameraRotation.GetForwardVector(), CameraRotation.GetUpVector()).Rotator());
+		}
 	}
 }
 

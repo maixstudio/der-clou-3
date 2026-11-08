@@ -1,6 +1,7 @@
 #include "DCFrame.h"
 
 #include "DCGameViewportClient.h"
+#include "DCHeistState.h"
 #include "DCItemWidgets.h"
 #include "DCPlan.h"
 #include "Engine/World.h"
@@ -108,6 +109,19 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				case EDCPlanMode::Planning: break;
 				}
 				return LOCTEXT("ModePlanning", "Planung");
+			})
+		]
+		// Planning: which moment of the plan the room shows (doors as the plan leaves them then).
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Top).Padding(FMargin(116.f, 14.f))
+		[
+			SNew(STextBlock)
+			.Visibility_Lambda([WeakThis]() { return FrameMode(WeakThis.Get()) == EDCPlanMode::Planning ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
+			.Font(Font(12))
+			.ColorAndOpacity(FLinearColor(0.62f, 0.66f, 0.72f))
+			.Text_Lambda([WeakThis]()
+			{
+				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+				return Heist ? Heist->DescribeViewMoment() : FText::GetEmpty();
 			})
 		];
 	return Root.ToSharedRef();

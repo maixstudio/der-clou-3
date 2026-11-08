@@ -47,6 +47,24 @@ struct FDCSimDoor
 	FName Actor;
 	bool bLocked = false;
 	bool bOpen = false;
+	/** Which way the panel stands once open (+1/-1, 0 = as the real door). */
+	float Swing = 0.f;
+};
+
+/** A door changing in the plan: who changes it when, and how it is afterwards. */
+struct FDCDoorChange
+{
+	float Time = 0.f;
+	FName Door;
+	bool bLocked = false;
+	bool bOpen = false;
+	float Swing = 0.f;
+	/** Whose step (index into the schedule's crews, position in their plan). */
+	int32 CrewIndex = INDEX_NONE;
+	int32 TaskIndex = INDEX_NONE;
+	/** Before the change. */
+	bool bWasLocked = false;
+	bool bWasOpen = false;
 };
 
 /** What the world looks like at one moment of the plan: doors and the state of every item. */
@@ -192,6 +210,12 @@ struct FDCSchedule
 	const FDCCrewSchedule* Find(FName Crew) const;
 	/** The steps that do not happen (first one per crew member), earliest first. */
 	TArray<FDCPlanProblem> FindProblems() const;
+
+	/** The doors at the start, and every change the plan makes to them, in time order. */
+	TArray<FDCSimDoor> StartDoors;
+	TArray<FDCDoorChange> DoorChanges;
+	/** A door at a moment of the plan; By: the last change up to then (nullptr: none). False if unknown. */
+	bool GetDoorAt(FName Door, float Time, FDCSimDoor& Out, const FDCDoorChange** By = nullptr) const;
 };
 
 /**
@@ -250,8 +274,14 @@ public:
 	FText DescribeTask(const FDCPlanTask& Task) const;
 	/** A wait-for step: "warten, bis Rosa „Wandtresor knacken“ erledigt hat" – or, bWaiting, "wartet, bis …". */
 	FText DescribeWaitFor(const FDCPlanTask& Task, bool bWaiting) const;
-	/** A door as the plan leaves it (while planning) or as it is: "Hintertür · verschlossen", "… · zu", "… · offen". */
+	/** A door as the plan leaves it (while planning) or as it is: "Hintertür · aufgesperrt (Vic, 0:04)", "… · zu", "… · offen". */
 	FText DescribePlannedDoor(const ADCDoor* Door) const;
+	/** The moment the room shows while planning: the preview time, else the end of the picked step, else the end of the plan. */
+	float GetViewTime() const;
+	/** "Raum zeigt: nach dem Plan (0:41)", "Raum zeigt: nach Rosas Schritt 2 (0:12)", "Raum zeigt: 0:20 (Zeitleiste)". */
+	FText DescribeViewMoment() const;
+	/** Doors show the plan at the view time while planning, their real state otherwise. */
+	void UpdateWorldLook();
 	/** The wait before a step: "wartet 4 s auf Vic (1. Hintertür knacken)" – or "wartet 4 s – {reason}". */
 	static FText DescribeWaited(const FDCScheduledTask& Task, float Waited);
 

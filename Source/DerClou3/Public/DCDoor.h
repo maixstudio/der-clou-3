@@ -8,6 +8,7 @@
 
 class UDCNavBlockerComponent;
 class UStaticMeshComponent;
+class UTextRenderComponent;
 
 /** What a crew member can do with a door. */
 UENUM(BlueprintType)
@@ -78,6 +79,20 @@ public:
 	FVector GetCloseStandPoint(const FVector& From) const;
 	/** Stand point on the side the panel did not swing to (always clear of the panel). */
 	FVector GetClearSideStandPoint() const;
+	/** +1 or -1: the way the panel swings when someone standing at Opener opens it (away from them). */
+	float SwingSignFor(const FVector& Opener) const;
+
+	/**
+	 * Planning: shows the door as the plan leaves it at the moment the room shows - padlock, panel
+	 * and a small sign above it ("aufgesperrt 0:04 · Vic"). Only the look: the real state, the nav
+	 * mesh and all rules stay as they are. bShow false: back to the real look.
+	 */
+	void SetPlanLook(bool bShow, bool bShowLocked, bool bShowOpen, float ShowSwing, const FText& Label);
+	bool IsPlanLookOn() const { return bPlanLook; }
+	/** What the door shows right now (self-tests): padlock visible, panel open (0..1), sign text. */
+	bool IsPadlockShown() const;
+	float GetShownOpenAmount() const { return ShownAmount; }
+	FText GetPlanLabel() const { return bPlanLook ? LookLabel : FText::GetEmpty(); }
 
 protected:
 	UPROPERTY(EditAnywhere, Category = "Door")
@@ -144,6 +159,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TArray<TObjectPtr<UStaticMeshComponent>> LockParts;
 
+	/** Planning: who changes the door when ("aufgesperrt 0:04 · Vic"), above the opening. */
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TObjectPtr<UTextRenderComponent> PlanLabel;
+
 private:
 	void ApplyLayout();
 	void UpdateState();
@@ -156,4 +175,15 @@ private:
 	float OpenAmount = 0.f;
 	/** +1 or -1: which way the panel swings (away from whoever opened it). */
 	float SwingSign = 1.f;
+
+	/** Padlock and sign as the real state or the planned look say. */
+	void RefreshLook();
+	bool bPlanLook = false;
+	bool bLookLocked = false;
+	bool bLookOpen = false;
+	float LookSwing = 1.f;
+	FText LookLabel;
+	/** What the panel shows (0..1) and which way: the real swing or the planned one. */
+	float ShownAmount = 0.f;
+	float ShownSign = 1.f;
 };

@@ -158,6 +158,8 @@ private:
 	void StartUndoSelfTest();
 	/** -DCSelfTest=PlanHelp (map L_House01): a click that makes the plan hang says so at once; "Passt jetzt" once it works. */
 	void StartPlanHelpSelfTest();
+	/** -DCSelfTest=PlanLook (map L_House01): doors show the plan at the moment the room shows (padlock, panel, sign). */
+	void StartPlanLookSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */
