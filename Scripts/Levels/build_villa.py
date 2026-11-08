@@ -398,7 +398,7 @@ EXTRA_MODELS = [
     ("Deko_Rasenmaeher", None, "Deco_lawn_mower", (11.2, 23.3), "E", 0, "center", True),
     ("Deko_Briefkasten", None, "Deco_mailbox", (33.9, 0.3), "S", 0, "back", True),
     ("Deko_Kamera_Einfahrt", None, "Deco_security_camera", (10.25, 0.1), "S", 200, "origin", False),
-    ("Deko_Vordach", None, "Deco_canopy", (32.5, 15.85), "S", 0, "origin", False),
+    ("Deko_Vordach", "EG", "Deco_canopy", (32.5, 15.85), "S", 0, "origin", False),  # hidden with the ground floor
     ("Deko_Poolleiter", None, "Deco_pool_ladder", (28.0, 38.5), "W", 0, "origin", False),
 ]
 
@@ -780,8 +780,9 @@ def build_stairs():
     outside = bool(model("Stair_outside"))
     box("Aussentreppe_Boden", "Aussen", (44.15, 24.3, 45.75, 30.15), FLOOR_Z["KG"] - 30.0, FLOOR_Z["KG"], "MI_Item_Ground_Concrete")
     stair_steps("Aussentreppe", "Aussen", (44.2, 24.4, 45.6, 28.0), "S", 0.0, FLOOR_Z["KG"], 14, "Paving", None, hidden=outside)
-    box("Aussentreppe_Mauer_Ost", "Aussen", (45.65, 24.3, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster", hidden=outside)
-    box("Aussentreppe_Mauer_Nord", "Aussen", (44.15, 30.05, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster", hidden=outside)
+    # the pit walls stay visible: the stair model has only the steps (its walls would stop where the flight ends)
+    box("Aussentreppe_Mauer_Ost", "Aussen", (45.65, 24.3, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster")
+    box("Aussentreppe_Mauer_Nord", "Aussen", (44.15, 30.05, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster")
     place_model("Aussentreppe_Modell", "Aussen", "Stair_outside", (44.9, 28.0), FLOOR_Z["KG"], "N", None,
                 collision=False, anchor="origin")
     # Stair up to the 1st floor (not built yet): only the look, the crew cannot go up.
@@ -1116,9 +1117,65 @@ def spot_light(label, folder, location, yaw, pitch, lumens, radius, inner=25.0, 
     return light
 
 
+# Wall lights and motion-sensor spots hang on the nearest outer wall: light (x, y) -> (wall point, facing).
+# Walls are 250 high, so the spots sit at 235 (below the top), wall lights at 215.
+WALL_MOUNT = {
+    (30.85, 15.55): ((30.85, 15.85), "S"), (34.15, 15.55): ((34.15, 15.85), "S"),  # Haustür
+    (21.5, 24.0): ((21.85, 24.0), "W"),  # Seiteneingang
+    (3.6, 17.5): ((3.6, 17.85), "S"), (9.4, 17.5): ((9.4, 17.85), "S"),  # Garage
+    (15.45, 20.6): ((15.15, 20.6), "E"),  # Werkstatt
+    (28.35, 30.45): ((28.35, 30.15), "N"),  # Küchentür
+    (36.4, 30.45): ((36.4, 30.15), "N"), (44.45, 30.45): ((43.75, 30.15), "N"),  # Terrasse
+    (46.25, 24.9): ((44.15, 24.6), "E"),  # Kelleraußentreppe (on the house wall above the stair)
+}
+OUT = {"N": (0.0, 1.0), "S": (0.0, -1.0), "E": (1.0, 0.0), "W": (-1.0, 0.0)}
+# Light points inside the Blender lamps (cm): height of the lantern head, bollard ring; offsets in front of the wall.
+LANTERN_LIGHT_Z, BOLLARD_LIGHT_Z = 197.0, 68.0
+WALL_LIGHT_Z, WALL_LIGHT_OUT = 215.0, 0.125
+SPOT_Z, SPOT_OUT = 235.0, 0.142
+
+
 def build_lights():
     for i, (x, y, kind, r, note) in enumerate(V.LIGHTS):
         label = f"Aussenlicht_{i}_{kind}"
+        mount = WALL_MOUNT.get((x, y))
+        # Lanterns and bollards: the model without collision (its box would narrow the way to the garden gate),
+        # a thin invisible post blocks instead – as before the models. The glass glows; with a shadow the lamp
+        # would block its own light.
+        if kind == "laterne" and model("Lamp_lantern"):
+            place_model(f"{label}_Laterne", "Licht", "Lamp_lantern", (x, y), 0.0, "S", collision=False, shadow=False,
+                        anchor="origin")
+            disc(f"{label}_Mast", "Licht", x, y, 0.06, 0.0, 230.0, "MI_Item_Iron_Dark", collision=True).set_actor_hidden_in_game(True)
+            point_light(label, "Licht", ue(x, y, LANTERN_LIGHT_Z), 900.0, r * 140.0)
+            continue
+        if kind == "poller" and model("Lamp_bollard"):
+            place_model(f"{label}_Poller", "Licht", "Lamp_bollard", (x, y), 0.0, "S", collision=False, shadow=False,
+                        anchor="origin")
+            disc(f"{label}_Sperre", "Licht", x, y, 0.08, 0.0, 80.0, "MI_Item_Iron_Dark", collision=True).set_actor_hidden_in_game(True)
+            point_light(label, "Licht", ue(x, y, BOLLARD_LIGHT_Z), 160.0, r * 130.0, shadows=False)
+            continue
+        # lamps on the house hide with the ground floor when the camera shows the cellar (not those on the Remise)
+        house_tag = TAG["EG"] if mount and mount[0][0] > 20.0 else None
+        if kind == "wand" and mount and model("Lamp_wall"):
+            (wx, wy), face = mount
+            place_model(f"{label}_Leuchte", "Licht", "Lamp_wall", (wx, wy), WALL_LIGHT_Z, face, house_tag, collision=False,
+                        shadow=False, anchor="origin")
+            ox, oy = OUT[face]
+            point_light(label, "Licht", ue(wx + ox * WALL_LIGHT_OUT, wy + oy * WALL_LIGHT_OUT, WALL_LIGHT_Z), 420.0, r * 130.0)
+            continue
+        if kind == "bm" and mount and model("Lamp_spot_sensor"):
+            (wx, wy), face = mount
+            place_model(f"{label}_Strahler", "Licht", "Lamp_spot_sensor", (wx, wy), SPOT_Z, face, house_tag, collision=False,
+                        anchor="origin")
+            ox, oy = OUT[face]
+            aim = BM_AIM.get(note, "S")
+            spot_light(label, "Licht", ue(wx + ox * SPOT_OUT, wy + oy * SPOT_OUT, SPOT_Z + 3.0), AIM[aim], -55.0, 1600.0,
+                       r * 120.0, 30.0, 60.0, on=False, tags=("DCMotionLight",))
+            continue
+        if kind == "boden" and model("Lamp_ground"):
+            place_model(f"{label}_Strahler", "Licht", "Lamp_ground", (x, y), 0.0, "S", collision=False, anchor="origin")
+            spot_light(label, "Licht", ue(x, y, 3.0), 0.0, 80.0, 500.0, r * 160.0, 15.0, 40.0)
+            continue
         if kind == "laterne":
             disc(f"{label}_Mast", "Licht", x, y, 0.06, 0.0, 250.0, "MI_Item_Iron_Dark", collision=True)
             box(f"{label}_Kopf", "Licht", (x - 0.13, y - 0.13, x + 0.13, y + 0.13), 250.0, 285.0, "MI_Item_Bulb", collision=False)

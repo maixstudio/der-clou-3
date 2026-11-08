@@ -394,8 +394,29 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=Villa` (Map L_Villa01): Räume, Türen, Treppen begehbar, Zaun dicht, Vic plant Pforte →
     Haustür → Kellertür → Kellerflur, spielt ab, Kamera folgt in den Keller (Screenshots `villa_plan/keller/eg/overview.png`).
   - **Noch nicht gebaut:** Fenster als Einstieg (Regeln auf der Seite, vom User bestätigt), Bewegungsmelder, Alarm,
-    Panzertür mit Fertigkeit Tresore (bisher Schlösser 8), 1. Stock, Modelle statt Kisten (Blender-Chat, siehe
-    `Docs/Villa/Villa-Modelle.md`).
+    Panzertür mit Fertigkeit Tresore (bisher Schlösser 8), 1. Stock. Modelle aus Blender:
+    Schritt 26.
+- **Villa-Modelle aus Blender (Schritt 26, 2026-11-08):** alle Objekte von Bauabschnitt 1 modelliert – 83 Objekte in
+  17 Gruppen, je ein Agent mit höchstens 5 Objekten. Auftragsblatt, Maße, Konventionen und Stand:
+  `Docs/Villa/Villa-Modelle.md` (dort auch die Katalog-Vorschläge der Agenten).
+  - Pipeline: je Gruppe ein Modul `Art/Items/dc_villa_<gruppe>.py` (`dc_items` importiert alle automatisch, ein kaputtes
+    Modul stoppt die anderen nicht). `build_items.py`: `--sheet <name>` (eigener Kontaktbogen je paralleler Lauf),
+    `--ref` (graue 1,80-m-Figur), jede Vorschau zusätzlich steil wie die Spielkamera (`<id>_top.png`). Neue Materialien
+    im Villa-Block von `dc_materials.py` (Außenmetall, Laub, Rinde, Beton, Milchglas, LEDs, `Steel_Satin` …).
+  - `ADCDoor` zeigt Modelle: `LeafModel` (Standard `Door_inner`), `FrameModel` (`Door_frame` → `SM_Door_frame_post/_top`),
+    `bShowFrame`, `bDoubleLeaf` (zweiter Flügel `Hinge2/Panel2`), `bMirrorLeaf` (Außenseite der Modelle ist −X),
+    `Motion` Swing/Slide/TiltUp, `FrameDepth` (Wanddicke + 2), `SlideOut`. Die Modelle werden über ihre Bounding Box auf
+    Breite × Höhe gestreckt (`DoorFitToBox`); fehlt ein Modell, bleibt der farbige Würfel. Gilt auch für L_Room01/L_House01.
+  - `build_villa.py`, Abschnitt „Blender models“: `model()`, `place_model` (Anker center/back/origin), `place_row` (Module
+    reihen, jedes zweite gespiegelt), Tabellen `DECO_MODELS`, `EXTRA_MODELS`, `DOOR_LOOK`, `WINDOW_MODEL`, `TREE_MODEL`,
+    `WALL_MOUNT`. Jedes Modell ist optional (nicht importiert → alte Kiste). Treppen, Bäume, Laternen, Poller: Modell ohne
+    Kollision, die alten Kisten/Zylinder bleiben unsichtbar als Hindernis. Teile an der Hausfassade tragen `DCFloor_EG`.
+  - Ablauf nach Modelländerungen (Editor zu): `ue_import_items.py`, dann L_Villa01 neu bauen, dann `-DCSelfTest=Villa`.
+  - Erkenntnis: Die Pfortenlaterne steht auf dem Gehweg; mit der Box-Kollision ihres Modells blieb Vic auf der Straße
+    stehen. Lampen deshalb ohne eigene Kollision.
+  - Offen: Katalogeinträge für `grand_piano` (im Level steht noch `piano`), neue Beute (`gold_bar`, `wine_bottle`,
+    `silverware_case`, `watch_box`, `flour_tin`) und Werkzeug (`bolt_cutter`, `ladder`, `cordless_drill`, `key_ring`,
+    `garage_remote`) – Werte mit dem User besprechen; Zustände sichtbar machen (Tresortür offen …); Möbel 1. Stock.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten

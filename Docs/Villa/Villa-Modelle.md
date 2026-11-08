@@ -237,9 +237,44 @@ Krone und Stamm getrennt, beide mit Ursprung am Stammfuß (so kann das Spiel die
 
 ## Ablauf und Stand
 
-| Gruppe | Agent | Stand |
-|---|---|---|
-| G1–G17 | je ein Agent (max. 5 Objekte) | offen |
+Je Gruppe ein Agent (max. 5 Objekte), bis zu 6 gleichzeitig. Vorschauen: `Saved/ItemPreviews/_sheet_g<N>.png`.
+
+| Gruppe | Stand |
+|---|---|
+| G1–G17 (alle 83 Objekte) | fertig, importiert; im Level L_Villa01 (Selbsttest Villa PASSED) |
+| G7 Beute, G8 Werkzeug, `grand_piano` | Modelle fertig, im Spiel erst mit Katalogeintrag |
+
+Einbau-Entscheidungen (`build_villa.py`):
+- Kelleraußentreppe: das Modell zeigt nur die Stufen (`OUTSIDE_WALLS = ()`), die Mauern des Levels reichen bis zur
+  Kellertür und sind oben Brüstung.
+- Laternen und Poller ohne eigene Kollision (die Pfortenlaterne steht auf dem Gehweg und hätte den Weg verengt),
+  ein unsichtbarer dünner Mast blockt.
+- Vordach, Wandleuchten und Strahler an der Hausfassade tragen `DCFloor_EG` (in der Keller-Ansicht ausgeblendet).
+
+Katalog-Vorschläge der Agenten (noch mit dem User zu besprechen, nicht im Spiel):
+
+| id | Gewicht | Größe | Raster | Wert | Hinweis |
+|---|---|---|---|---|---|
+| gold_bar | 1,0 kg | klein | 1×1 | 20–30 T€ (Spielbalance) | |
+| wine_bottle | 1,4 kg | mittel | 3×1 | 3–5 T€ | zerbrechlich beim Fallenlassen? |
+| silverware_case | 6 kg | mittel | 4×3 | 300 € + Besteck 5 T€ | oder Behälter mit Schloss 2 |
+| watch_box | 2,5 kg | mittel | 3×2 | 150 € + 6 Uhren | Behälter |
+| flour_tin | 0,8 kg | mittel | 2×2 | 20 € | Versteck (Geld/Schmuck) |
+| bolt_cutter | 3,5 kg | groß | 1×6 | 60 € | Hände/Rücken |
+| ladder | 12 kg | sperrig | – | 120 € | nur Hände, Balkon-Einstieg |
+| cordless_drill | 1,6 kg | mittel | 2×2 | 150 € | |
+| key_ring | 0,1 kg | klein | 1×1 | 5 € | Schlüssel-Funktion |
+| garage_remote | 0,05 kg | klein | 1×1 | 30 € | öffnet das Garagentor |
+
+Hinweise aus den Berichten:
+- Flügel (`grand_piano`), neue Beute und Werkzeug brauchen noch Katalogeinträge (Werte mit dem User besprechen);
+  im Villa-Level steht bis dahin das aufrechte Klavier (`piano`).
+- Hantelbank: die Langhantel macht das Modell 150 cm breit (wird unskaliert gesetzt).
+- Waschtisch hängt frei (Geometrie ab z = 40, Ursprung am Boden) – nicht auf den Würfel skalieren.
+- Bücherregal: jedes zweite Modul wird gespiegelt, damit sich das Muster nicht alle 90 cm wiederholt.
+- Bäume: Kronen ohne Kollision; der alte Stammzylinder bleibt unsichtbar als Hindernis.
+- Materialwünsche (später): Lacquer_Purple/Orange (Billardkugeln), Wood_Spruce, polierter Stahl, LED_Yellow,
+  Plastic_Blue, verzinkter Stahl.
 
 Nach den Agenten: Haupt-Chat prüft die Vorschauen, Import nach Unreal, `ADCDoor` nutzt die Türmodelle,
 `build_villa.py` nimmt die Modelle statt der Würfel (nachdem der Level-Chat fertig ist).
