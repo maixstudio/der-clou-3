@@ -140,6 +140,8 @@ private:
 	void StartFindSelfTest();
 	/** -DCSelfTest=PlanView: search the sofa, pick up the statue; the profile shows the state after the plan, a second pick-up says where it already is. */
 	void StartPlanViewSelfTest();
+	/** -DCSelfTest=DoorWay: Rosa walks out through the back door Vic opens: the plan waits for the door, playback too. */
+	void StartDoorWaySelfTest();
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 

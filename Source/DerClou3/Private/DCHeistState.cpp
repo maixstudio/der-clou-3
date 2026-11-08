@@ -1,5 +1,7 @@
 #include "DCHeistState.h"
 
+#include "Algo/Reverse.h"
+
 #include "DCCrewCharacter.h"
 #include "DCDoor.h"
 #include "DCInventoryComponent.h"
@@ -53,6 +55,9 @@ namespace
 		bool bFinished = false;
 		bool bBlocked = false;
 		bool bHasPending = false;
+		/** The pending step has not started walking yet: closed doors (WaitDoors) are in the way. */
+		bool bWalkPending = false;
+		TArray<FName> WaitDoors;
 		float BlockedSince = 0.f;
 		FDCScheduledTask Pending;
 	};
@@ -61,6 +66,126 @@ namespace
 	{
 		const FDCItemDef* Def = DCItems::Find(DefId);
 		return Def ? Def->Name : FText::FromName(DefId);
+	}
+
+	/**
+	 * A way from From to To in the world as it is now that may pass closed doors: the nav mesh
+	 * leads up to a door, through it, and on. Doors are the only connections between rooms, so
+	 * this is a small shortest-path search over the door sides (legs computed on demand).
+	 */
+	bool WayThroughDoors(UWorld* World, const FVector& From, const FVector& To, TArray<FVector>& OutPoints)
+	{
+		struct FNode
+		{
+			FVector Location;
+			int32 Door = INDEX_NONE;
+		};
+		TArray<FNode> Nodes = { { From }, { To } };
+		int32 DoorIndex = 0;
+		for (TActorIterator<ADCDoor> It(World); It; ++It, ++DoorIndex)
+		{
+			// Open doors too: right after opening, the nav mesh may not have caught up yet.
+			const FVector Normal = It->GetActorForwardVector().GetSafeNormal2D();
+			for (const double Side : { -1.0, 1.0 })
+			{
+				Nodes.Add({ It->GetStandPoint(It->GetCenter() + Normal * Side * 300.0, false), DoorIndex });
+			}
+		}
+		const int32 Count = Nodes.Num();
+		TMap<int32, TArray<FVector>> Legs;
+		TMap<int32, double> LegLength;
+		const auto Leg = [&](int32 A, int32 B) -> double
+		{
+			const int32 Key = FMath::Min(A, B) * 1000 + FMath::Max(A, B);
+			if (const double* Known = LegLength.Find(Key))
+			{
+				return *Known;
+			}
+			double Length = -1.0;
+			TArray<FVector> Points;
+			if (Nodes[A].Door != INDEX_NONE && Nodes[A].Door == Nodes[B].Door)
+			{
+				// Through the door itself.
+				Points = { Nodes[A].Location, Nodes[B].Location };
+				Length = FVector::Dist2D(Nodes[A].Location, Nodes[B].Location);
+			}
+			else if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, Nodes[A].Location, Nodes[B].Location))
+			{
+				if (Path->IsValid() && !Path->IsPartial() && Path->PathPoints.Num() >= 2)
+				{
+					Points = Path->PathPoints;
+					Length = Path->GetPathLength();
+				}
+			}
+			if (A > B)
+			{
+				Algo::Reverse(Points);
+			}
+			Legs.Add(Key, Points);
+			LegLength.Add(Key, Length);
+			return Length;
+		};
+		TArray<double> Distance;
+		Distance.Init(TNumericLimits<double>::Max(), Count);
+		TArray<int32> Previous;
+		Previous.Init(INDEX_NONE, Count);
+		TArray<bool> Settled;
+		Settled.Init(false, Count);
+		Distance[0] = 0.0;
+		for (int32 Round = 0; Round < Count; ++Round)
+		{
+			int32 Current = INDEX_NONE;
+			for (int32 Node = 0; Node < Count; ++Node)
+			{
+				if (!Settled[Node] && Distance[Node] < TNumericLimits<double>::Max() && (Current == INDEX_NONE || Distance[Node] < Distance[Current]))
+				{
+					Current = Node;
+				}
+			}
+			if (Current == INDEX_NONE || Current == 1)
+			{
+				break;
+			}
+			Settled[Current] = true;
+			for (int32 Node = 0; Node < Count; ++Node)
+			{
+				if (Settled[Node] || Node == Current)
+				{
+					continue;
+				}
+				const double Length = Leg(Current, Node);
+				if (Length >= 0.0 && Distance[Current] + Length < Distance[Node])
+				{
+					Distance[Node] = Distance[Current] + Length;
+					Previous[Node] = Current;
+				}
+			}
+		}
+		if (Previous[1] == INDEX_NONE)
+		{
+			return false;
+		}
+		TArray<int32> Chain;
+		for (int32 Node = 1; Node != INDEX_NONE; Node = Previous[Node])
+		{
+			Chain.Insert(Node, 0);
+		}
+		OutPoints.Reset();
+		for (int32 Step = 1; Step < Chain.Num(); ++Step)
+		{
+			const int32 A = Chain[Step - 1];
+			const int32 B = Chain[Step];
+			TArray<FVector> Points = Legs.FindRef(FMath::Min(A, B) * 1000 + FMath::Max(A, B));
+			if (A > B)
+			{
+				Algo::Reverse(Points);
+			}
+			for (int32 Point = OutPoints.IsEmpty() ? 0 : 1; Point < Points.Num(); ++Point)
+			{
+				OutPoints.Add(Points[Point]);
+			}
+		}
+		return OutPoints.Num() >= 2;
 	}
 
 	float WalkSeconds(UWorld* World, const FVector& From, const FVector& To, float Speed, TArray<FVector>* OutPath = nullptr)
@@ -75,10 +200,12 @@ namespace
 			return 0.f;
 		}
 		double Length = Straight * DetourFactor;
+		bool bFound = false;
 		if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, To))
 		{
 			if (Path->IsValid() && !Path->IsPartial())
 			{
+				bFound = true;
 				Length = Path->GetPathLength();
 				if (OutPath && Path->PathPoints.Num() >= 2)
 				{
@@ -86,8 +213,39 @@ namespace
 				}
 			}
 		}
+		// Behind a closed door: the way through the door (the plan then waits until it is open).
+		TArray<FVector> Through;
+		if (!bFound && WayThroughDoors(World, From, To, Through))
+		{
+			Length = 0.0;
+			for (int32 Point = 1; Point < Through.Num(); ++Point)
+			{
+				Length += FVector::Dist(Through[Point - 1], Through[Point]);
+			}
+			if (OutPath)
+			{
+				*OutPath = Through;
+			}
+		}
 		// A little extra for starting and stopping.
 		return static_cast<float>(Length / FMath::Max(50.f, Speed)) + 0.3f;
+	}
+
+	/** Doors the way passes through (actor names), in the order they are met. */
+	TArray<FName> DoorsOnPath(UWorld* World, const TArray<FVector>& Path)
+	{
+		TArray<FName> Doors;
+		for (int32 Point = 1; Point < Path.Num(); ++Point)
+		{
+			for (TActorIterator<ADCDoor> It(World); It; ++It)
+			{
+				if (!Doors.Contains(It->GetFName()) && It->CrossesOpening(Path[Point - 1], Path[Point]))
+				{
+					Doors.Add(It->GetFName());
+				}
+			}
+		}
+		return Doors;
 	}
 
 	/** A real item built from the simulation's state of it (with what is still inside), to carry in a planned inventory. */
@@ -248,6 +406,20 @@ void UDCHeistStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	if (UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(&InWorld))
 	{
 		PlanChangedHandle = Plans->OnPlanChanged.AddUObject(this, &UDCHeistStateSubsystem::OnPlanChanged);
+	}
+	if (UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(&InWorld))
+	{
+		Navigation->OnNavigationGenerationFinishedDelegate.AddDynamic(this, &UDCHeistStateSubsystem::OnNavigationRebuilt);
+	}
+}
+
+void UDCHeistStateSubsystem::OnNavigationRebuilt(ANavigationData* NavData)
+{
+	// Only while planning: during playback the schedule stays as it was when it started.
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(GetWorld());
+	if (Plans && Plans->GetMode() == EDCPlanMode::Planning)
+	{
+		Refresh();
 	}
 }
 
@@ -902,11 +1074,15 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		}
 		const FDCPlanTask& Task = (*Cursor.Tasks)[Cursor.Next];
 		FDCScheduledTask& Out = Cursor.Pending;
-		Out = FDCScheduledTask();
-		Out.Index = Cursor.Next;
-		Out.Type = Task.Type;
-		Out.Start = Cursor.Time;
-		Out.Label = DescribeTask(Task);
+		// Coming back after waiting for a door: keep what is known about the step and the wait.
+		if (!Cursor.bWalkPending)
+		{
+			Out = FDCScheduledTask();
+			Out.Index = Cursor.Next;
+			Out.Type = Task.Type;
+			Out.Start = Cursor.Time;
+			Out.Label = DescribeTask(Task);
+		}
 		Cursor.bHasPending = true;
 
 		FVector Spot = Cursor.Location;
@@ -938,7 +1114,34 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			}
 			break;
 		}
-		Out.Ready = Cursor.Time + WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed, &Out.Path);
+		const float Walk = WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed, &Out.Path);
+		// A closed door on the way: wait here until someone opens it (or forever: "geht nicht").
+		TArray<FName> Closed;
+		TArray<FText> ClosedNames;
+		for (const FName DoorName : DoorsOnPath(World, Out.Path))
+		{
+			const FDCSimDoor* Door = State.FindDoor(DoorName);
+			if (Door && !Door->bOpen)
+			{
+				Closed.Add(DoorName);
+				const ADCDoor* Actor = FindDoor(DoorName);
+				ClosedNames.Add(Actor ? Actor->GetInteractableName() : FText::FromName(DoorName));
+			}
+		}
+		if (!Closed.IsEmpty())
+		{
+			Cursor.bWalkPending = true;
+			Cursor.WaitDoors = Closed;
+			Cursor.bBlocked = true;
+			Cursor.BlockedSince = Cursor.Time;
+			Out.WalkStart = Out.Ready = Cursor.Time;
+			Out.WaitReason = FText::Format(LOCTEXT("WaitDoorOnWay", "wartet, bis {0} offen ist"), JoinNames(ClosedNames));
+			return;
+		}
+		Cursor.bWalkPending = false;
+		Cursor.WaitDoors.Reset();
+		Out.WalkStart = Cursor.Time;
+		Out.Ready = Cursor.Time + Walk;
 		Cursor.Location = Spot;
 		Out.EndLocation = Spot;
 		Cursor.Time = Out.Ready;
@@ -950,8 +1153,15 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		Event.Apply(State);
 		for (FCursor& Cursor : Cursors)
 		{
+			if (!Cursor.bBlocked)
+			{
+				continue;
+			}
 			FText Ignored;
-			if (Cursor.bBlocked && ConditionHolds((*Cursor.Tasks)[Cursor.Next], Ignored))
+			const bool bFree = Cursor.bWalkPending
+				? !Cursor.WaitDoors.ContainsByPredicate([&State](FName DoorName) { const FDCSimDoor* Door = State.FindDoor(DoorName); return Door && !Door->bOpen; })
+				: ConditionHolds((*Cursor.Tasks)[Cursor.Next], Ignored);
+			if (bFree)
 			{
 				Cursor.bBlocked = false;
 				Cursor.Time = FMath::Max(Cursor.BlockedSince, Event.Time);
@@ -1003,7 +1213,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		{
 			continue;
 		}
-		if (!Next->bHasPending)
+		if (!Next->bHasPending || Next->bWalkPending)
 		{
 			BeginTask(*Next);
 			continue;
@@ -1219,7 +1429,8 @@ FVector UDCHeistStateSubsystem::GetPositionAt(const FDCCrewSchedule& Crew, float
 		}
 		if (Time < Task.Ready && Task.Path.Num() >= 2)
 		{
-			return AlongPath(Task.Path, (Time - Task.Start) / FMath::Max(0.01f, Task.Ready - Task.Start));
+			const float WalkStart = FMath::Max(Task.Start, Task.WalkStart);
+			return AlongPath(Task.Path, FMath::Max(0.f, Time - WalkStart) / FMath::Max(0.01f, Task.Ready - WalkStart));
 		}
 		if (!Task.Path.IsEmpty())
 		{
@@ -1280,6 +1491,12 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 	{
 		return FText::Format(LOCTEXT("ActivityBlocked", "{0}. {1}: geht nicht"), Number, Task->Label);
 	}
+	if (Time < Task->WalkStart)
+	{
+		return Task->WaitFor.IsNone()
+			? FText::Format(LOCTEXT("ActivityWaitDoor", "{0}. {1}"), Number, Task->WaitReason)
+			: FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName);
+	}
 	if (Time < Task->Ready)
 	{
 		return FText::Format(LOCTEXT("ActivityWalk", "{0}. geht hin: {1}"), Number, Task->Label);
@@ -1291,6 +1508,46 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 			: FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName);
 	}
 	return FText::Format(LOCTEXT("ActivityWork", "{0}. {1}"), Number, Task->Label);
+}
+
+TArray<ADCDoor*> UDCHeistStateSubsystem::FindClosedDoorsOnWay(const FVector& From, const FVector& To) const
+{
+	TArray<ADCDoor*> Closed;
+	UWorld* World = GetWorld();
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (!Navigation)
+	{
+		return Closed;
+	}
+	// Furniture stands off the nav mesh: aim at the nearest walkable spot.
+	FNavLocation Goal;
+	if (!Navigation->ProjectPointToNavigation(To, Goal, FVector(200.0, 200.0, 300.0)))
+	{
+		UE_LOG(LogDerClou, Log, TEXT("No nav mesh near %s"), *To.ToCompactString());
+		return Closed;
+	}
+	// The way as it is now is free: nothing in the way.
+	const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, Goal.Location);
+	if (Path && Path->IsValid() && !Path->IsPartial())
+	{
+		return Closed;
+	}
+	TArray<FVector> Through;
+	if (!WayThroughDoors(World, From, Goal.Location, Through))
+	{
+		UE_LOG(LogDerClou, Log, TEXT("No way from %s to %s, not even through doors"), *From.ToCompactString(), *Goal.Location.ToCompactString());
+		return Closed;
+	}
+	// The nav mesh does not let one through yet: every door on the way still counts as shut
+	// (even one that is swinging open right now – its way is free a moment later).
+	for (const FName DoorName : DoorsOnPath(World, Through))
+	{
+		if (ADCDoor* Door = FindDoor(DoorName))
+		{
+			Closed.Add(Door);
+		}
+	}
+	return Closed;
 }
 
 void UDCHeistStateSubsystem::StartPlayback()

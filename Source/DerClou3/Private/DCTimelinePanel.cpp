@@ -632,7 +632,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		const bool bCoordination = Task.Type == EDCPlanTaskType::WaitFor || Task.Type == EDCPlanTaskType::Signal;
 
 		// Waiting for someone else without being asked to: one compact line.
-		const float Waited = Task.WorkStart - Task.Ready;
+		const float Waited = Task.WorkStart - Task.Ready + FMath::Max(0.f, Task.WalkStart - Task.Start);
 		if (!Task.bBlocked && Waited > 0.5f && Task.Type != EDCPlanTaskType::WaitFor)
 		{
 			const FText WaitText = Task.WaitFor.IsNone()
@@ -1034,7 +1034,9 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 				continue;
 			}
 			const FLinearColor Base = Crew.Color;
-			AddBlock(Task.Start, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
+			const float WalkStart = FMath::Max(Task.Start, Task.WalkStart);
+			AddBlock(Task.Start, WalkStart, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
+			AddBlock(WalkStart, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
 			AddBlock(Task.Ready, Task.WorkStart, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
 			const bool bSignal = Task.Type == EDCPlanTaskType::Signal;
 			const FLinearColor Work = bSignal ? FLinearColor(CoordinationColor.R, CoordinationColor.G, CoordinationColor.B, Fade)

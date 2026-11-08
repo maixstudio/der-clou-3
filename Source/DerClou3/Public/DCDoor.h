@@ -63,6 +63,8 @@ public:
 
 	/** Middle of the opening at floor level. */
 	FVector GetCenter() const;
+	/** True if the straight line from A to B passes through the door opening (seen from above). */
+	bool CrossesOpening(const FVector& A, const FVector& B) const;
 	/**
 	 * Where to stand to use the door: in front of it on the side of From, or (bOtherSide)
 	 * behind it on the opposite side.

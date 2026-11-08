@@ -70,6 +70,8 @@ private:
 	void StartApproach();
 	/** True if the step may start; otherwise OutWait says what it waits for. */
 	bool ConditionMet(FText& OutWait) const;
+	/** True if a closed door is on the way to where the step happens (OutWait: "wartet, bis Hintertür offen ist"). */
+	bool DoorOnWay(FText& OutWait) const;
 	/** True if there is nothing left to do (lock already open, ...). */
 	bool AlreadyDone() const;
 	void StartExecute();

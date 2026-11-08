@@ -234,6 +234,17 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   Menüklicks, „geht nicht“ und neue Plan-Schritte stehen jetzt im Log (`Menu:`, `Not possible:`,
   `Plan Vic: step …`) – auch im Editor. Selbsttest `-DCSelfTest=PlanView` (Screenshots `plan_view*.png`).
   Funde beim Durchsuchen erscheinen weiterhin erst im Einbruch (Inhalt ist in der Planung unbekannt).
+- **Wege durch geschlossene Türen (Schritt 15, User-Bug „B läuft quer durchs Zimmer, geht nicht“):**
+  Vorher schätzte die Planung ohne NavMesh-Weg eine gerade Linie (Faktor 1,4), live scheiterte der Gang
+  sofort. Jetzt `WayThroughDoors` (DCHeistState.cpp): kein freier Weg → kürzester Weg über die
+  Türseiten (`ADCDoor::GetStandPoint`, Teilstücke per NavMesh, „durch die Tür“ als Kante),
+  `ADCDoor::CrossesOpening`, `DoorsOnPath`. Simulation: liegt eine im Plan-Zustand geschlossene Tür auf
+  dem Weg, wartet die Figur **vor dem Losgehen** (`FDCScheduledTask::WalkStart`, Cursor `bWalkPending`/
+  `WaitDoors`), bis jemand sie öffnet („wartet, bis Hintertür offen ist“, grauer Block vor dem Gehen,
+  „wartet auf Vic“), sonst „geht nicht … passiert im Plan nie“. Live: `UDCPlanRunnerComponent::DoorOnWay`
+  + `UDCHeistStateSubsystem::FindClosedDoorsOnWay` lassen die Figur warten (Ausprobieren: sofort
+  „geht nicht“). Türen bleiben im NavMesh eine Null-Sperre (ein Versuch mit eigener NavArea ließ hinter
+  der Öffnung eine Lücke). Selbsttest `-DCSelfTest=DoorWay`.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -254,7 +265,7 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

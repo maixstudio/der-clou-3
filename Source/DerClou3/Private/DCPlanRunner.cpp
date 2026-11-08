@@ -100,6 +100,27 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	case EStep::Approach:
 		if (!bStepStarted)
 		{
+			// A closed door on the way: wait here until someone opens it (as the plan expects).
+			FText DoorWait;
+			if (DoorOnWay(DoorWait))
+			{
+				// Trying things out directly: nobody else will open it, so say so at once.
+				const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+				if (Plans && Plans->GetMode() == EDCPlanMode::Direct)
+				{
+					Crew->Say(DoorWait);
+					FinishTask(EDCTaskStatus::Failed);
+					return;
+				}
+				if (!DoorWait.EqualTo(WaitText))
+				{
+					UE_LOG(LogDerClou, Log, TEXT("%s %s"), *Crew->GetCrewName().ToString(), *DoorWait.ToString());
+				}
+				WaitText = DoorWait;
+				Statuses[Index] = EDCTaskStatus::Waiting;
+				return;
+			}
+			WaitText = FText::GetEmpty();
 			bStepStarted = true;
 			Statuses[Index] = EDCTaskStatus::Running;
 			StartApproach();
@@ -318,6 +339,60 @@ bool UDCPlanRunnerComponent::ConditionMet(FText& OutWait) const
 			return false;
 		}
 	}
+	return true;
+}
+
+bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait) const
+{
+	const ADCCrewCharacter* Crew = GetCrew();
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Crew || !Heist)
+	{
+		return false;
+	}
+	const FDCPlanTask& Task = Current();
+	FVector Destination;
+	switch (Task.Type)
+	{
+	case EDCPlanTaskType::Move:
+		Destination = Task.Location;
+		break;
+	case EDCPlanTaskType::Door:
+	{
+		const ADCDoor* Door = Heist->FindDoor(Task.Target);
+		if (!Door)
+		{
+			return false;
+		}
+		Destination = Door->GetStandPoint(Crew->GetActorLocation(), false);
+		break;
+	}
+	case EDCPlanTaskType::Item:
+	case EDCPlanTaskType::Loot:
+	case EDCPlanTaskType::PickUp:
+	{
+		const ADCItemPickup* Pickup = GetPickup();
+		if (!Pickup)
+		{
+			return false;
+		}
+		Destination = Pickup->GetActorLocation();
+		break;
+	}
+	default:
+		return false;
+	}
+	const TArray<ADCDoor*> Closed = Heist->FindClosedDoorsOnWay(Crew->GetActorLocation(), Destination);
+	if (Closed.IsEmpty())
+	{
+		return false;
+	}
+	TArray<FString> Names;
+	for (const ADCDoor* Door : Closed)
+	{
+		Names.Add(Door->GetInteractableName().ToString());
+	}
+	OutWait = FText::Format(LOCTEXT("WaitDoorOnWay", "wartet, bis {0} offen ist"), FText::FromString(FString::Join(Names, TEXT(", "))));
 	return true;
 }
 

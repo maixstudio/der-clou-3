@@ -10,6 +10,7 @@ class ADCCrewCharacter;
 class ADCDoor;
 class ADCItemPickup;
 class ADCPlanMarker;
+class ANavigationData;
 class UDCInventoryComponent;
 class UDCItem;
 
@@ -73,6 +74,8 @@ struct FDCScheduledTask
 	EDCPlanTaskType Type = EDCPlanTaskType::Move;
 	/** Starts walking / doing it. */
 	float Start = 0.f;
+	/** Starts walking: later than Start if a closed door on the way has to be opened first. */
+	float WalkStart = 0.f;
 	/** Arrived and could act. */
 	float Ready = 0.f;
 	/** Actually starts working (after waiting for someone else). */
@@ -169,6 +172,8 @@ public:
 	const FDCWorldSnapshot& GetPlannedState() const { return PlannedState; }
 	/** What the crew member will carry once their whole plan has run (nullptr if unknown). */
 	const UDCInventoryComponent* GetPlannedInventory(FName Crew) const;
+	/** Closed doors on the way from From to To (the way the crew would take once they are open). */
+	TArray<ADCDoor*> FindClosedDoorsOnWay(const FVector& From, const FVector& To) const;
 	/** Short name of a step: "Hintertür knacken", "Wandtresor ausräumen". */
 	FText DescribeTask(const FDCPlanTask& Task) const;
 	/** A wait-for step: "warten, bis Rosa „Wandtresor knacken“ erledigt hat" – or, bWaiting, "wartet, bis …". */
@@ -202,6 +207,9 @@ public:
 
 private:
 	void OnPlanChanged();
+	/** The nav mesh was rebuilt (a door opened, the level loaded): ways may have changed. */
+	UFUNCTION()
+	void OnNavigationRebuilt(ANavigationData* NavData);
 	void UpdateMarkers();
 	void UpdateGhosts();
 

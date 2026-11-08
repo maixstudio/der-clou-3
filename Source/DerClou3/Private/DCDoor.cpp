@@ -256,6 +256,21 @@ FVector ADCDoor::GetCenter() const
 	return GetActorTransform().TransformPosition(FVector(0.0, Width * 0.5, 0.0));
 }
 
+bool ADCDoor::CrossesOpening(const FVector& A, const FVector& B) const
+{
+	// In the door's frame: the opening is X within the wall, Y from hinge to the other jamb.
+	const FTransform& Frame = GetActorTransform();
+	FVector LocalA = Frame.InverseTransformPosition(A);
+	FVector LocalB = Frame.InverseTransformPosition(B);
+	LocalA.Z = LocalB.Z = 0.0;
+	const FBox Opening(FVector(-25.0, -5.0, -1.0), FVector(25.0, Width + 5.0, 1.0));
+	if (Opening.IsInside(LocalA) || Opening.IsInside(LocalB))
+	{
+		return true;
+	}
+	return FMath::LineBoxIntersection(Opening, LocalA, LocalB, LocalB - LocalA);
+}
+
 double ADCDoor::GetSideOf(const FVector& From) const
 {
 	// The door's local X axis is the wall normal.
