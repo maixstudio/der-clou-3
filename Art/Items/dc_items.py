@@ -346,3 +346,22 @@ def cardboard_box(it: Item):
 # Small items register themselves into BUILDERS.
 import dc_items_small  # noqa: E402,F401
 import dc_items_deco  # noqa: E402,F401
+
+
+def _import_villa_modules():
+    """Villa props live in dc_villa_*.py (one file per batch). A broken file must not stop the others."""
+    import glob
+    import importlib
+    import os
+    import traceback
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    for path in sorted(glob.glob(os.path.join(here, "dc_villa_*.py"))):
+        name = os.path.splitext(os.path.basename(path))[0]
+        try:
+            importlib.import_module(name)
+        except Exception:  # noqa: BLE001 – report and keep going
+            print(f"[items] could not import {name}:\n{traceback.format_exc()}", flush=True)
+
+
+_import_villa_modules()

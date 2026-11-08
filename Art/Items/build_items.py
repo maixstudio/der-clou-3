@@ -4,7 +4,10 @@
 
 --textures   regenerate the procedural textures (Art/Items/Textures)
 --items      only these items (default: all)
---preview    render a preview per item and a contact sheet (Saved/ItemPreviews)
+--preview    render two previews per item (<id>.png three-quarter view, <id>_top.png steep view like the game
+             camera) and a contact sheet (Saved/ItemPreviews)
+--sheet      name of the contact sheet: _sheet_<name>.png (default _sheet.png) – use one per parallel run
+--ref        put a grey 180 cm figure next to items taller than 40 cm (preview only, never exported)
 --export     write Art/Items/Export/SM_<id>.fbx
 """
 
@@ -36,9 +39,12 @@ def log(msg):
 
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    opts = {"textures": "--textures" in argv, "preview": "--preview" in argv, "export": "--export" in argv, "items": None}
+    opts = {"textures": "--textures" in argv, "preview": "--preview" in argv, "export": "--export" in argv, "items": None,
+            "sheet": None, "ref": "--ref" in argv}
     if "--items" in argv:
         opts["items"] = argv[argv.index("--items") + 1].split(",")
+    if "--sheet" in argv:
+        opts["sheet"] = argv[argv.index("--sheet") + 1]
     return opts
 
 
@@ -206,14 +212,18 @@ def setup_render_scene():
     return key_ob, rim_ob, cam
 
 
-def frame(ob, key_ob, rim_ob, cam):
-    corners = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+VIEW_THREE_QUARTER = (0.9, -1.5, 0.95)
+VIEW_TOP = (0.25, -0.55, 1.5)  # steep, roughly like the game camera
+
+
+def frame(obs, key_ob, rim_ob, cam, view=VIEW_THREE_QUARTER):
+    corners = [o.matrix_world @ Vector(c) for o in obs for c in o.bound_box]
     lo = Vector([min(c[i] for c in corners) for i in range(3)])
     hi = Vector([max(c[i] for c in corners) for i in range(3)])
     centre = (lo + hi) / 2
     radius = max((hi - lo).length / 2, 0.02)
     fov = cam.data.angle
-    direction = Vector((0.9, -1.5, 0.95)).normalized()
+    direction = Vector(view).normalized()
     dist = radius / math.sin(fov / 2) * 1.05
     cam.location = centre + direction * dist
     cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
@@ -229,7 +239,26 @@ def frame(ob, key_ob, rim_ob, cam):
     rim_ob.data.energy = 25 * (radius * 6) ** 2
 
 
-def contact_sheet(paths, out_path, cols=5):
+def reference_figure(ob):
+    """Grey 180 cm stand-in person beside the item, for judging proportions in the preview."""
+    corners = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+    hi_x = max(c.x for c in corners)
+    mat = bpy.data.materials.get("RefFigure") or bpy.data.materials.new("RefFigure")
+    mat.use_nodes = True
+    node_of_type(mat.node_tree.nodes, "BSDF_PRINCIPLED").inputs["Base Color"].default_value = (0.35, 0.36, 0.40, 1)
+    parts = []
+    for name, op, kw in (("RefBody", bpy.ops.mesh.primitive_cylinder_add, dict(radius=0.2, depth=1.55, location=(0, 0, 0.775))),
+                         ("RefHead", bpy.ops.mesh.primitive_uv_sphere_add, dict(radius=0.12, location=(0, 0, 1.68)))):
+        op(**kw)
+        o = bpy.context.active_object
+        o.name = name
+        o.data.materials.append(mat)
+        o.location.x += hi_x + 0.45
+        parts.append(o)
+    return parts
+
+
+def contact_sheet(paths, out_path, cols=4):
     tiles = []
     for p in paths:
         img = bpy.data.images.load(p)
@@ -293,16 +322,21 @@ def main():
         if opts["export"]:
             export_fbx(ob, os.path.join(EXPORT_DIR, f"SM_{item_id}.fbx"))
         if rig:
-            frame(ob, *rig)
-            path = os.path.join(PREVIEW_DIR, f"{item_id}.png")
-            bpy.context.scene.render.filepath = path
-            bpy.ops.render.render(write_still=True)
-            previews.append(path)
+            ref = reference_figure(ob) if opts["ref"] and size[2] > 40 else []
+            for suffix, view in (("", VIEW_THREE_QUARTER), ("_top", VIEW_TOP)):
+                frame([ob] + ref, *rig, view=view)
+                path = os.path.join(PREVIEW_DIR, f"{item_id}{suffix}.png")
+                bpy.context.scene.render.filepath = path
+                bpy.ops.render.render(write_still=True)
+                previews.append(path)
+            for o in ref:
+                bpy.data.objects.remove(o, do_unlink=True)
         ob.hide_render = True
         ob.hide_set(True)
     if previews:
-        contact_sheet(previews, os.path.join(PREVIEW_DIR, "_sheet.png"))
-        log(f"previews in {PREVIEW_DIR}")
+        name = f"_sheet_{opts['sheet']}.png" if opts["sheet"] else "_sheet.png"
+        contact_sheet(previews, os.path.join(PREVIEW_DIR, name))
+        log(f"previews in {PREVIEW_DIR} ({name})")
 
 
 if __name__ == "__main__":

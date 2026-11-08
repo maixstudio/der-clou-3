@@ -67,6 +67,53 @@ MATERIALS = {
     # Transparent / gems
     "Glass": dict(tex=None, tint=(0.85, 0.92, 0.95), tiling=1.0, rough=0.05, metal=0.0, glass=True),
     "Gem": dict(tex="Fine", tint=(0.92, 0.95, 1.0), tiling=10.0, rough=0.15, metal=0.7),
+
+    # ---- Villa (2026-11-08): building parts, appliances, garden ----
+    # Painted / coated metal
+    "Paint_Anthracite": dict(tex="Paint", tint=(0.17, 0.18, 0.19), tiling=2.0, rough=1.0, metal=1.0),
+    "Paint_Grey": dict(tex="Paint", tint=(0.58, 0.59, 0.60), tiling=2.0, rough=1.0, metal=1.0),
+    "Paint_Green": dict(tex="Paint", tint=(0.16, 0.30, 0.20), tiling=2.0, rough=1.0, metal=0.0),
+    "Paint_Yellow": dict(tex="Paint", tint=(0.92, 0.70, 0.10), tiling=2.0, rough=1.0, metal=0.0),
+    "Copper": dict(tex="Fine", tint=(0.95, 0.60, 0.45), tiling=4.0, rough=0.8, metal=1.0),
+    "Steel_Satin": dict(tex="Fine", tint=(0.80, 0.81, 0.82), tiling=2.0, rough=0.9, metal=1.0),  # large stainless surfaces
+    # Car paint, appliances, plastics
+    "Lacquer_Red": dict(tex="Fine", tint=(0.55, 0.05, 0.04), tiling=2.0, rough=0.45, metal=0.0),
+    "Lacquer_Cream": dict(tex="Fine", tint=(0.90, 0.85, 0.72), tiling=2.0, rough=0.5, metal=0.0),
+    "Lacquer_White": dict(tex="Fine", tint=(0.92, 0.92, 0.90), tiling=2.0, rough=0.5, metal=0.0),
+    "Plastic_White": dict(tex="Fine", tint=(0.90, 0.90, 0.88), tiling=6.0, rough=1.2, metal=0.0),
+    "Plastic_Grey": dict(tex="Fine", tint=(0.35, 0.36, 0.37), tiling=6.0, rough=1.8, metal=0.0),
+    "Plastic_Red": dict(tex="Fine", tint=(0.70, 0.08, 0.06), tiling=6.0, rough=1.5, metal=0.0),
+    "Plastic_Yellow": dict(tex="Fine", tint=(0.95, 0.72, 0.08), tiling=6.0, rough=1.5, metal=0.0),
+    # Wood variants
+    "Wood_Light": dict(tex="Wood_Oak", tint=(1.0, 0.95, 0.84), tiling=0.8, rough=1.1, metal=0.0),
+    "Wood_Dark": dict(tex="Wood_Walnut", tint=(0.62, 0.56, 0.50), tiling=0.8, rough=0.9, metal=0.0),
+    "Wood_Weathered": dict(tex="Wood_Oak", tint=(0.72, 0.70, 0.66), tiling=0.8, rough=1.4, metal=0.0),
+    # Textiles
+    "Felt_Green": dict(tex="Fabric", tint=(0.08, 0.36, 0.18), tiling=30.0, rough=1.0, metal=0.0),
+    "Fabric_Grey": dict(tex="Fabric", tint=(0.55, 0.55, 0.53), tiling=12.0, rough=1.0, metal=0.0),
+    "Fabric_Cream": dict(tex="Fabric", tint=(0.86, 0.81, 0.71), tiling=12.0, rough=1.0, metal=0.0),
+    "Linen_White": dict(tex="Fabric", tint=(0.93, 0.92, 0.89), tiling=10.0, rough=1.0, metal=0.0),
+    # Stone, concrete, ceramics
+    "Concrete": dict(tex="Concrete", tint=(0.76, 0.76, 0.74), tiling=1.0, rough=1.0, metal=0.0),
+    "Stone_Sand": dict(tex="Marble", tint=(0.86, 0.79, 0.66), tiling=1.5, rough=1.3, metal=0.0),
+    "Terracotta": dict(tex="Paint", tint=(0.70, 0.36, 0.22), tiling=3.0, rough=1.6, metal=0.0),
+    "Enamel_Cream": dict(tex="Fine", tint=(0.92, 0.88, 0.76), tiling=4.0, rough=0.7, metal=0.0),
+    # Plants
+    "Bark": dict(tex="Wood_Oak", tint=(0.40, 0.34, 0.28), tiling=3.0, rough=1.4, metal=0.0),
+    "Leaves_Green": dict(tex="Fabric", tint=(0.20, 0.36, 0.14), tiling=6.0, rough=1.0, metal=0.0),
+    "Leaves_Dark": dict(tex="Fabric", tint=(0.10, 0.22, 0.09), tiling=6.0, rough=1.0, metal=0.0),
+    "Leaves_Fresh": dict(tex="Fabric", tint=(0.32, 0.48, 0.18), tiling=6.0, rough=1.0, metal=0.0),
+    "Fruit_Red": dict(tex="Fine", tint=(0.70, 0.12, 0.08), tiling=6.0, rough=0.7, metal=0.0),
+    # Light sources (glow in the dark)
+    "Lamp_Glass": dict(tex="Fine", tint=(1.0, 0.88, 0.65), tiling=4.0, rough=0.3, metal=0.0, emissive=4.0),
+    "LED_Red": dict(tex="Fine", tint=(1.0, 0.10, 0.05), tiling=4.0, rough=0.3, metal=0.0, emissive=6.0),
+    "LED_Green": dict(tex="Fine", tint=(0.10, 1.0, 0.20), tiling=4.0, rough=0.3, metal=0.0, emissive=6.0),
+    "Display_Blue": dict(tex="Fine", tint=(0.25, 0.55, 0.95), tiling=4.0, rough=0.3, metal=0.0, emissive=2.0),
+    # Transparent
+    "Glass_Frosted": dict(tex=None, tint=(0.92, 0.94, 0.95), tiling=1.0, rough=0.6, metal=0.0, glass=True),
+    "Glass_Bottle": dict(tex=None, tint=(0.10, 0.28, 0.14), tiling=1.0, rough=0.1, metal=0.0, glass=True),
+    "Glass_Tinted": dict(tex=None, tint=(0.20, 0.23, 0.26), tiling=1.0, rough=0.05, metal=0.0, glass=True),
+    "Water": dict(tex=None, tint=(0.40, 0.65, 0.75), tiling=1.0, rough=0.02, metal=0.0, glass=True),
 }
 
 

@@ -40,7 +40,7 @@ FLOOR_Z = {"EG": 0.0, "KG": -290.0}
 WALL_HEIGHT = {"EG": 250.0, "KG": 265.0}  # KG walls reach the underside of the ground-floor slab (-25)
 SLAB = 25.0
 # Gates as tall as doors: the crew capsule (about 1.85 m) bumps into a lower top frame.
-DOOR_HEIGHT = {"haustuer": 220.0, "tor": 220.0, "schiebetor": 210.0, "pforte": 210.0, "offen": 220.0}
+DOOR_HEIGHT = {"haustuer": 220.0, "tor": 220.0, "schiebetor": 210.0, "pforte": 210.0, "offen": 220.0, "schiebe": 220.0}
 WINDOW_SPAN = {"fenster": (90.0, 210.0), "kipp": (140.0, 210.0), "milch": (140.0, 210.0), "bodentief": (0.0, 210.0),
                "keller": (180.0, 250.0)}
 TAG = {"EG": "DCFloor_EG", "KG": "DCFloor_KG"}
@@ -264,6 +264,208 @@ def disc(label, folder, cx, cy, r, z0, z1, mat, collision=False, mesh=CYLINDER, 
     return finish(a, label, folder, tag, collision)
 
 
+# ---------------------------------------------------------------------------------------------------------
+# Blender models (Art/Items, Docs/Villa/Villa-Modelle.md). Every model is optional: if SM_<id> is not imported
+# yet, the builder keeps its box. Models have their origin at the bottom centre, front = local +Y.
+# ---------------------------------------------------------------------------------------------------------
+
+MODEL = "/Game/DerClou/Items/Meshes/SM_"
+_models = {}
+
+
+def model(mesh_id):
+    """The imported model SM_<mesh_id>, or None."""
+    if mesh_id not in _models:
+        path = MODEL + mesh_id
+        _models[mesh_id] = unreal.load_asset(path) if unreal.EditorAssetLibrary.does_asset_exist(path) else None
+    return _models[mesh_id]
+
+
+def model_box(mesh_id):
+    """Bounding box of the model in its own cm: (min, max) as unreal.Vector."""
+    b = model(mesh_id).get_bounding_box()
+    return b.min, b.max
+
+
+def yaw_of(face):
+    return FACE[face] if isinstance(face, str) else float(face)
+
+
+def place_model(label, folder, mesh_id, at, z, face, tag=None, collision=True, shadow=True, scale=(1.0, 1.0, 1.0),
+                anchor="center", hidden=False):
+    """Puts SM_<mesh_id> on the plan point `at` (metres) at height z (cm), its front towards `face`.
+
+    anchor "center": the middle of its footprint sits on `at`; "back": the middle of its back edge (local -Y) does;
+    "origin": its own origin does. scale is local (x, y, z); negative x mirrors the model.
+    """
+    if not model(mesh_id):
+        return None
+    lo, hi = model_box(mesh_id)
+    sx, sy, sz = scale
+    if anchor == "origin":
+        ox, oy = 0.0, 0.0
+    else:
+        ox = (lo.x + hi.x) / 2 * sx
+        oy = ((lo.y + hi.y) / 2 if anchor == "center" else lo.y) * sy
+        if anchor == "back" and sy < 0:
+            oy = hi.y * sy
+    yaw = yaw_of(face)
+    r = math.radians(yaw)
+    # Local offset rotated into Unreal axes, then subtracted from the target point.
+    dx = ox * math.cos(r) - oy * math.sin(r)
+    dy = ox * math.sin(r) + oy * math.cos(r)
+    loc = ue(at[0], at[1], z)
+    a = spawn(unreal.StaticMeshActor, unreal.Vector(loc.x - dx, loc.y - dy, loc.z), yaw)
+    a.static_mesh_component.set_static_mesh(model(mesh_id))
+    a.set_actor_scale3d(unreal.Vector(sx, sy, sz))
+    return finish(a, label, folder, tag, collision, hidden, shadow)
+
+
+def place_row(label, folder, modules, rect, face, z, tag=None, collision=True, mirror_every_other=False, sz=1.0):
+    """Fills the long side of a plan rectangle with modules, backs against the rect edge opposite `face`.
+
+    modules: one mesh id (repeated as often as it fits) or a list (exactly these, in order along +x / +y).
+    Each module is stretched along the row so that they fill it exactly. Returns the number placed.
+    """
+    ids = modules if isinstance(modules, (list, tuple)) else [modules]
+    if not all(model(m) for m in ids):
+        return 0
+    x0, y0, x1, y1 = rect
+    along_x = face in ("N", "S")
+    length = (x1 - x0) if along_x else (y1 - y0)
+    lo, hi = model_box(ids[0])
+    width = (hi.x - lo.x) / 100.0
+    if not isinstance(modules, (list, tuple)):
+        ids = ids * max(1, round(length / width))
+    n = len(ids)
+    step = length / n
+    back = {"N": y0, "S": y1, "E": x0, "W": x1}[face]
+    for i, mesh_id in enumerate(ids):
+        lo, hi = model_box(mesh_id)
+        sx = step * 100.0 / (hi.x - lo.x)
+        if mirror_every_other and i % 2:
+            sx = -sx
+        p = (x0 if along_x else y0) + (i + 0.5) * step
+        at = (p, back) if along_x else (back, p)
+        place_model(f"{label}_{i}", folder, mesh_id, at, z, face, tag, collision, scale=(sx, 1.0, sz), anchor="back")
+    return n
+
+
+def outward(floor, ax, c, pos, rooms=None):
+    """Plan direction (N/S/E/W) of the side of a wall point that lies outside every room of the floor."""
+    rooms = rooms if rooms is not None else P.rooms_on(floor)
+    if ax == "h":
+        return "S" if P.inside_any(rooms, pos, c + 0.4) else "N"
+    return "W" if P.inside_any(rooms, c + 0.4, pos) else "E"
+
+
+# Fixed furniture: DECO_BOXES label -> (model or list of modules, front, mode, z above the floor, extra).
+# mode "place": native size, centred on the box (anchor "back" for things against a wall); "row": modules.
+DECO_MODELS = {
+    "Deko_Kochinsel": ("Deco_kitchen_island", "N", "place", 0, {}),
+    "Deko_Kuechenzeile_Nord": (["Deco_kitchen_base", "Deco_kitchen_stove", "Deco_kitchen_base"], "S", "row", 0, {}),
+    "Deko_Kuechenzeile_West": (["Deco_kitchen_base", "Deco_kitchen_base", "Deco_kitchen_sink", "Deco_kitchen_base",
+                                "Deco_fridge"], "E", "row", 0, {}),
+    "Deko_Kamin": ("Deco_fireplace", "W", "back", 0, {}),
+    "Deko_Regal_West_1": ("Deco_bookshelf", "E", "row", 0, {"mirror": True}),
+    "Deko_Regal_West_2": ("Deco_bookshelf", "E", "row", 0, {"mirror": True}),
+    "Deko_Regal_Nord": ("Deco_bookshelf", "S", "row", 0, {"mirror": True}),
+    "Deko_Regal_Ost": ("Deco_bookshelf", "W", "row", 0, {"mirror": True}),
+    "Deko_Regal_Geheimtuer": ("Deco_bookshelf", "W", "row", 0, {}),
+    "Deko_WC": ("Deco_toilet", "N", "back", 0, {}),
+    "Deko_Waschbecken": ("Deco_washbasin", "N", "back", 0, {}),
+    "Deko_Waschmaschine": ("Deco_washing_machine", "N", "back", 0, {}),
+    "Deko_Heizung": ("Deco_heating", "N", "back", 0, {}),
+    "Deko_Sicherungskasten": ("Deco_fuse_box", "E", "back", 120, {}),
+    "Deko_Alarmzentrale": ("Deco_alarm_central", "S", "back", 120, {}),
+    "Deko_Weinregal_Sued": ("Deco_wine_rack", "N", "row", 0, {}),
+    "Deko_Weinregal_Mitte": ("Deco_wine_rack", "N", "row", 0, {"sz": 0.9}),
+    "Deko_Billard": ("Deco_billiard_table", "S", "place", 0, {}),
+    "Deko_Laufband": ("Deco_treadmill", "N", "place", 0, {}),
+    "Deko_Hantelbank": ("Deco_weight_bench", "S", "place", 0, {}),
+    "Deko_Saunabank": ("Deco_sauna_bench", "S", "back", 0, {}),
+    "Deko_Werkbank": ("Deco_workbench", "S", "back", 0, {}),
+    "Deko_Regal_Geraeteraum": ("Deco_metal_shelf", "S", "row", 0, {}),
+    "Deko_Auto": ("Deco_car_modern", "N", "place", 0, {"drop": "Deko_Auto_Dach"}),
+    "Deko_Oldtimer": ("Deco_car_classic", "N", "place", 0, {"drop": "Deko_Oldtimer_Dach"}),
+}
+
+# More decoration that has no box: label, floor, model, plan point, front, z above the floor, anchor, collision.
+EXTRA_MODELS = [
+    ("Deko_Alarm_Bedienteil", "EG", "Deco_alarm_keypad", (31.45, 16.15), "N", 135, "back", False),
+    ("Deko_Schluesselbrett", "EG", "Deco_key_board", (28.925, 21.0), "W", 140, "back", False),
+    ("Deko_Gartengeraete", None, "Deco_tool_rack", (10.075, 23.5), "E", 0, "back", False),
+    ("Deko_Rasenmaeher", None, "Deco_lawn_mower", (11.2, 23.3), "E", 0, "center", True),
+    ("Deko_Briefkasten", None, "Deco_mailbox", (33.9, 0.3), "S", 0, "back", True),
+    ("Deko_Kamera_Einfahrt", None, "Deco_security_camera", (10.25, 0.1), "S", 200, "origin", False),
+    ("Deko_Vordach", None, "Deco_canopy", (32.5, 15.85), "S", 0, "origin", False),
+    ("Deko_Poolleiter", None, "Deco_pool_ladder", (28.0, 38.5), "W", 0, "origin", False),
+]
+
+# Door look by villa door type: leaf model, frame model (None = no frame), ADCDoor settings.
+DOOR_LOOK = {
+    "haustuer": ("Door_front", "Door_frame", {}),
+    "tuer": ("Door_inner", "Door_frame", {}),
+    "glas": ("Door_glass", "Door_frame", {}),
+    "glas2": ("Door_french_leaf", "Door_frame", {"double_leaf": True}),
+    "doppel": ("Door_french_leaf", "Door_frame", {"double_leaf": True}),
+    "schiebe": ("Door_sliding_panel", None, {"motion": "SLIDE", "slide_out": 0.0}),
+    "stahl": ("Door_steel", "Door_frame_metal", {}),
+    "panzer": ("Door_vault", "Door_frame_metal", {}),
+    "gitter": ("Door_grate", "Door_frame_metal", {}),
+    "geheim": ("Door_bookshelf", None, {}),
+    "tor": ("Door_garage", "Door_frame_metal", {"motion": "TILT_UP"}),
+    "schiebetor": ("Gate_sliding", None, {"motion": "SLIDE", "slide_out": -12.0}),
+    "pforte": ("Gate_garden", None, {}),
+}
+DOOR_LEAF_BY_ID = {"k_lager": "Door_slatted", "d_seiteneingang": "Door_exterior", "r_seitentuer": "Door_exterior",
+                   "r_geraete": "Door_exterior", "r_garage_hinten": "Door_exterior"}
+# The moving leaf of the lift-and-slide door runs in the inner rail of SM_Door_sliding_frame (cm from the wall line).
+SLIDING_RAIL = 3.6
+
+WINDOW_MODEL = {"fenster": ("Window_casement", 120.0, 120.0), "bodentief": ("Window_tall", 120.0, 210.0),
+                "kipp": ("Window_tilt", 70.0, 70.0), "milch": ("Window_frosted", 100.0, 70.0),
+                "keller": ("Window_cellar", 100.0, 70.0)}
+
+TREE_MODEL = {"laub": ("Tree_deciduous", 3.0), "obst": ("Tree_fruit", 2.0), "nadel": ("Tree_conifer", 2.5)}
+
+
+def door_sides(d):
+    """(exterior, minus_x_inside): is one side of the door outdoors, and is the door's local -X side indoors?"""
+    ax, c, p0, p1, _ = P.door_frame(d)
+    mid = (p0 + p1) / 2
+    # Local -X of a door: plan -y for doors in east-west walls (yaw 0), plan +x for north-south walls (yaw -90).
+    minus = (mid, c - 0.6) if ax == "h" else (c + 0.6, mid)
+    plus = (mid, c + 0.6) if ax == "h" else (c - 0.6, mid)
+    if d["floor"] == "Aussen":
+        inside = [0.0 < q[0] < V.PLOT[2] and 0.0 < q[1] < V.PLOT[3] for q in (minus, plus)]
+    else:
+        rooms = P.rooms_on(d["floor"])
+        inside = [P.inside_any(rooms, *q) for q in (minus, plus)]
+    return not all(inside), inside[0]
+
+
+def apply_door_look(door, d):
+    """Tells the ADCDoor which models to show (it falls back to boxes while they are not imported)."""
+    typ = d["type"]
+    leaf, frame, extra = DOOR_LOOK.get(typ, ("Door_inner", "Door_frame", {}))
+    leaf = DOOR_LEAF_BY_ID.get(d["id"], leaf)
+    exterior, minus_x_inside = door_sides(d)
+    # The models' outside is -X: turn them round when that side is indoors (bookshelf: books face the library).
+    mirror = (exterior and minus_x_inside) or typ == "geheim"
+    try_set(door, "leaf_model", unreal.Name(leaf))
+    try_set(door, "frame_model", unreal.Name(frame or "None"))
+    try_set(door, "show_frame", frame is not None)
+    try_set(door, "mirror_leaf", mirror)
+    try_set(door, "double_leaf", bool(extra.get("double_leaf")))
+    try_set(door, "frame_depth", 24.0 if typ == "panzer" else (32.0 if exterior else 17.0))
+    if "motion" in extra:
+        try_set(door, "motion", getattr(unreal.DCDoorMotion, extra["motion"]))
+    if "slide_out" in extra:
+        try_set(door, "slide_out", extra["slide_out"])
+    return mirror
+
+
 def subtract(rect, holes):
     """Splits a rectangle into rectangles that leave out the holes (grid decomposition, merged per row)."""
     x0, y0, x1, y1 = rect
@@ -436,7 +638,22 @@ def build_walls(floor):
             n += 1
             if hole[4] == "window":
                 glass.append((axis, c, s0, s1, base + lo, base + hi, tag, folder, hole[5]))
+    rooms = P.rooms_on(floor)
     for i, (axis, c, s0, s1, z0, z1, tag, folder, w) in enumerate(glass):
+        win = WINDOW_MODEL.get(w["type"])
+        if win and model(win[0]):
+            mesh_id, w0, h0 = win
+            pos = (s0 + s1) / 2
+            face = outward(floor, axis, c, pos, rooms)
+            at = (pos, c) if axis == "h" else (c, pos)
+            place_model(f"Fenster_{floor}_{i}", folder, mesh_id, at, z0, face, tag,
+                        scale=((s1 - s0) * 100.0 / w0, 1.0, (z1 - z0) / h0), anchor="origin")
+            if w["type"] == "keller" and model("Deco_lightwell"):
+                off = {"N": 0.15, "S": -0.15, "E": 0.15, "W": -0.15}[face]
+                well = (pos, c + off) if axis == "h" else (c + off, pos)
+                place_model(f"Lichtschacht_{i}", "Aussen", "Deco_lightwell", well, 0.0, face, None, collision=False,
+                            scale=(w["width"], 1.0, 1.3), anchor="origin")  # 130 deep: below the window sill
+            continue
         wall_box(f"Fenster_{floor}_{i}", folder, axis, c, s0, s1, 0.03, z0, z1, "MI_Item_Glass", tag)
         # window frame: thin sill below the glass
         wall_box(f"Fenster_{floor}_{i}_Bank", folder, axis, c, s0, s1, 0.34 if floor == "EG" else 0.32, z0 - 4, z0, "MI_Item_Paint_White", tag)
@@ -476,12 +693,23 @@ def place_door(d, floor_z, tag, folder):
         return None
     ax, c, p0, p1, _ = P.door_frame(d)
     width = d["width"]
+    yaw = 0.0 if ax == "h" else -90.0
+    hinge = (p0, c) if ax == "h" else (c, p0)
+    location = ue(hinge[0], hinge[1], floor_z)
     if typ == "schiebe":
         # one sliding leaf opens, the other half is fixed glass
         width = d["width"] / 2
-        wall_box(f"Festglas_{d['id']}", folder, ax, c, p0 + width, p1, 0.03, floor_z, floor_z + 210.0, "MI_Item_Glass", tag)
-    location = ue(p0, c, floor_z) if ax == "h" else ue(c, p0, floor_z)
-    yaw = 0.0 if ax == "h" else -90.0
+        if model("Door_sliding_frame"):
+            exterior, minus_x_inside = door_sides(d)
+            mirror = -1.0 if exterior and minus_x_inside else 1.0
+            place_model(f"Schiebetuer_Rahmen_{d['id']}", folder, "Door_sliding_frame", hinge, floor_z, yaw, tag,
+                        scale=(mirror, 1.0, 1.0), anchor="origin")
+            # the moving leaf runs in the inner rail of the frame model
+            r = math.radians(yaw)
+            off = SLIDING_RAIL * mirror
+            location = unreal.Vector(location.x + off * math.cos(r), location.y + off * math.sin(r), location.z)
+        else:
+            wall_box(f"Festglas_{d['id']}", folder, ax, c, p0 + width, p1, 0.03, floor_z, floor_z + 210.0, "MI_Item_Glass", tag)
     door = spawn(unreal.DCDoor, location, yaw)
     lock = d.get("lock")
     locked = bool(d.get("locked"))
@@ -498,6 +726,7 @@ def place_door(d, floor_z, tag, folder):
     try_set(door, "height", DOOR_HEIGHT.get(typ, 210.0))
     col = PANEL_COLOR.get(typ, (0.5, 0.27, 0.1))
     try_set(door, "panel_color", unreal.LinearColor(col[0], col[1], col[2], 1.0))
+    apply_door_look(door, d)
     door.set_actor_label(f"Tuer_{d['id']}")
     door.set_folder_path(f"Villa/{folder}")
     if tag:
@@ -520,7 +749,7 @@ def build_doors():
     log(f"{n} doors and gates")
 
 
-def stair_steps(label, folder, rect, top_side, z_top, z_bottom, steps, mat, tag):
+def stair_steps(label, folder, rect, top_side, z_top, z_bottom, steps, mat, tag, hidden=False):
     """Solid steps from z_bottom up; top_side = side where the stair starts at z_top (S = low y)."""
     x0, y0, x1, y1 = rect
     rise = (z_top - z_bottom) / (steps + 1)
@@ -536,16 +765,29 @@ def stair_steps(label, folder, rect, top_side, z_top, z_bottom, steps, mat, tag)
             r = (x0 + (i - 1) * g, y0, x0 + i * g, y1)
         else:
             r = (x1 - i * g, y0, x1 - (i - 1) * g, y1)
-        box(f"{label}_{i:02d}", folder, r, z_bottom, top, mat, tag)
+        box(f"{label}_{i:02d}", folder, r, z_bottom, top, mat, tag, hidden=hidden)
 
 
 def build_stairs():
-    stair_steps("Kellertreppe", "Keller", (29.15, 17.4, 30.65, 21.85), "S", 0.0, FLOOR_Z["KG"], 15, "MI_Item_Wood_Oak", TAG["KG"])
+    # The stair models start at their bottom step and rise away from their front. With a model, the step boxes
+    # stay hidden for collision and the nav mesh.
+    cellar = bool(model("Stair_cellar"))
+    stair_steps("Kellertreppe", "Keller", (29.15, 17.4, 30.65, 21.85), "S", 0.0, FLOOR_Z["KG"], 15, "MI_Item_Wood_Oak", TAG["KG"],
+                hidden=cellar)
+    place_model("Kellertreppe_Modell", "Keller", "Stair_cellar", (29.9, 21.85), FLOOR_Z["KG"], "N", TAG["KG"],
+                collision=False, anchor="origin")
     # Outside cellar stair: pit floor, steps, retaining walls with a parapet above the garden.
+    outside = bool(model("Stair_outside"))
     box("Aussentreppe_Boden", "Aussen", (44.15, 24.3, 45.75, 30.15), FLOOR_Z["KG"] - 30.0, FLOOR_Z["KG"], "MI_Item_Ground_Concrete")
-    stair_steps("Aussentreppe", "Aussen", (44.2, 24.4, 45.6, 28.0), "S", 0.0, FLOOR_Z["KG"], 14, "Paving", None)
-    box("Aussentreppe_Mauer_Ost", "Aussen", (45.65, 24.3, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster")
-    box("Aussentreppe_Mauer_Nord", "Aussen", (44.15, 30.05, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster")
+    stair_steps("Aussentreppe", "Aussen", (44.2, 24.4, 45.6, 28.0), "S", 0.0, FLOOR_Z["KG"], 14, "Paving", None, hidden=outside)
+    box("Aussentreppe_Mauer_Ost", "Aussen", (45.65, 24.3, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster", hidden=outside)
+    box("Aussentreppe_Mauer_Nord", "Aussen", (44.15, 30.05, 45.85, 30.25), FLOOR_Z["KG"], 95.0, "Plaster", hidden=outside)
+    place_model("Aussentreppe_Modell", "Aussen", "Stair_outside", (44.9, 28.0), FLOOR_Z["KG"], "N", None,
+                collision=False, anchor="origin")
+    # Stair up to the 1st floor (not built yet): only the look, the crew cannot go up.
+    if place_model("Hallentreppe_Modell", "Haus", "Stair_hall", (35.0, 16.6), 0.0, "S", TAG["EG"], collision=False,
+                   anchor="origin"):
+        box("Hallentreppe_Sperre", "Haus", (34.2, 16.6, 35.8, 21.6), 0.0, 250.0, "Stone", TAG["EG"], hidden=True, shadow=False)
     log("stairs built")
 
 
@@ -604,10 +846,36 @@ def build_things():
         p.set_folder_path("Villa/Gegenstaende")
         if floor:
             try_set(p, "tags", [unreal.Name(TAG[floor])])
+    drop = {spec[4]["drop"] for spec in DECO_MODELS.values() if "drop" in spec[4] and model(spec[0])}
+    modelled = 0
     for label, floor, rect, z0, z1, mat in DECO_BOXES:
         base = FLOOR_Z.get(floor, 0.0) if floor else 0.0
-        box(label, "Moebel", rect, base + z0, base + z1, mat, TAG[floor] if floor else None, collision=z0 < 30)
-    log(f"{len(THINGS)} things, {len(DECO_BOXES)} fixed pieces")
+        tag = TAG[floor] if floor else None
+        if label in drop:
+            continue
+        spec = DECO_MODELS.get(label)
+        if spec and place_deco(label, spec, rect, base, tag, collision=z0 < 30):
+            modelled += 1
+            continue
+        box(label, "Moebel", rect, base + z0, base + z1, mat, tag, collision=z0 < 30)
+    for label, floor, mesh_id, at, face, z, anchor, collision in EXTRA_MODELS:
+        base = FLOOR_Z.get(floor, 0.0) if floor else 0.0
+        if place_model(label, "Moebel", mesh_id, at, base + z, face, TAG[floor] if floor else None, collision, anchor=anchor):
+            modelled += 1
+    log(f"{len(THINGS)} things, {len(DECO_BOXES)} fixed pieces, {modelled} pieces modelled")
+
+
+def place_deco(label, spec, rect, base, tag, collision):
+    """A fixed piece of furniture as model(s) on its plan box. False if the model is not imported yet."""
+    mesh, face, mode, z, extra = spec
+    x0, y0, x1, y1 = rect
+    if mode == "row":
+        return place_row(label, "Moebel", mesh, rect, face, base + z, tag, collision,
+                         mirror_every_other=extra.get("mirror", False), sz=extra.get("sz", 1.0)) > 0
+    if mode == "back":
+        at = {"N": ((x0 + x1) / 2, y0), "S": ((x0 + x1) / 2, y1), "E": (x0, (y0 + y1) / 2), "W": (x1, (y0 + y1) / 2)}[face]
+        return place_model(label, "Moebel", mesh, at, base + z, face, tag, collision, anchor="back") is not None
+    return place_model(label, "Moebel", mesh, ((x0 + x1) / 2, (y0 + y1) / 2), base + z, face, tag, collision) is not None
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -640,10 +908,14 @@ def build_ground():
                 continue
             if kind == "holz" and s.get("label") == "Pavillon":
                 box(label, "Aussen", rect, 0.0, 12.0, mat, collision=False)
+                pavilion = place_model("Pavillon", "Aussen", "Deco_pavilion",
+                                       ((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2), 12.0, "S", collision=False)
                 for j, (px, py) in enumerate(((rect[0], rect[1]), (rect[2], rect[1]), (rect[0], rect[3]), (rect[2], rect[3]))):
                     px += 0.15 if px == rect[0] else -0.15
                     py += 0.15 if py == rect[1] else -0.15
-                    disc(f"Pavillon_Pfosten_{j}", "Aussen", px, py, 0.08, 0.0, 260.0, "MI_Item_Wood_Walnut", collision=True)
+                    post = disc(f"Pavillon_Pfosten_{j}", "Aussen", px, py, 0.08, 0.0, 260.0, "MI_Item_Wood_Walnut", collision=True)
+                    if pavilion:
+                        post.set_actor_hidden_in_game(True)  # the model has its own posts; these only block
                 continue
             if kind == "beet" and rect[2] - rect[0] < 1.5 and rect[3] - rect[1] > 3.0 and rect[0] > 15 and rect[0] < 19:
                 # raised herb beds
@@ -653,6 +925,8 @@ def build_ground():
         elif shape[0] == "circle":
             cx, cy, r = shape[1]
             if kind == "wasser":
+                if place_model("Brunnen", "Aussen", "Deco_fountain", (cx, cy), 0.0, "S"):
+                    continue
                 disc("Brunnen_Becken", "Aussen", cx, cy, r, 0.0, 45.0, "Stone", collision=True)
                 disc("Brunnen_Wasser", "Aussen", cx, cy, r - 0.15, 45.0, 47.0, "Water")
             else:
@@ -686,12 +960,28 @@ def build_pool(rect):
     # nobody walks over the water
     box("Pool_Sperre", "Aussen", rect, 0.0, 100.0, "Stone", hidden=True, shadow=False)
     for i, lx in enumerate((30.0, 32.0, 34.0, 36.0)):
-        box(f"Liege_{i}", "Aussen", (lx, 41.5, lx + 0.7, 42.9), 0.0, 35.0, "MI_Item_Wood_Oak")
+        # head end away from the pool
+        if not place_model(f"Liege_{i}", "Aussen", "Deco_sun_lounger", (lx + 0.35, 42.45), 0.0, "S"):
+            box(f"Liege_{i}", "Aussen", (lx, 41.5, lx + 0.7, 42.9), 0.0, 35.0, "MI_Item_Wood_Oak")
+
+
+def place_hedge(i, h):
+    """Hedge strip as a row of 2 m modules (thuja for the tall ones, privet for the low ones)."""
+    mesh_id = "Hedge_thuja" if "Thuja" in h["name"] else "Hedge_privet"
+    if not model(mesh_id):
+        return False
+    x0, y0, x1, y1 = h["rect"]
+    lo, hi = model_box(mesh_id)
+    face = "N" if (x1 - x0) >= (y1 - y0) else "E"
+    return place_row(f"Hecke_{i}", "Aussen", mesh_id, h["rect"], face, 0.0, None, True, mirror_every_other=True,
+                     sz=h["height"] * 100.0 / (hi.z - lo.z)) > 0
 
 
 def build_hedges_fence():
     for i, h in enumerate(V.HEDGES):
-        box(f"Hecke_{i}", "Aussen", h["rect"], 0.0, h["height"] * 100.0, "Hedge")
+        if not place_hedge(i, h):
+            box(f"Hecke_{i}", "Aussen", h["rect"], 0.0, h["height"] * 100.0, "Hedge")
+    fence_models = bool(model("Fence_panel") and model("Fence_post"))
     gates = [d for d in V.DOORS if d["floor"] == "Aussen"]
     pts = V.FENCE
     n = 0
@@ -715,6 +1005,26 @@ def build_hedges_fence():
                     nxt.append((g1, p1))
             pieces = nxt
         for p0, p1 in pieces:
+            if fence_models:
+                # 2 m panels stretched to fill the piece, posts between them; the hidden box below blocks.
+                face = ("S" if c < 24.0 else "N") if horizontal else ("W" if c < 30.0 else "E")
+                r = (p0, c - 0.03, p1, c + 0.03) if horizontal else (c - 0.03, p0, c + 0.03, p1)
+                box(f"Zaun_Sperre_{n}", "Zaun", r, 0.0, 180.0, "MI_Item_Iron_Dark", hidden=True, shadow=False)
+                k = max(1, round((p1 - p0) / 2.0))
+                step = (p1 - p0) / k
+                gate_edges = [e for g in gates for e in P.door_frame(g)[2:4]]
+                for q in range(k):
+                    v = p0 + (q + 0.5) * step
+                    place_model(f"Zaun_Feld_{n}_{q}", "Zaun", "Fence_panel", (v, c) if horizontal else (c, v), 0.0, face,
+                                collision=False, scale=(step / 2.0, 1.0, 1.0), anchor="origin")
+                for q in range(k + 1):
+                    v = p0 + q * step
+                    if any(abs(v - e) < 0.3 for e in gate_edges) and 0.5 < v < (60.0 if horizontal else 48.0) - 0.5:
+                        continue  # the gate's own frame is the post
+                    place_model(f"Zaun_Pfosten_{n}_{q}", "Zaun", "Fence_post", (v, c) if horizontal else (c, v), 0.0, face,
+                                collision=False, anchor="origin")
+                n += 1
+                continue
             for z0, z1 in ((12.0, 18.0), (100.0, 106.0), (172.0, 180.0)):
                 r = (p0, c - 0.02, p1, c + 0.02) if horizontal else (c - 0.02, p0, c + 0.02, p1)
                 box(f"Zaun_Riegel_{n}", "Zaun", r, z0, z1, "MI_Item_Iron_Dark", collision=False)
@@ -744,7 +1054,19 @@ def build_hedges_fence():
 def build_trees():
     for i, (x, y, r, kind) in enumerate(V.TREES):
         trunk_h = 180.0 if kind == "obst" else 320.0
-        disc(f"Baum_{i}_Stamm", "Baeume", x, y, 0.16 if kind != "obst" else 0.1, 0.0, trunk_h, "MI_Item_Wood_Walnut", collision=True)
+        trunk = disc(f"Baum_{i}_Stamm", "Baeume", x, y, 0.16 if kind != "obst" else 0.1, 0.0, trunk_h, "MI_Item_Wood_Walnut",
+                     collision=True)
+        name, r0 = TREE_MODEL[kind]
+        if model(f"{name}_trunk") and model(f"{name}_canopy"):
+            # The plain trunk stays as an invisible blocker; the model is scaled to the canopy radius and turned a bit.
+            trunk.set_actor_hidden_in_game(True)
+            s = r / r0
+            yaw = (i * 137.0) % 360.0
+            place_model(f"Baum_{i}_Stamm_Modell", "Baeume", f"{name}_trunk", (x, y), 0.0, yaw, collision=False,
+                        scale=(s, s, s), anchor="origin")
+            place_model(f"Baum_{i}_Krone", "Baeume", f"{name}_canopy", (x, y), 0.0, yaw, "DCTreeCanopy", collision=False,
+                        scale=(s, s, s), anchor="origin")
+            continue
         if kind == "nadel":
             a = mesh_actor(CONE, ue(x, y, 100.0 + r * 125.0), unreal.Vector(r * 2.0, r * 2.0, r * 2.5), "Leaves")
             finish(a, f"Baum_{i}_Krone", "Baeume", collision=False)

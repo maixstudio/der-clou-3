@@ -20,10 +20,25 @@ enum class EDCDoorAction : uint8
 	PickLock
 };
 
+/** How the panel moves when the door opens. Only the look: rules and nav mesh are the same. */
+UENUM(BlueprintType)
+enum class EDCDoorMotion : uint8
+{
+	/** On hinges at the jamb (a double door has a second leaf at the other jamb). */
+	Swing,
+	/** Sideways along +Y, a little in front of the wall (lift-and-slide door, driveway gate). */
+	Slide,
+	/** Up and over: the panel tilts about its top edge until it lies under the lintel (garage door). */
+	TiltUp
+};
+
 /**
  * A door that fits a 100 cm wall opening. The actor origin is the hinge at floor level; the
  * closed panel extends along +Y. While the door is closed an invisible blocker in the opening
  * removes it from the nav mesh; a locked door shows a red padlock on both sides.
+ *
+ * Looks: the panel and frame are modelled meshes from Art/Items (SM_<LeafModel>, SM_<FrameModel>_post/_top)
+ * fitted to Width x Height; without them the door falls back to coloured boxes.
  */
 UCLASS()
 class DERCLOU3_API ADCDoor : public AActor, public IDCInteractable
@@ -126,14 +141,53 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Door", meta = (ClampMin = "30", ClampMax = "120"))
 	float OpenAngle = 90.f;
 
+	/** Colour of the box panel when there is no model. */
 	UPROPERTY(EditAnywhere, Category = "Door")
 	FLinearColor PanelColor = FLinearColor(0.5f, 0.27f, 0.1f);
+
+	/** Modelled panel SM_<LeafModel> (origin at the hinge, leaf along +Y). None or not imported: coloured box. */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	FName LeafModel = TEXT("Door_inner");
+
+	/** Modelled frame SM_<FrameModel>_post and SM_<FrameModel>_top. None or not imported: coloured boxes. */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	FName FrameModel = TEXT("Door_frame");
+
+	/** False: no frame at all (the opening has its own, e.g. the lift-and-slide door or a gate between posts). */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	bool bShowFrame = true;
+
+	/** Two leaves hinged at both jambs that open the same way (only with Swing). */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	bool bDoubleLeaf = false;
+
+	/** Turns the model's faces round (its outside, -X, faces +X instead). */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	bool bMirrorLeaf = false;
+
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	EDCDoorMotion Motion = EDCDoorMotion::Swing;
+
+	/** Depth of the frame across the wall (about the wall thickness + 2 cm, so the trim covers both faces). */
+	UPROPERTY(EditAnywhere, Category = "Door|Look", meta = (ClampMin = "4"))
+	float FrameDepth = 16.f;
+
+	/** Slide: how far the panel first moves out of the wall line, towards -X (negative: towards +X). */
+	UPROPERTY(EditAnywhere, Category = "Door|Look")
+	float SlideOut = 10.f;
 
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TObjectPtr<USceneComponent> Hinge;
 
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TObjectPtr<UStaticMeshComponent> Panel;
+
+	/** Second leaf of a double door, hinged at the far jamb. */
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TObjectPtr<USceneComponent> Hinge2;
+
+	UPROPERTY(VisibleAnywhere, Category = "Door")
+	TObjectPtr<UStaticMeshComponent> Panel2;
 
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TObjectPtr<UStaticMeshComponent> Handle;
@@ -166,6 +220,16 @@ protected:
 private:
 	void ApplyLayout();
 	void UpdateState();
+	/** Puts the panel(s) where they stand at Amount (0 closed .. 1 open), swinging to side -Sign. */
+	void ApplyOpenPose(float Amount, float Sign);
+	/** Width of one leaf: half the opening for a double door. */
+	double GetLeafWidth() const;
+	bool IsDoubleSwing() const { return bDoubleLeaf && Motion == EDCDoorMotion::Swing; }
+	/** Height of the hinge above the floor (the top edge for TiltUp). */
+	double GetHingeZ() const { return Motion == EDCDoorMotion::TiltUp ? Height : 0.0; }
+	/** True while the panel and frame show models (no box colours, no separate handle). */
+	bool bLeafModel = false;
+	bool bFrameModel = false;
 	/** +1 or -1 along the door's local X axis: the side the open panel stands on. */
 	double GetSwingSide() const { return -SwingSign; }
 	/** +1 or -1 along the door's local X axis: the side From is on. */
