@@ -271,6 +271,16 @@ namespace
 		return Text;
 	}
 
+	/**
+	 * The door opening is crossed on the door's own storey: the opening test looks from above only,
+	 * so a walk through the hall must not pass "through" the vault door one storey below.
+	 */
+	bool CrossesOnSameFloor(const ADCDoor* Door, const FVector& A, const FVector& B)
+	{
+		const double DoorZ = Door->GetActorLocation().Z;
+		return FMath::Min(FMath::Abs(A.Z - DoorZ), FMath::Abs(B.Z - DoorZ)) < 180.0 && Door->CrossesOpening(A, B);
+	}
+
 	/** Doors the way passes through, in the order they are met, with the distance walked up to each (cm). */
 	TArray<TPair<FName, double>> DoorCrossings(UWorld* World, const TArray<FVector>& Path)
 	{
@@ -283,7 +293,7 @@ namespace
 			{
 				const FName Name = It->GetFName();
 				if (!Crossings.ContainsByPredicate([Name](const TPair<FName, double>& Entry) { return Entry.Key == Name; })
-					&& It->CrossesOpening(Path[Point - 1], Path[Point]))
+					&& CrossesOnSameFloor(*It, Path[Point - 1], Path[Point]))
 				{
 					const double Into = FMath::Clamp(FVector::Dist2D(Path[Point - 1], It->GetCenter()), 0.0, Segment);
 					Crossings.Add({ Name, Walked + Into });
@@ -302,7 +312,7 @@ namespace
 		{
 			for (TActorIterator<ADCDoor> It(World); It; ++It)
 			{
-				if (!Doors.Contains(It->GetFName()) && It->CrossesOpening(Path[Point - 1], Path[Point]))
+				if (!Doors.Contains(It->GetFName()) && CrossesOnSameFloor(*It, Path[Point - 1], Path[Point]))
 				{
 					Doors.Add(It->GetFName());
 				}
@@ -548,6 +558,8 @@ void UDCHeistStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 void UDCHeistStateSubsystem::OnNavigationRebuilt(ANavigationData* NavData)
 {
+	bNavigationGenerated = true;
+	LastNavigationGenerated = GetWorld()->GetTimeSeconds();
 	// Only while planning: during playback the schedule stays as it was when it started.
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(GetWorld());
 	if (Plans && Plans->GetMode() == EDCPlanMode::Planning)
@@ -2083,6 +2095,29 @@ bool UDCHeistStateSubsystem::CanReach(const FVector& From, const FVector& To) co
 	}
 	TArray<FVector> Through;
 	return WayThroughDoors(World, From, Goal.Location, Through);
+}
+
+bool UDCHeistStateSubsystem::IsNavigationReady(const UObject* WorldContext)
+{
+	UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	UNavigationSystemV1* Navigation = World ? FNavigationSystem::GetCurrent<UNavigationSystemV1>(World) : nullptr;
+	if (!Navigation || Navigation->IsNavigationBuildInProgress() || Navigation->GetNumRemainingBuildTasks() > 0
+		|| Navigation->GetNumRunningBuildTasks() > 0 || Navigation->HasDirtyAreasQueued())
+	{
+		return false;
+	}
+	// Right after loading, a level that rebuilds its nav mesh reports "nothing to do" in between the batches of
+	// that rebuild. Ready = the first batch came and then a second passed without another one (with a safety
+	// limit, in case everything finished before anyone listened).
+	const ANavigationData* Data = Navigation->GetDefaultNavDataInstance();
+	const UDCHeistStateSubsystem* Heist = World->GetSubsystem<UDCHeistStateSubsystem>();
+	const double Now = World->GetTimeSeconds();
+	if (Data && Data->NeedsRebuildOnLoad() && Heist && Now < 20.0
+		&& (!Heist->bNavigationGenerated || Now - Heist->LastNavigationGenerated < 1.0))
+	{
+		return false;
+	}
+	return true;
 }
 
 TArray<ADCDoor*> UDCHeistStateSubsystem::FindDoorsOnWay(const FVector& From, const FVector& To) const

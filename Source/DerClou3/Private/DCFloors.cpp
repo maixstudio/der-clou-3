@@ -243,10 +243,6 @@ bool UDCFloorSubsystem::HitUnderCursor(APlayerController* Controller, FHitResult
 		return false;
 	}
 	const UDCFloorSubsystem* Floors = Get(Controller);
-	if (!Floors || (Floors->HiddenActors.IsEmpty() && Floors->HiddenCrew.IsEmpty()))
-	{
-		return Controller->GetHitResultUnderCursor(ECC_Visibility, false, OutHit);
-	}
 	FVector Origin;
 	FVector Direction;
 	if (!Controller->DeprojectMousePositionToWorld(Origin, Direction))
@@ -254,21 +250,39 @@ bool UDCFloorSubsystem::HitUnderCursor(APlayerController* Controller, FHitResult
 		return false;
 	}
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(DCFloorCursor), false);
-	for (const TWeakObjectPtr<AActor>& Hidden : Floors->HiddenActors)
+	if (Floors)
 	{
-		if (const AActor* Actor = Hidden.Get())
+		for (const TWeakObjectPtr<AActor>& Hidden : Floors->HiddenActors)
 		{
-			Params.AddIgnoredActor(Actor);
+			if (const AActor* Actor = Hidden.Get())
+			{
+				Params.AddIgnoredActor(Actor);
+			}
+		}
+		for (const TWeakObjectPtr<AActor>& Hidden : Floors->HiddenCrew)
+		{
+			if (const AActor* Actor = Hidden.Get())
+			{
+				Params.AddIgnoredActor(Actor);
+			}
 		}
 	}
-	for (const TWeakObjectPtr<AActor>& Hidden : Floors->HiddenCrew)
+	// What cannot be seen cannot be clicked either: invisible blockers (fence, pool) let the click through
+	// to the ground behind them.
+	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
 	{
-		if (const AActor* Actor = Hidden.Get())
+		if (!Controller->GetWorld()->LineTraceSingleByChannel(OutHit, Origin, Origin + Direction * 100000.0, ECC_Visibility, Params))
 		{
-			Params.AddIgnoredActor(Actor);
+			return false;
 		}
+		const AActor* Actor = OutHit.GetActor();
+		if (!Actor || !Actor->IsHidden())
+		{
+			return true;
+		}
+		Params.AddIgnoredActor(Actor);
 	}
-	return Controller->GetWorld()->LineTraceSingleByChannel(OutHit, Origin, Origin + Direction * 100000.0, ECC_Visibility, Params);
+	return false;
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -20,6 +20,8 @@ class DERCLOU3_API ADCPlanGhost : public AActor
 	GENERATED_BODY()
 
 public:
+	/** Only something to look at: never part of the walkable area (spawning it must not rebuild the nav mesh). */
+	virtual bool IsComponentRelevantForNavigation(UActorComponent* Component) const override { return false; }
 	ADCPlanGhost();
 
 	virtual void Tick(float DeltaSeconds) override;

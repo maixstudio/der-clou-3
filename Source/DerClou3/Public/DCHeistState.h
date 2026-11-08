@@ -269,6 +269,8 @@ public:
 	 * once they are open). Empty when the nav mesh lets one through as it is.
 	 */
 	TArray<ADCDoor*> FindDoorsOnWay(const FVector& From, const FVector& To) const;
+	/** The nav mesh is built (after loading a large level it takes a few seconds). */
+	static bool IsNavigationReady(const UObject* WorldContext);
 	/** True if From reaches To on foot - directly or through doors (open or not). */
 	bool CanReach(const FVector& From, const FVector& To) const;
 	/** Short name of a step: "Hintertür knacken", "Wandtresor ausräumen". */
@@ -319,6 +321,10 @@ private:
 	/** The nav mesh was rebuilt (a door opened, the level loaded): ways may have changed. */
 	UFUNCTION()
 	void OnNavigationRebuilt(ANavigationData* NavData);
+	/** The nav mesh finished building at least once in this world (a level that rebuilds on load has no usable one before). */
+	bool bNavigationGenerated = false;
+	/** World time of the last "nav mesh finished" (a rebuild after loading comes in many batches). */
+	double LastNavigationGenerated = -1.0;
 	void UpdateMarkers();
 	void UpdateGhosts();
 	/** Planning without a preview: one ghost of the selected crew member where their next step begins. */

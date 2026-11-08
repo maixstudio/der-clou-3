@@ -369,7 +369,7 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   `DerClou.Variants`). Selbsttests nutzen immer die Standardwerte (`-DCVariant=GhostPin,HelpMenu,InsertButton`
   setzt sie) und speichern nichts. Selbsttest `-DCSelfTest=Variants` (L_House01, Screenshots `ghost_figure.png`,
   `ghost_pin.png`).
-- **Villa Lindenhof, Bauabschnitt 1 (Schritt 22, 2026-11-08):** Grundstück 60 × 48 m, Remise, Erdgeschoss, Keller.
+- **Villa Lindenhof, Bauabschnitt 1 (Schritt 24, 2026-11-08):** Grundstück 60 × 48 m, Remise, Erdgeschoss, Keller.
   Plan + Entscheidungen: `Docs/Villa/Villa-Grundriss.html` (aus `python Scripts/Levels/villa_plan.py`, auch als Artifact),
   `Docs/Plan-Naechste-Schritte.md` (Abschnitt Villa). Daten (einzige Quelle für Zeichnung und Level):
   `Scripts/Levels/villa_layout.py` (Meter, x = Ost, y = Nord; Unreal X = y·100, Y = x·100).
@@ -396,6 +396,26 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - **Noch nicht gebaut:** Fenster als Einstieg (Regeln auf der Seite, vom User bestätigt), Bewegungsmelder, Alarm,
     Panzertür mit Fertigkeit Tresore (bisher Schlösser 8), 1. Stock. Modelle aus Blender:
     Schritt 26.
+- **Bedienung entrümpelt, Wegenetz-Schleife behoben (Schritt 25, User-Feedback 2026-11-08):**
+  - Planungsleiste: „Planen | Ausprobieren“ und „Rückgängig / Wiederholen“ sind weg. Neu ist der Knopf „Letzten Schritt
+    löschen“; ist ein Schritt mitten im Plan gewählt, heißt er „Schritt N löschen“ und tut dasselbe wie Entf
+    (`DeleteStep`, `DescribeDeleteStep`). Strg+Z geht noch ohne Knopf, „Wiederholen“ gibt es nicht mehr. Den
+    Direkt-Modus nutzen nur noch die Selbsttests.
+  - Figur wechseln (Karte, Taste 1–9, Klick auf Figur oder Geist) setzt den Zeitcursor ans Ende ihres Plans, ohne
+    Plan an den Anfang (`ShowCrewMoment`). Neue Schritte schieben einen aktiven Zeitcursor mit (`FollowNewSteps`).
+  - Klick ins Gelände: Das Ziel liegt auf dem begehbaren Boden (`ProjectPointToNavigation`), sonst kommt „Dort kann
+    niemand stehen“. Unsichtbares (Zaun- und Pool-Sperren) fängt keine Klicks mehr ab (`UDCFloorSubsystem::HitUnderCursor`).
+  - Türen zählen auf dem Weg nur auf ihrem eigenen Stockwerk (`CrossesOnSameFloor`); vorher lief ein Weg durch die
+    Halle „durch“ die Panzertür im Keller darunter.
+  - **Ursache der Wegfehler:** Weg-Markierungen, Geist, Klick-Ring und Lärm-Ringe meldeten sich beim NavMesh an. Jedes
+    Neuzeichnen baute das NavMesh neu, danach rechnete die Planung neu und zeichnete wieder neu. Auf der Villa war das
+    NavMesh bis zu 20 s nach dem Laden nicht fertig; daher kamen Linien quer durch den Zaun und „kommt nicht hin“
+    beim Abspielen. Jetzt geben rein optische Actors `IsComponentRelevantForNavigation() = false` zurück, und das
+    NavMesh der Villa ist nach etwa 0,5 s fertig. Neue optische Actors bitte genauso.
+  - Abspielen wartet, bis das NavMesh fertig ist (`UDCHeistStateSubsystem::IsNavigationReady`, Meldung „Wege werden
+    noch berechnet …“).
+  - Selbsttest Villa erweitert: Rosa wartet auf Vics Schritt 1 und geht durch die Pforte in den Garten; Zeitsprung
+    beim Wechseln; Löschen-Knopf; Türen pro Stockwerk; zweiter Durchgang nach dem Neuladen spielt sofort ab.
 - **Villa-Modelle aus Blender (Schritt 26, 2026-11-08):** alle Objekte von Bauabschnitt 1 modelliert – 83 Objekte in
   17 Gruppen, je ein Agent mit höchstens 5 Objekten. Auftragsblatt, Maße, Konventionen und Stand:
   `Docs/Villa/Villa-Modelle.md` (dort auch die Katalog-Vorschläge der Agenten).

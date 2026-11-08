@@ -34,6 +34,7 @@
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "DCFloors.h"
+#include "NavigationSystem.h"
 
 #define LOCTEXT_NAMESPACE "DCPlayerController"
 
@@ -282,18 +283,13 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	}
 	if (WasInputKeyJustPressed(EKeys::BackSpace) || WasInputKeyJustPressed(EKeys::Delete))
 	{
-		const int32 Insert = GetInsertIndex();
-		Insert != INDEX_NONE ? RemoveStep(Insert - 1) : RemoveLastStep();
+		DeleteStep();
 	}
-	// Strg+Z takes back, Strg+Y or Strg+Umschalt+Z brings back.
+	// Strg+Z still takes the last change back (no buttons for it any more, no "Wiederholen").
 	const bool bControl = IsInputKeyDown(EKeys::LeftControl) || IsInputKeyDown(EKeys::RightControl);
 	if (bControl && WasInputKeyJustPressed(EKeys::Z))
 	{
-		IsInputKeyDown(EKeys::LeftShift) || IsInputKeyDown(EKeys::RightShift) ? RedoPlan() : UndoPlan();
-	}
-	if (bControl && WasInputKeyJustPressed(EKeys::Y))
-	{
-		RedoPlan();
+		UndoPlan();
 	}
 
 	const bool bMenuOpen = RadialMenu && RadialMenu->IsOpen();
@@ -728,7 +724,12 @@ void ADCPlayerController::HandleClick()
 	}
 	if (ADCCrewCharacter* Crew = Cast<ADCCrewCharacter>(Hit.GetActor()))
 	{
+		const bool bOther = Crew != Selected;
 		Select(Crew);
+		if (bOther)
+		{
+			ShowCrewMoment(Crew);
+		}
 		return;
 	}
 	// The ghost of a crew member stands for them: clicking it selects them.
@@ -736,7 +737,12 @@ void ADCPlayerController::HandleClick()
 	{
 		if (ADCCrewCharacter* Crew = UDCHeistStateSubsystem::Get(this)->FindCrew(Ghost->GetCrew()))
 		{
+			const bool bOther = Crew != Selected;
 			Select(Crew);
+			if (bOther)
+			{
+				ShowCrewMoment(Crew);
+			}
 		}
 		return;
 	}
@@ -769,6 +775,24 @@ void ADCPlayerController::HandleClick()
 		FDCPlanTask Task;
 		Task.Type = EDCPlanTaskType::Move;
 		Task.Location = Hit.ImpactPoint;
+		// The goal is the walkable ground there (not the top of a hedge or a fountain rim).
+		if (UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld()))
+		{
+			FNavLocation OnGround;
+			if (Navigation->ProjectPointToNavigation(Hit.ImpactPoint, OnGround, FVector(80.0, 80.0, 250.0)))
+			{
+				Task.Location = OnGround.Location;
+			}
+			else if (UDCHeistStateSubsystem::IsNavigationReady(this))
+			{
+				ShowToast(LOCTEXT("NoGround", "Dort kann niemand stehen"), true);
+				if (Marker)
+				{
+					Marker->Show(Hit.ImpactPoint, false);
+				}
+				return;
+			}
+		}
 		IssueTask(Task);
 		if (Marker)
 		{
@@ -846,6 +870,7 @@ void ADCPlayerController::IssueTasks(const TArray<FDCPlanTask>& Tasks)
 		ShowToast(FText::Format(LOCTEXT("StepsAdded", "{0}, Schritte {1}–{2}: {3}"), Selected->GetCrewName(), FText::AsNumber(First),
 			FText::AsNumber(First + Tasks.Num() - 1), FText::FromString(FString::Join(Names, TEXT(", dann ")))));
 		bLastEditProblem = CheckPlanAfterEdit(Before, Selected->GetFName(), First - 1);
+		FollowNewSteps(First - 1 + Tasks.Num() - 1);
 		return;
 	}
 	case EDCPlanMode::Direct:
@@ -885,6 +910,7 @@ void ADCPlayerController::IssueTask(const FDCPlanTask& Task)
 		ON_SCOPE_EXIT
 		{
 			bLastEditProblem = CheckPlanAfterEdit(Before, Own, NewIndex);
+			FollowNewSteps(NewIndex);
 		};
 		ShowToast(At == INDEX_NONE
 			? FText::Format(LOCTEXT("StepAdded", "{0}, Schritt {1}: {2}"), Selected->GetCrewName(), FText::AsNumber(NewIndex + 1), Heist->DescribeTask(Task))
@@ -916,6 +942,14 @@ void ADCPlayerController::StartPlayback()
 	{
 		Plans->bPlayAfterLoad = true;
 		ReloadLevel();
+		return;
+	}
+	// Right after loading, a large level still builds its ways: starting now, everyone would stand still.
+	if (!UDCHeistStateSubsystem::IsNavigationReady(this))
+	{
+		ShowToast(LOCTEXT("WaitForWays", "Wege werden noch berechnet …"));
+		FTimerHandle Retry;
+		GetWorldTimerManager().SetTimer(Retry, this, &ADCPlayerController::StartPlayback, 0.25f, false);
 		return;
 	}
 	if (ContainerPanel)
@@ -1092,6 +1126,63 @@ void ADCPlayerController::RemoveLastStep()
 	}
 }
 
+void ADCPlayerController::DeleteStep()
+{
+	const int32 Insert = GetInsertIndex();
+	Insert != INDEX_NONE ? RemoveStep(Insert - 1) : RemoveLastStep();
+}
+
+FText ADCPlayerController::DescribeDeleteStep() const
+{
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+	if (!Selected || !Plans || GetMode() != EDCPlanMode::Planning)
+	{
+		return FText::GetEmpty();
+	}
+	const int32 Count = Plans->GetTasks(Selected->GetFName()).Num();
+	if (Count == 0)
+	{
+		return FText::GetEmpty();
+	}
+	// A picked step in the middle goes, otherwise the last one.
+	const int32 Insert = GetInsertIndex();
+	return Insert != INDEX_NONE && Insert < Count
+		? FText::Format(LOCTEXT("DeletePicked", "Schritt {0} löschen"), FText::AsNumber(Insert))
+		: LOCTEXT("DeleteLast", "Letzten Schritt löschen");
+}
+
+void ADCPlayerController::FollowNewSteps(int32 LastNewIndex)
+{
+	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Selected || !Heist || Heist->GetPreviewTime() < 0.f)
+	{
+		return;
+	}
+	// The time cursor is in use: it moves on to the end of what was just planned.
+	Heist->Refresh(false);
+	if (const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Selected->GetFName()))
+	{
+		if (const FDCScheduledTask* Task = Plan->Tasks.FindByPredicate([LastNewIndex](const FDCScheduledTask& Entry) { return Entry.Index == LastNewIndex; }))
+		{
+			Heist->SetPreviewTime(Task->End);
+		}
+	}
+}
+
+void ADCPlayerController::ShowCrewMoment(ADCCrewCharacter* Crew)
+{
+	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Crew || !Heist || GetMode() != EDCPlanMode::Planning)
+	{
+		return;
+	}
+	Heist->Refresh(false);
+	const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Crew->GetFName());
+	Heist->SetFocus(Crew->GetFName());
+	// The time cursor stands where her plan ends so far - the moment her next step starts from.
+	Heist->SetPreviewTime(Plan && !Plan->Tasks.IsEmpty() ? Plan->Tasks.Last().End : 0.f);
+}
+
 void ADCPlayerController::FocusStep(FName Crew, int32 Index)
 {
 	UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
@@ -1121,7 +1212,7 @@ void ADCPlayerController::RemoveStep(int32 Index)
 		}
 		UDCHeistStateSubsystem::Get(this)->SetFocus(Selected->GetFName());
 		ShowToast(Followers > 0
-			? FText::Format(LOCTEXT("RemovedWithWaits", "{0}: \u201e{1}\u201c gelöscht – das Warten darauf auch (\u201eRückgängig\u201c holt beides zurück)"), Selected->GetCrewName(), Label)
+			? FText::Format(LOCTEXT("RemovedWithWaits", "{0}: \u201e{1}\u201c gelöscht – das Warten darauf auch"), Selected->GetCrewName(), Label)
 			: FText::Format(LOCTEXT("Removed", "{0}: \u201e{1}\u201c gelöscht"), Selected->GetCrewName(), Label));
 		CheckPlanAfterEdit(Before);
 	}
@@ -1250,7 +1341,12 @@ void ADCPlayerController::SelectFromBar(ADCCrewCharacter* Crew)
 	{
 		return;
 	}
+	const bool bOther = Crew != Selected;
 	Select(Crew);
+	if (bOther)
+	{
+		ShowCrewMoment(Crew);
+	}
 	if (ADCCameraPawn* Camera = Cast<ADCCameraPawn>(GetPawn()))
 	{
 		Camera->FocusOn(Crew->GetActorLocation());

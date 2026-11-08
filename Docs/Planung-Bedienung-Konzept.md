@@ -76,6 +76,10 @@ Der Titel nennt die Tür und ihren Zustand im Plan („Hintertür · verschlosse
 Beim Ausprobieren öffnet die Figur bei einem Klick hinter eine geschlossene Tür diese unterwegs. An einer verschlossenen Tür sagt sie „Hintertür ist verschlossen“.
 
 ### Rückgängig und Wiederholen
+> **Geändert 2026-11-08 (User):** Die Knöpfe „Planen | Ausprobieren“, „Rückgängig“ und „Wiederholen“ sind entfernt; der User
+> hat sie nie benutzt. Geblieben sind „Letzten Schritt löschen“ (bzw. „Schritt N löschen“) und Strg+Z ohne Knopf.
+> In der roten Hilfe-Leiste bleibt „Rückgängig“ für den Klick, der den Plan kaputt gemacht hat.
+
 Oben in der Leiste stehen neben „Planen | Ausprobieren“ die Knöpfe „Rückgängig“ und „Wiederholen“. Sie sind ausgegraut, wenn es nichts zurückzunehmen gibt. Der Tooltip sagt genau, was zurückgenommen wird („Rückgängig: „Hintertür knacken“ gelöscht · Strg+Z“).
 
 Jede Planänderung lässt sich zurücknehmen: Einfügen, Ziehen, Löschen, Warten, Lösungen und auch „Plan leeren“. Deshalb braucht „Plan leeren“ keinen zweiten Klick mehr; die Meldung sagt „Plan geleert – „Rückgängig“ holt ihn zurück“.
@@ -458,6 +462,10 @@ Ausprobieren:
 - At a locked door the runner's direct-mode branch says '{Tür} ist verschlossen' and fails the step.
 
 #### Rückgängig und Wiederholen
+> **Geändert 2026-11-08 (User):** Die Knöpfe „Planen | Ausprobieren“, „Rückgängig“ und „Wiederholen“ sind entfernt; der User
+> hat sie nie benutzt. Geblieben sind „Letzten Schritt löschen“ (bzw. „Schritt N löschen“) und Strg+Z ohne Knopf.
+> In der roten Hilfe-Leiste bleibt „Rückgängig“ für den Klick, der den Plan kaputt gemacht hat.
+
 UDCPlanSubsystem (DCPlan.h/.cpp):
 - FDCPlanHistoryEntry {TArray<FDCCrewPlan> Plans; FText What;}; UndoStack/RedoStack capped at 50.
 - RAII FDCPlanEditScope(UDCPlanSubsystem&, const FText& What). The outermost scope pushes a copy and clears RedoStack; inner scopes do nothing. OnPlanChanged fires once when the outermost scope ends, so a pair, a fix or a cascade is one undo entry and one re-simulation.

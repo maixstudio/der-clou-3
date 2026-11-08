@@ -30,7 +30,7 @@ Nur Dialoge, Meldungen, Radialmenü, Info und Durchsuchen liegen auf der Szene.
 |                             freie Spielfläche                                |
 |                      [ Dialog – mittig, nur bei Bedarf ]                     |
 |                      [ Meldung (Toast), 3 s ]                                |
-| [Planen | Ausprobieren]  [▶ Abspielen] [Tempo] [Warten …] [⋯]      Plan 0:25  |
+| [Letzten Schritt löschen]  [▶ Abspielen] [Tempo] [Warten …] [⋯]   Plan 0:25  |
 | Schrittliste der gewählten Figur   | Zeitleiste aller Figuren (füllt Breite) |
 +------------------------------------------------------------------------------+
 ```
@@ -140,7 +140,7 @@ Nichts, was man zum Spielen *braucht*, steht nur im Tooltip.
 | Aktion unmöglich | Toast in Rot mit Grund und Abhilfe; Knopf bleibt ausgegraut |
 | Abstimmung angelegt | Pfeil in Cyan in der Zeitleiste von der auslösenden zur wartenden Spur |
 | Zerstörendes (Plan leeren) | Rückfrage-Dialog oder Toast „Plan geleert – Rückgängig“ |
-| Moduswechsel | Banner kurz oben, Leiste zeigt den Modus dauerhaft; „Ausprobieren“ mit orangem Rahmen |
+| Moduswechsel | Banner kurz oben, Leiste zeigt den Modus dauerhaft (Planung / Plan läuft); „Ausprobieren“ ist seit 2026-11-08 entfernt |
 | Lärm / Alarm | Statuszone oben Mitte; Alarm übertönt alles andere |
 | Ziehen (Drag & Drop) | Ziel grün/rot, Grund direkt am Ziel bzw. am Cursor |
 

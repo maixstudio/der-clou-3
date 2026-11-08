@@ -55,8 +55,19 @@ public:
 	/** Planning: the selected crew member waits. */
 	void AddWait(float Seconds);
 	void RemoveLastStep();
+	/** The picked step of the selected crew member, else her last one (button and Entf). */
+	void DeleteStep();
+	/** Button text for DeleteStep ("Letzten Schritt löschen", "Schritt 3 löschen"); empty when there is nothing to delete. */
+	FText DescribeDeleteStep() const;
+	/**
+	 * Planning, after the player switched to this crew member: the room and the timeline jump to the
+	 * end of her last planned step (no plan yet: to the start).
+	 */
+	void ShowCrewMoment(ADCCrewCharacter* Crew);
+	/** After new steps of the selected crew member: a time cursor in use moves to the end of the last new one. */
+	void FollowNewSteps(int32 LastNewIndex);
 	void ClearPlan();
-	/** Planning: takes the last plan change back / brings it back (Strg+Z, Strg+Y). */
+	/** Planning: takes the last plan change back (Strg+Z, "Rückgängig" in the help bar); RedoPlan has no key any more. */
 	void UndoPlan();
 	void RedoPlan();
 	/**
