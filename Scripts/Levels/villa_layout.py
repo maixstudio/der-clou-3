@@ -404,7 +404,7 @@ MARKERS = [
     dict(code="E3", kind="einstieg", floor="EG", at=(26.4, 31.0), text="Küchentür – Glas, Schloss 3, im Dunkeln"),
     dict(code="E4", kind="einstieg", floor="EG", at=(38.6, 31.0), text="Hebeschiebetür – aufhebeln oder Glas (sehr laut)"),
     dict(code="E5", kind="einstieg", floor="KG", at=(45.0, 29.3), text="Kelleraußentür – Stahl, Schloss 5, Bewegungsmelder"),
-    dict(code="E6", kind="einstieg", floor="EG", at=(27.25, 15.1), text="Gäste-WC-Kippfenster – nur ohne Gepäck, Kraft/Geschick"),
+    dict(code="E6", kind="einstieg", floor="EG", at=(27.25, 15.1), text="Gäste-WC-Kippfenster – durchgreifen (Schlösser 3), nur ohne Rucksack"),
     dict(code="E7", kind="einstieg", floor="OG", at=(41.8, 31.2), text="Balkon – Leiter aus dem Geräteraum, Balkontür aufhebeln"),
     dict(code="E8", kind="einstieg", floor="Aussen", at=(54.3, 49.6), text="Hintertor – Kette knacken, Weg im Dunkeln"),
     dict(code="Z1", kind="ziel", floor="KG", at=(43.0, 18.75), text="Tresorraum – großer Tresor, Bargeld, Gold (Hauptziel)"),

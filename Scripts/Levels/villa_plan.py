@@ -982,6 +982,7 @@ td.num,th.num{text-align:right;font-family:var(--font-data);font-variant-numeric
 .legend svg{flex:none;width:34px;height:20px}
 ol.q{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:9px;max-width:80ch}
 ol.q b{font-weight:600}
+.soft{color:var(--muted);font-style:normal}
 ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;max-width:80ch}
 code{font-family:var(--font-data);font-size:13px;background:var(--stair);padding:1px 5px;border-radius:3px}
 .hide-licht .lyr-licht,.hide-einstiege .lyr-einstiege,.hide-ziele .lyr-ziele,.hide-moebel .lyr-moebel{display:none}
@@ -1143,7 +1144,7 @@ def page():
 <style>{CSS}</style>
 <div class="wrap">
 <header>
-  <div class="eyebrow">der clou 3 · Demo-Level · Grundriss-Entwurf v1 · 8. November 2026</div>
+  <div class="eyebrow">der clou 3 · Demo-Level · Grundriss v1 · 8. November 2026</div>
   <h1>Villa Lindenhof</h1>
   <p class="lead">Eine freistehende Villa am Ortsrand, {esc(V.ADDRESS)}: Keller, Erdgeschoss und 1. Stock, dazu eine Remise mit
   Garage und Werkstatt, Pool, Garten, Zaun und Hecke. Diese Fassung legt nur den Grundriss fest. Möbel und Beute sind
@@ -1164,7 +1165,7 @@ def page():
   <label><input type="checkbox" id="t-ziele" data-layer="ziele" checked> Ziele &amp; Sicherheit</label>
   <label><input type="checkbox" id="t-moebel" data-layer="moebel" checked> Möbel</label>
   <nav class="nav" aria-label="Abschnitte"><a href="#lageplan">Lageplan</a><a href="#eg">EG</a><a href="#og">1. Stock</a>
-  <a href="#kg">Keller</a><a href="#remise">Remise</a><a href="#tueren">Türen</a><a href="#fragen">Offene Fragen</a></nav>
+  <a href="#kg">Keller</a><a href="#remise">Remise</a><a href="#tueren">Türen</a><a href="#entscheidungen">Entscheidungen</a><a href="#fenster">Fenster</a></nav>
 </div>
 
 <section id="lageplan">
@@ -1196,7 +1197,7 @@ def page():
 </section>
 
 <section id="og">
-  <div class="sec-head"><h2>1. Stock</h2><span class="tag">Haupthaus · Fußboden + 3,10 m · Raumhöhe 2,70 m</span></div>
+  <div class="sec-head"><h2>1. Stock</h2><span class="tag">Haupthaus · Fußboden + 3,10 m · Raumhöhe 2,70 m · zweiter Bauabschnitt</span></div>
   <div class="split"><div class="figure">{og}</div>
   <div class="below"><div class="table-wrap">{room_table("OG", "Haus")}</div>
   <p class="note">Die Treppe kommt in der Galerie an. Alles liegt an einem Flur. Die Elternsuite im Osten hat Ankleide,
@@ -1257,20 +1258,44 @@ def page():
   </div>
 </section>
 
-<section id="fragen">
-  <div class="sec-head"><h2>Offene Fragen</h2><span class="tag">vor dem Bauen klären</span></div>
+<section id="entscheidungen">
+  <div class="sec-head"><h2>Entscheidungen</h2><span class="tag">mit dem User abgestimmt am 8. November 2026</span></div>
   <ol class="q">
-    <li><b>Stockwerke in der Kamera.</b> Von oben verdeckt der 1. Stock das Erdgeschoss. Mein Vorschlag: Die Kamera zeigt eine
-    Ebene, alles darüber wird ausgeblendet. Sie folgt der ausgewählten Figur, umschalten geht zusätzlich mit Bild auf / Bild ab.</li>
-    <li><b>Fenster als Einstieg.</b> Das Kippfenster im Gäste-WC und der Balkon mit Leiter wären neue Mechaniken. Gleich mit
-    einbauen oder erst Türen und später Fenster?</li>
-    <li><b>Umfang der Demo.</b> Alles auf einmal bauen, oder zuerst Erdgeschoss und Keller, und der 1. Stock folgt?</li>
-    <li><b>Bewohner.</b> Ist das Haus leer (Urlaub) oder schläft oben jemand? Schlafende Bewohner würden den 1. Stock spannend
-    machen. Wachen, Hund und Kameras sind noch nicht geplant.</li>
-    <li><b>Geheimkammer</b> hinter dem Bücherregal: drin lassen? Sie braucht eine Such-Mechanik.</li>
-    <li><b>Pool und Garten</b> bleiben vorerst Kulisse. Soll der Pool etwas können, zum Beispiel Beute verstecken?</li>
-    <li><b>Bewegungsmelder.</b> Vorschlag: Lampe geht an, der Nachbar wird misstrauischer, wenn er in Sichtweite ist.</li>
+    <li><b>Stockwerke in der Kamera:</b> Die Kamera zeigt eine Ebene, alles darüber wird ausgeblendet. Sie folgt der
+    ausgewählten Figur, mit Bild auf / Bild ab schaltet man selbst um.</li>
+    <li><b>Fenster sind gleich Einstiege.</b> Kippfenster, Glas einschlagen und später die Leiter zum Balkon gehören von
+    Anfang an dazu. Die Regeln unten sind mein Vorschlag.</li>
+    <li><b>Bauabschnitte:</b> Zuerst Grundstück, Remise, Erdgeschoss und Keller mit Tresorraum. Der 1. Stock folgt als
+    zweiter Abschnitt, mit ihm Leiter und Balkon.</li>
+    <li><b>Das Haus ist leer.</b> Die Familie ist im Urlaub. Gefahr kommt vom Nachbarn, vom Licht und vom Alarm.</li>
+    <li><b>Geheimkammer bleibt drin.</b> Das Regal ist vorerst eine verschlossene Tür. Das Finden kommt später mit dem Nebel.</li>
+    <li><b>Pool und Garten</b> sind vorerst Kulisse <em class="soft">(mein Vorschlag, gilt bis zum Widerspruch)</em>.</li>
+    <li><b>Bewegungsmelder:</b> Die Lampe geht an, wenn eine Figur in den gestrichelten Kreis kommt. Steht der Nachbar in
+    Sichtweite, wird er misstrauischer <em class="soft">(mein Vorschlag)</em>.</li>
   </ol>
+</section>
+
+<section id="fenster">
+  <div class="sec-head"><h2>Fenster als Einstieg</h2><span class="tag">Vorschlag · vor dem Bauen bestätigen</span></div>
+  <div class="table-wrap"><table class="doors"><thead><tr><th>Fenster</th><th>Was man tut</th><th class="num">Dauer</th>
+  <th>Lärm</th><th>Bedingung</th></tr></thead><tbody>
+    <tr><td>gekipptes Fenster</td><td>durchgreifen, Griff drehen, öffnen</td><td class="num">8&nbsp;s</td><td>leise (Klicken)</td>
+    <td>Fertigkeit Schlösser ab 3, eine Hand frei</td></tr>
+    <tr><td>geschlossenes Fenster</td><td>mit dem Brecheisen aufhebeln</td><td class="num">6&nbsp;s</td><td>laut (Holz kracht, ca. 6&nbsp;m)</td>
+    <td>Brecheisen griffbereit, Kraft ab 4, beide Hände frei</td></tr>
+    <tr><td>jedes Fenster</td><td>Glas einschlagen</td><td class="num">1&nbsp;s</td><td>sehr laut (wie die Vitrine, 17&nbsp;m)</td>
+    <td>Brecheisen, danach Scherben (später: Verletzung?)</td></tr>
+    <tr><td>offenes Fenster</td><td>durchsteigen</td><td class="num">3&nbsp;s</td><td>leise</td>
+    <td>nichts Großes in den Händen, kein Rucksack bei kleinen Fenstern</td></tr>
+    <tr><td>Kellerfenster</td><td>vergittert, vorerst kein Einstieg</td><td class="num">–</td><td>–</td>
+    <td>später mit Bolzenschneider</td></tr>
+  </tbody></table></div>
+  <ul class="plain">
+    <li>Kleine Fenster (Gäste-WC 0,7&nbsp;m) lassen nur ohne Rucksack durch. Beute reicht man vorher durch oder legt sie aufs Fensterbrett.</li>
+    <li>Der Alarm überwacht Haustür, Terrassentüren und die Kelleraußentür, aber keine Fenster. Deshalb sind Fenster interessant.</li>
+    <li>Fenster gehen in der Planung wie Türen: Radialmenü am Fenster, Schritt im Plan, „Wer durchsteigt, öffnet“ gilt nicht.
+    Erst öffnen, dann durchsteigen.</li>
+  </ul>
 </section>
 </div>
 <script>

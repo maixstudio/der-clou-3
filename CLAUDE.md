@@ -373,8 +373,9 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   22 × 14 m mit Keller/EG/1. Stock, Remise (Garage, Werkstatt, Geräteraum), Pool, Garten, Zaun, Hecken, 30 Außenleuchten.
   Daten (einzige Quelle, später auch für den Level-Bau): `Scripts/Levels/villa_layout.py` (Meter, x = Ost, y = Nord;
   Unreal X = y·100, Y = x·100). Zeichnung: `python Scripts/Levels/villa_plan.py` → `Docs/Villa/Villa-Grundriss.html`
-  (auch als Artifact veröffentlicht). Offene Fragen stehen unten auf der Seite (Stockwerke in der Kamera, Fenster als
-  Einstieg, Umfang der Demo, Bewohner, Geheimkammer, Pool, Bewegungsmelder) – vor dem Bauen mit dem User klären.
+  (auch als Artifact veröffentlicht). Entschieden (Details in `Docs/Plan-Naechste-Schritte.md`): Kamera zeigt eine
+  Ebene, Fenster gleich als Einstieg, erst Grundstück + Remise + EG + Keller (1. Stock danach), Haus leer, Geheimkammer
+  mit Suche später. Noch zu bestätigen: Fenster-Regeln (Vorschlag auf der Seite).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten

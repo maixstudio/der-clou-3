@@ -130,7 +130,23 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
 ### Villa für die Demo – Grundriss-Entwurf 2026-11-08
 Auftrag des Users: größere Villa mit Keller, EG, 1. Stock, Nebengebäude, Zaun, Bäumen, Hecke, Außenlicht, Fenstern,
 verschiedenen Türen, Pool und Garten – zuerst nur der Grundriss. Entwurf: `Docs/Villa/Villa-Grundriss.html`
-(Daten `Scripts/Levels/villa_layout.py`). Noch nicht gebaut; die offenen Fragen stehen am Ende der Seite.
+(Daten `Scripts/Levels/villa_layout.py`). Noch nicht gebaut.
+
+**Entscheidungen des Users (2026-11-08):**
+
+| Thema | Entscheidung |
+|---|---|
+| Stockwerke | Kamera zeigt **eine Ebene**, alles darüber ausgeblendet; folgt der gewählten Figur, Bild auf/ab schaltet selbst |
+| Fenster | **gleich als Einstieg** (Kippfenster, Aufhebeln, Glas einschlagen; Leiter zum Balkon mit dem 1. Stock) |
+| Umfang | **erst Grundstück, Remise, EG und Keller**; 1. Stock als zweiter Bauabschnitt |
+| Bewohner | **Haus leer** (Urlaub) – Gefahr durch Nachbar, Licht, Alarm |
+| Geheimkammer | **drin, Suche später** – Regal vorerst normale verschlossene Tür |
+| Pool/Garten, Bewegungsmelder | Claudes Vorschlag: Pool Kulisse; Bewegungsmelder schaltet Licht an, Nachbar in Sichtweite wird misstrauischer |
+
+**Vorschlag Fenster-Regeln (noch vom User zu bestätigen, Tabelle auf der Seite):** gekippt durchgreifen 8 s leise
+(Schlösser 3, eine Hand), aufhebeln 6 s laut (Brecheisen, Kraft 4, beide Hände), Glas einschlagen 1 s sehr laut,
+durchsteigen 3 s (nichts Großes in den Händen, kleine Fenster ohne Rucksack), Kellerfenster vergittert (später
+Bolzenschneider). Alarm überwacht Haustür, Terrassentüren, Kelleraußentür – keine Fenster. Erst öffnen, dann durchsteigen.
 
 ### 7. Später
 Auskundschaften als eigene Phase · Polizei und Zeitlimit · Wachen und Hunde · Alarmanlagen (Elektronik) ·
