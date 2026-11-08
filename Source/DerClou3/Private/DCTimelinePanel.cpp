@@ -631,7 +631,7 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 									switch (Mode())
 									{
 									case EDCPlanMode::Planning:
-										return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = nächster Schritt · Karte links, Taste 1–9 oder Figur anklicken = andere Figur · Leertaste = abspielen");
+										return LOCTEXT("HintPlanning", "Klick auf Boden, Tür oder Gegenstand = nächster Schritt · Schritt anklicken = dahinter einfügen (Esc = ans Ende) · Taste 1–9 = andere Figur · Strg+Z = rückgängig · Entf = Schritt löschen · Leertaste = abspielen");
 									case EDCPlanMode::Playing:
 										return LOCTEXT("HintPlaying", "grau = wartet auf etwas, das jemand anderes erst erledigt · Leertaste = Pause");
 									case EDCPlanMode::Direct:
