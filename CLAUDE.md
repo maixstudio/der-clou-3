@@ -306,6 +306,23 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Test-Schalter `ADCCrewCharacter::bTestFailTasks` (jede Probe misslingt), `GetNotice`,
     `UDCRadialMenu::GetTitle`. Neuer Selbsttest `-DCSelfTest=Undo`; AutoDoor prüft jetzt auch Menü,
     volle Hände, offene + geschlossene Tür hintereinander, vergebliches Warten und Ausprobieren.
+- **Sofort-Warnung und Plan-Status (Schritt 20 = Bauschritt 4):** Fehler fallen beim Klick auf, nicht am Schluss.
+  - Simulation: `FDCScheduledTask::bAfterBlocked` (kommt nur wegen eines früheren Schritts nicht dran),
+    `ShortReason` („Bürotür bleibt verschlossen“), `FDCSchedule::FindProblems()` (erster hängender Schritt je
+    Figur, `FDCPlanProblem` mit Ort und Grund).
+  - Jede Planänderung über den Controller (Klick, Menü, „Warten …“, ↑/↓/×, Rücktaste, Rückgängig) vergleicht
+    die Probleme vorher/nachher (`CollectProblems`, `CheckPlanAfterEdit`): Ein neues Problem öffnet die rote
+    Hinweisleiste über der Planungsleiste („Geht so nicht: Rosa, Schritt 1 „gehen (Büro)“ – Hintertür bleibt
+    verschlossen – Vic könnte sie knacken (ca. 2 s)“, Knöpfe „Rückgängig“ / „Später“) und färbt den Klick-Ring
+    rot. Ein Schritt hinter einem bekannten Problem meldet nur „… – kommt erst dran, wenn Schritt 1 geht“.
+    Ist alles gelöst: „Passt jetzt – Plan geht auf“.
+  - Planungsleiste oben: „Plan geht auf · fertig 0:41“ bzw. rot „Plan hängt: Rosa ab Schritt 1 – Hintertür
+    bleibt verschlossen“ mit „Lösen …“ (zeigt den Schritt, Kamera hin, Hinweis wieder auf). Hängt der Plan,
+    heißt der Hauptknopf „Trotzdem abspielen“ (nicht mehr gelb).
+  - Liste: nur der erste hängende Schritt rot (Grund in 12 pt), die danach grau „kommt nicht dran“. Profilkarte:
+    „hängt bei 1: Hintertür bleibt verschlossen“. Menüeinträge sagen rot „kommt nicht dran – Rosa hängt bei
+    Schritt 1“, wenn die Figur vorher schon hängt (`EDCOptionTone`).
+  - Selbsttest `-DCSelfTest=PlanHelp` (L_House01, Screenshots `planhelp_bar.png`, `planhelp_fine.png`).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -327,7 +344,7 @@ Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem U
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`, `PlanHelp` (L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

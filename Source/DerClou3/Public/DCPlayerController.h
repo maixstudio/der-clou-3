@@ -86,6 +86,11 @@ public:
 	void ShowToast(const FText& Text, bool bProblem = false);
 	/** The message being shown (empty when there is none). */
 	FText GetToast(bool& bOutProblem) const;
+	/** The help bar over the plan after a click made the plan hang (empty: none). Stays until the player reacts. */
+	FText GetPlanHelp() const;
+	void DismissPlanHelp() { PlanHelp.Reset(); }
+	/** "Lösen …": picks the first step that does not happen, shows where and opens the help again. */
+	void ShowPlanProblem();
 
 	//~ Crew cards
 	/** Selects the crew member and moves the camera to them. */
@@ -151,6 +156,8 @@ private:
 	void StartAutoDoorSelfTest();
 	/** -DCSelfTest=Undo: every plan change can be taken back and brought back, a click's pair and "Plan leeren" too. */
 	void StartUndoSelfTest();
+	/** -DCSelfTest=PlanHelp (map L_House01): a click that makes the plan hang says so at once; "Passt jetzt" once it works. */
+	void StartPlanHelpSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */
@@ -191,6 +198,22 @@ private:
 
 	float RefreshTimer = 0.f;
 	FText ToastText;
+	/** Steps that do not happen right now, as crew + step id (ids survive moving steps). */
+	TArray<TPair<FName, FGuid>> CollectProblems() const;
+	/**
+	 * After a plan change: a step that newly does not happen opens the help bar (returns true);
+	 * nothing left that hangs: "Passt jetzt". NewIndex: the step just added for Crew.
+	 */
+	bool CheckPlanAfterEdit(const TArray<TPair<FName, FGuid>>& Before, FName Crew = NAME_None, int32 NewIndex = INDEX_NONE);
+	struct FPlanHelp
+	{
+		FName Crew;
+		FGuid Step;
+		FText Text;
+	};
+	TOptional<FPlanHelp> PlanHelp;
+	/** The last planned click made the plan hang (the click ring turns red). */
+	bool bLastEditProblem = false;
 	double ToastTime = -100.0;
 	bool bToastProblem = false;
 

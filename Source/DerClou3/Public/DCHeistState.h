@@ -93,6 +93,8 @@ struct FDCScheduledTask
 	bool bBlocked = false;
 	/** Blocked before even starting to walk (a locked door on the way): stays where the walk would begin. */
 	bool bWalkBlocked = false;
+	/** Blocked only because an earlier step of the same crew member is ("kommt nicht dran"). */
+	bool bAfterBlocked = false;
 	/** Doors opened on the way (closed but not locked: the crew member opens them in passing). */
 	TArray<FName> OpenedOnWay;
 	/** The walk in stretches: up to a locked door, wait beside it, on (one stretch without waiting). */
@@ -136,6 +138,8 @@ struct FDCScheduledTask
 	FText Detail;
 	/** Why it waits or is blocked. */
 	FText WaitReason;
+	/** Why it is blocked, in a few words for status lines ("Bürotür bleibt verschlossen"). */
+	FText ShortReason;
 	/** Who finished what this step waited for (NAME_None: nobody else). */
 	FName WaitFor;
 	FText WaitForName;
@@ -163,12 +167,31 @@ struct FDCCrewSchedule
 	FVector StartLocation = FVector::ZeroVector;
 };
 
+/** A step that does not happen - the first one of a crew member (the ones after it follow from it). */
+struct FDCPlanProblem
+{
+	FName Crew;
+	FText CrewName;
+	/** Position in the crew member's plan. */
+	int32 Index = INDEX_NONE;
+	FText Label;
+	/** "Bürotür bleibt verschlossen". */
+	FText ShortReason;
+	/** The whole reason, with who could help. */
+	FText Reason;
+	/** When the crew member gets stuck, and where. */
+	float Time = 0.f;
+	FVector Where = FVector::ZeroVector;
+};
+
 struct FDCSchedule
 {
 	TArray<FDCCrewSchedule> Crews;
 	float Duration = 0.f;
 
 	const FDCCrewSchedule* Find(FName Crew) const;
+	/** The steps that do not happen (first one per crew member), earliest first. */
+	TArray<FDCPlanProblem> FindProblems() const;
 };
 
 /**

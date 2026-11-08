@@ -124,7 +124,10 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 						+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 						[
 							SNew(STextBlock).Text(Option.Detail).Font(RadialFont(9, false))
-							.ColorAndOpacity(Option.bEnabled ? DetailColor : DisabledColor)
+							.ColorAndOpacity(!Option.bEnabled ? DisabledColor
+								: Option.Tone == EDCOptionTone::Problem ? FLinearColor(1.f, 0.42f, 0.36f)
+								: Option.Tone == EDCOptionTone::Waits ? FLinearColor(0.35f, 0.85f, 0.95f)
+								: DetailColor)
 							.Visibility(Option.Detail.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
 						]
 					]

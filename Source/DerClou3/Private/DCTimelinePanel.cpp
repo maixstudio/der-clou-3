@@ -128,6 +128,19 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 	{
 		return TAttribute<EVisibility>::CreateLambda([Mode, Modes]() { return Modes.Contains(Mode()) ? EVisibility::Visible : EVisibility::Collapsed; });
 	};
+	// Planning, and the plan hangs (bHangs) / works out (!bHangs).
+	const auto PlanHangs = [WeakThis](bool bHangs)
+	{
+		return TAttribute<EVisibility>::CreateLambda([WeakThis, bHangs]()
+		{
+			const UDCHeistStateSubsystem* State = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+			if (!State || GetPlanMode(WeakThis.Get()) != EDCPlanMode::Planning)
+			{
+				return EVisibility::Collapsed;
+			}
+			return State->GetSchedule().FindProblems().IsEmpty() != bHangs ? EVisibility::Visible : EVisibility::Collapsed;
+		});
+	};
 	const auto PreviewOn = [WeakThis]()
 	{
 		const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
@@ -163,6 +176,10 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 		// Short messages ("Vic, Schritt 3: Schublade knacken", "Geht nicht: …") just above the bar.
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, ToastBottom))
 		[
+			SNew(SVerticalBox)
+			.Visibility(EVisibility::SelfHitTestInvisible)
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(0.f, 0.f, 0.f, 6.f)
+			[
 			SNew(SBorder)
 			.BorderImage(Brush())
 			.Padding(FMargin(16.f, 7.f))
@@ -192,6 +209,50 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 					bool bProblem = false;
 					return Controller ? Controller->GetToast(bProblem) : FText::GetEmpty();
 				})
+			]
+			]
+			// A click made the plan hang: the help stays until the player reacts.
+			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
+			[
+				SNew(SBorder)
+				.BorderImage(Brush())
+				.Padding(FMargin(14.f, 8.f))
+				.BorderBackgroundColor(FLinearColor(0.42f, 0.06f, 0.04f, 0.97f))
+				.Visibility_Lambda([WeakThis]()
+				{
+					const ADCPlayerController* Controller = GetController(WeakThis.Get());
+					return Controller && !Controller->GetPlanHelp().IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 12.f, 0.f)
+					[
+						SNew(SBox)
+						.MaxDesiredWidth(780.f)
+						[
+							SNew(STextBlock)
+							.Font(Font(13, true))
+							.ColorAndOpacity(TextColor)
+							.AutoWrapText(true)
+							.Text_Lambda([WeakThis]()
+							{
+								const ADCPlayerController* Controller = GetController(WeakThis.Get());
+								return Controller ? Controller->GetPlanHelp() : FText::GetEmpty();
+							})
+						]
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
+					[
+						PanelButton(WeakThis, LOCTEXT("HelpUndo", "Rückgängig"), LOCTEXT("HelpUndoTip", "Die letzte Änderung zurücknehmen (Strg+Z)"),
+							[](ADCPlayerController* C) { C->DismissPlanHelp(); C->UndoPlan(); }, 12, FMargin(10.f, 3.f))
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
+					[
+						PanelButton(WeakThis, LOCTEXT("HelpLater", "Später"), LOCTEXT("HelpLaterTip", "Hinweis ausblenden – oben in der Leiste steht weiter, was hängt"),
+							[](ADCPlayerController* C) { C->DismissPlanHelp(); }, 12, FMargin(10.f, 3.f))
+					]
+				]
 			]
 		]
 		+ SOverlay::Slot().HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(12.f)
@@ -266,7 +327,12 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 								[
 									SNew(STextBlock)
 									.Font(Font(12, true))
-									.ColorAndOpacity(TextColor)
+									.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor
+									{
+										const UDCHeistStateSubsystem* State = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
+										const bool bHangs = State && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning && !State->GetSchedule().FindProblems().IsEmpty();
+										return bHangs ? StepBlockedTextColor : TextColor;
+									})
 									.Text_Lambda([WeakThis]()
 									{
 										const UDCHeistStateSubsystem* State = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
@@ -274,7 +340,15 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										switch (GetPlanMode(WeakThis.Get()))
 										{
 										case EDCPlanMode::Planning:
-											return FText::Format(LOCTEXT("Planning", "Plan dauert {0}"), FormatTime(Duration));
+										{
+											// Does the plan work out? Said at a fixed place, all the time.
+											const TArray<FDCPlanProblem> Problems = State ? State->GetSchedule().FindProblems() : TArray<FDCPlanProblem>();
+											if (!Problems.IsEmpty())
+											{
+												return FText::Format(LOCTEXT("PlanHangs", "Plan hängt: {0} ab Schritt {1} – {2}"), Problems[0].CrewName, FText::AsNumber(Problems[0].Index + 1), Problems[0].ShortReason);
+											}
+											return Duration > 0.f ? FText::Format(LOCTEXT("PlanWorks", "Plan geht auf · fertig {0}"), FormatTime(Duration)) : LOCTEXT("PlanEmptyStatus", "Noch kein Plan");
+										}
 										case EDCPlanMode::Playing:
 											return State && State->IsPlaybackFinished()
 												? FText::Format(LOCTEXT("Finished", "abgespielt in {0}"), FormatTime(State->GetPlaybackTime()))
@@ -285,13 +359,30 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										return FText::GetEmpty();
 									})
 								]
+								// The plan hangs: one click shows where.
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SBox).Visibility(PlanHangs(true))
+									[
+										PanelButton(WeakThis, LOCTEXT("Solve", "Lösen …"), LOCTEXT("SolveTip", "Den Schritt zeigen, der nicht geht, und sagen, warum"),
+											[](ADCPlayerController* C) { C->ShowPlanProblem(); }, 11, FMargin(8.f, 2.f))
+									]
+								]
 								+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
 								[
-									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning }))
+									SNew(SBox).Visibility(PlanHangs(false))
 									[
 										PanelButton(WeakThis, LOCTEXT("Play", "Abspielen"), LOCTEXT("PlayTip", "Den ganzen Plan abspielen (Leertaste)"),
 											[](ADCPlayerController* C) { C->StartPlayback(); }, 13, FMargin(20.f, 3.f), EPanelButton::Primary)
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
+								[
+									SNew(SBox).Visibility(PlanHangs(true))
+									[
+										PanelButton(WeakThis, LOCTEXT("PlayAnyway", "Trotzdem abspielen"), LOCTEXT("PlayAnywayTip", "Der Plan hängt irgendwo – trotzdem abspielen (Leertaste)"),
+											[](ADCPlayerController* C) { C->StartPlayback(); }, 12, FMargin(14.f, 3.f))
 									]
 								]
 								+ SHorizontalBox::Slot().AutoWidth().Padding(3.f, 0.f)
@@ -687,7 +778,11 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 
 		const EDCTaskStatus Status = bPlaying && Runner ? Runner->GetStatus(Index) : EDCTaskStatus::Planned;
 		FLinearColor Badge = Crew->Color;
-		if (Task.bBlocked || Status == EDCTaskStatus::Failed)
+		if (Task.bAfterBlocked && Status == EDCTaskStatus::Planned)
+		{
+			Badge = MutedColor;
+		}
+		else if (Task.bBlocked || Status == EDCTaskStatus::Failed)
 		{
 			Badge = StepBlockedColor;
 		}
@@ -704,7 +799,11 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		FText Info;
 		FLinearColor InfoColor = MutedColor;
 		const float WorkSeconds = Task.End - Task.WorkStart;
-		if (Task.bBlocked)
+		if (Task.bAfterBlocked)
+		{
+			Info = LOCTEXT("InfoAfterBlocked", "kommt nicht dran");
+		}
+		else if (Task.bBlocked)
 		{
 			Info = LOCTEXT("InfoBlocked", "geht nicht");
 			InfoColor = StepBlockedTextColor;
@@ -747,7 +846,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 					SNew(STextBlock)
 					.Text(Task.Label)
 					.Font(Font(12, true))
-					.ColorAndOpacity(Task.bBlocked ? StepBlockedTextColor : bCoordination ? CoordinationColor : TextColor)
+					.ColorAndOpacity(Task.bAfterBlocked ? MutedColor : Task.bBlocked ? StepBlockedTextColor : bCoordination ? CoordinationColor : TextColor)
 					.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 					.ToolTipText(Tip)
 				]
@@ -756,11 +855,11 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 					SNew(STextBlock).Text(Info).Font(Font(11, InfoColor != MutedColor)).ColorAndOpacity(InfoColor)
 				]
 			];
-		if (Task.bBlocked)
+		if (Task.bBlocked && !Task.bAfterBlocked)
 		{
 			Lines->AddSlot().AutoHeight()
 			[
-				SNew(STextBlock).Text(Task.WaitReason).Font(Font(11)).ColorAndOpacity(StepBlockedTextColor).AutoWrapText(true)
+				SNew(STextBlock).Text(Task.WaitReason).Font(Font(12)).ColorAndOpacity(StepBlockedTextColor).AutoWrapText(true)
 			];
 		}
 		// The picked step shows everything about it, and the buttons to move or delete it.

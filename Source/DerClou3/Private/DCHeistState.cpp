@@ -463,6 +463,30 @@ const FDCCrewSchedule* FDCSchedule::Find(FName Crew) const
 	return Crews.FindByPredicate([Crew](const FDCCrewSchedule& Entry) { return Entry.Crew == Crew; });
 }
 
+TArray<FDCPlanProblem> FDCSchedule::FindProblems() const
+{
+	TArray<FDCPlanProblem> Problems;
+	for (const FDCCrewSchedule& Crew : Crews)
+	{
+		const FDCScheduledTask* First = Crew.Tasks.FindByPredicate([](const FDCScheduledTask& Task) { return Task.bBlocked && !Task.bAfterBlocked; });
+		if (!First)
+		{
+			continue;
+		}
+		FDCPlanProblem& Problem = Problems.AddDefaulted_GetRef();
+		Problem.Crew = Crew.Crew;
+		Problem.CrewName = Crew.Name;
+		Problem.Index = First->Index;
+		Problem.Label = First->Label;
+		Problem.ShortReason = First->ShortReason.IsEmpty() ? First->WaitReason : First->ShortReason;
+		Problem.Reason = First->WaitReason;
+		Problem.Time = First->Ready;
+		Problem.Where = First->EndLocation.IsNearlyZero() ? Crew.StartLocation : First->EndLocation;
+	}
+	Problems.Sort([](const FDCPlanProblem& A, const FDCPlanProblem& B) { return A.Time < B.Time; });
+	return Problems;
+}
+
 //~ Subsystem --------------------------------------------------------------------------------------
 
 UDCHeistStateSubsystem* UDCHeistStateSubsystem::Get(const UObject* WorldContext)
@@ -867,6 +891,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		{
 			Out.bBlocked = true;
 			Out.WaitReason = Reason;
+			Out.ShortReason = Reason;
 			Out.End = T;
 			Finish(Cursor, Out);
 			// Nothing after a step that cannot be done.
@@ -877,6 +902,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				Rest.Start = Rest.Ready = Rest.WorkStart = Rest.End = T;
 				Rest.bBlocked = true;
 				Rest.Label = DescribeTask((*Cursor.Tasks)[Cursor.Next]);
+				Rest.bAfterBlocked = true;
 				Rest.WaitReason = LOCTEXT("AfterBlocked", "kommt nicht dran (Schritt davor geht nicht)");
 				Result.Crews[Cursor.CrewIndex].Tasks.Add(Rest);
 			}
@@ -1471,6 +1497,15 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			Cursor.Pending.WaitReason = Cursor.bWalkPending && !Cursor.WaitDoors.IsEmpty()
 				? DescribeDoorNeverOpens(Cursor)
 				: FText::Format(LOCTEXT("NeverHappens", "{0} – passiert im Plan nie"), Reason);
+			Cursor.Pending.ShortReason = Reason;
+			if (Cursor.bWalkPending && !Cursor.WaitDoors.IsEmpty())
+			{
+				const ADCDoor* Stuck = FindDoor(Cursor.WaitDoors[0]);
+				const FText DoorName = Stuck ? Stuck->GetInteractableName() : FText::FromName(Cursor.WaitDoors[0]);
+				Cursor.Pending.ShortReason = Cursor.bWaitForLock
+					? FText::Format(LOCTEXT("ShortDoorLocked", "{0} bleibt verschlossen"), DoorName)
+					: FText::Format(LOCTEXT("ShortHandsFull", "{0}: keine Hand frei"), DoorName);
+			}
 			Cursor.Time = Cursor.BlockedSince;
 			Result.Crews[Cursor.CrewIndex].Tasks.Add(Cursor.Pending);
 			for (++Cursor.Next; Cursor.Next < Cursor.Tasks->Num(); ++Cursor.Next)
@@ -1480,6 +1515,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				Rest.Start = Rest.Ready = Rest.WorkStart = Rest.End = Cursor.BlockedSince;
 				Rest.bBlocked = true;
 				Rest.Label = DescribeTask((*Cursor.Tasks)[Cursor.Next]);
+				Rest.bAfterBlocked = true;
 				Rest.WaitReason = LOCTEXT("AfterBlocked", "kommt nicht dran (Schritt davor geht nicht)");
 				Result.Crews[Cursor.CrewIndex].Tasks.Add(Rest);
 			}

@@ -8,6 +8,14 @@
 class SCanvas;
 
 /** One entry of the radial menu. */
+/** How the detail line of an entry reads: plain, cyan (waits for someone), red (a problem). */
+enum class EDCOptionTone : uint8
+{
+	Normal,
+	Waits,
+	Problem
+};
+
 struct FDCRadialOption
 {
 	FText Label;
@@ -17,6 +25,7 @@ struct FDCRadialOption
 	FText Tooltip;
 	/** Greyed out when false (still clickable, so it can say why). */
 	bool bEnabled = true;
+	EDCOptionTone Tone = EDCOptionTone::Normal;
 	TFunction<void()> OnSelected;
 };
 

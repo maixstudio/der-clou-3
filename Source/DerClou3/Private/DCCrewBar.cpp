@@ -124,7 +124,9 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 			if (const FDCScheduledTask* Blocked = Own->Tasks.FindByPredicate([](const FDCScheduledTask& Task) { return Task.bBlocked; }))
 			{
 				bProblem = true;
-				return FText::Format(LOCTEXT("StepBlocked", "Schritt {0} geht nicht"), FText::AsNumber(Blocked->Index + 1));
+				return Blocked->ShortReason.IsEmpty()
+					? FText::Format(LOCTEXT("StepBlocked", "Schritt {0} geht nicht"), FText::AsNumber(Blocked->Index + 1))
+					: FText::Format(LOCTEXT("StepHangs", "hängt bei {0}: {1}"), FText::AsNumber(Blocked->Index + 1), Blocked->ShortReason);
 			}
 			const int32 Whole = FMath::RoundToInt(Own->End);
 			const FText Until = FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
