@@ -446,6 +446,31 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   „Navigation: play in editor builds its own nav mesh“ / „nav mesh built … s after start“; ein misslungener Bodenklick
   schreibt „No ground: click at … on …“. Klicks gehen über `HandleClickAt(Bildschirmpunkt)`, Selbsttests klicken mit
   `ClickWorldPoint(Weltpunkt)` echt (Trace, Bodencheck). Selbsttest Villa klickt jetzt den User-Fall durch.
+- **Startmenü, Ladebildschirm, Spielstände, Optionen (Schritt 28, 2026-11-08):** Vom User entschieden: ein Spielstand ist der
+  Plan je Einbruch (kein laufender Einbruch), „Neues Spiel“ wählt den Einbruch, hinter dem Menü die Villa bei Nacht,
+  Arbeitstitel „Lindenhof“ (`UDCGameFlowSubsystem::GetGameTitle`, nie „der clou“).
+  - `UDCGameFlowSubsystem` (`DCGameFlow.h`, GameInstance): Einbrüche (`GetHeists`: Villa Lindenhof; Übung: Testhaus, Testraum),
+    `StartHeist`, `LoadSave`, `OpenMainMenu`, `ReloadCurrentMap`, `QuitGame`. Das Startmenü ist ein Modus der Villa-Map
+    (Option `?menu`): `ADCGameMode::InitGame` fragt `DecideMenu` und setzt dann `ADCMenuPlayerController` (Kamera fährt langsam
+    die Straße entlang, Crew/Nachbar/Raumnamen ausgeblendet, ganze Fläche ohne Rahmen). Die erste Map einer Sitzung zeigt das
+    Menü (`GameDefaultMap` bleibt L_Room01 für die Selbsttests und leitet weiter; PIE auf der Villa zeigt es direkt).
+  - Ladebildschirm `SDCLoadingScreen` (Slate direkt im GameViewport, überlebt den Kartenwechsel): erst ein paar Frames zeichnen,
+    dann `OpenLevel`; nach dem Laden bleibt er, bis die Welt spielt, das NavMesh fertig ist, nichts mehr asynchron lädt und
+    (Editor) keine Shader mehr kompilieren – mind. 1 s, höchstens 90 s, dann 0,35 s Ausblenden. Zeigt Einbruch, Arbeitsschritt
+    („Berechne Wege …“), Balken, Tipp. Solange er steht, nimmt das Spiel keine Eingaben (`IsLoading`). Auch „Abspielen“ nach
+    Änderungen und „Zurück zur Planung“ laden dahinter neu.
+  - Spielstände (`UDCSaveGame`, Saved/SaveGames): Autosave `auto_<einbruch>` 1 s nach jeder Planänderung (nur wenn sich Schritte
+    geändert haben, Signatur aus Schritt-Ids), eigene `save_<zeit>` mit Namen. „Fortsetzen“ = neuester Stand. `UDCPlanSubsystem::
+    ResetForNewHeist` / `SetPlans` (ohne Rückgängig-Verlauf). Im Menü ist kein Plan geladen.
+  - `UDCMenuWidget` (Startmenü und Pausemenü): Spalte links (Titel, Hauptknöpfe), Seite rechts (Einbruch wählen mit „Neu beginnen /
+    Plan fortsetzen“, Laden mit „Löschen“ → „Wirklich löschen?“, Plan speichern mit Namen, Optionen). Pausemenü über Esc (Ende der
+    Esc-Kette) oder Knopf „Menü“ oben rechts; hält einen laufenden Plan an.
+  - Optionen (`DCOptions`): Qualität, Fenster/Randlos/Vollbild, Auflösung, Kameratempo (`CameraSpeedFactor`), die drei Varianten
+    (das Fenster „Varianten …“ in der Planungsleiste ist weg). „Übernehmen“ speichert in GameUserSettings.ini, Selbsttests nie.
+  - Selbsttests ohne Menü, Ladebildschirm und Autosave – außer `-DCSelfTest=Menu` (ohne Map starten): Start → Menü → Testhaus →
+    Autosave → Pausemenü → „Test-Stand“ speichern → Hauptmenü → Fortsetzen/Laden/Optionen → Stand laden → Neuladen. Eigene Slots
+    `DCSelfTest_*`, die er wieder löscht. Screenshots `menu_loading/main/heists/continue/load/options/heists_saved.png`,
+    `pause_menu.png`, `pause_save.png`.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -468,9 +493,12 @@ Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur
 Neu seit 2026-11-08: Türregel (öffnet unterwegs, wartet an verschlossener Tür daneben), roter Hinweis beim Klick und
 „Plan hängt“, Türen im geplanten Zustand mit Schild, Geist der gewählten Figur, „Rosa wartet hierauf“, Einfügen hinter
 dem gewählten Schritt, Rückgängig/Strg+Z – und welche der drei Varianten besser ist (Geist, Hinweis, Einfügen).
+Neu (Schritt 28): Startmenü, Ladebildschirm, Pausemenü, Spielstände und Optionen mit der Maus – vor allem Auflösung und
+Fenstermodus (im Selbsttest nicht umgeschaltet) und das Namensfeld beim Speichern.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01).
+  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
+  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**

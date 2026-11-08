@@ -160,6 +160,13 @@ public:
 	/** Inserts several steps at Index in one go (one undo step); returns their ids. */
 	TArray<FGuid> InsertTasks(FName Crew, int32 Index, const TArray<FDCPlanTask>& Tasks);
 	void ClearAll();
+	/**
+	 * Another heist, or the menu: no steps, no history, planning mode, normal speed.
+	 * Unlike ClearAll this is no plan change one could take back.
+	 */
+	void ResetForNewHeist();
+	/** A loaded plan: these steps, no history, planning mode. */
+	void SetPlans(const TArray<FDCCrewPlan>& InPlans);
 
 	/**
 	 * Groups plan changes: everything between BeginEdit and its EndEdit is one undo step and one

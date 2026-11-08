@@ -34,6 +34,8 @@
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "DCFloors.h"
+#include "DCGameFlow.h"
+#include "DCMenuWidget.h"
 #include "NavigationSystem.h"
 
 #define LOCTEXT_NAMESPACE "DCPlayerController"
@@ -118,6 +120,20 @@ void ADCPlayerController::BeginPlay()
 	{
 		ContainerPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 		ContainerPanel->AddToViewport(7);
+	}
+	PauseMenu = CreateWidget<UDCMenuWidget>(this, UDCMenuWidget::StaticClass());
+	if (PauseMenu)
+	{
+		PauseMenu->Setup(true);
+		PauseMenu->OnCloseRequested = [WeakThis = TWeakObjectPtr<ADCPlayerController>(this)]()
+		{
+			if (WeakThis.IsValid())
+			{
+				WeakThis->ClosePauseMenu();
+			}
+		};
+		PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
+		PauseMenu->AddToViewport(50);
 	}
 
 	// Start with the first crew member selected.
@@ -211,7 +227,7 @@ void ADCPlayerController::BeginPlay()
 	{
 		Plans->bPlayAfterLoad = false;
 		FTimerHandle Handle;
-		GetWorldTimerManager().SetTimer(Handle, this, &ADCPlayerController::StartPlayback, 0.5f, false);
+		GetWorldTimerManager().SetTimer(Handle, this, &ADCPlayerController::StartPlaybackWhenLoaded, 0.5f, false);
 	}
 	else if (Plans && Plans->GetMode() == EDCPlanMode::Playing)
 	{
@@ -227,6 +243,20 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (!SelfTestSteps.IsEmpty() && SelfTestSteps[0]())
 	{
 		SelfTestSteps.RemoveAt(0);
+	}
+	// While the loading screen is up the game takes no input.
+	if (const UDCGameFlowSubsystem* Flow = UDCGameFlowSubsystem::Get(this); Flow && Flow->IsLoading())
+	{
+		return;
+	}
+	// The game menu has all keys to itself: Esc closes its page, then the menu.
+	if (IsPauseMenuOpen())
+	{
+		if (WasInputKeyJustPressed(EKeys::Escape) && !PauseMenu->Back())
+		{
+			ClosePauseMenu();
+		}
+		return;
 	}
 	// While a find waits for a decision: Enter = "Weiter".
 	if (ContainerPanel && ContainerPanel->IsFindMode())
@@ -321,6 +351,12 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape) && GetInsertIndex() != INDEX_NONE)
 	{
 		InsertAtEnd();
+		return;
+	}
+	// Esc with nothing else to close: the game menu.
+	if (!bMenuOpen && WasInputKeyJustPressed(EKeys::Escape))
+	{
+		OpenPauseMenu();
 		return;
 	}
 	// Clicks on the menu buttons are handled by the UI and never arrive here.
@@ -1102,8 +1138,65 @@ void ADCPlayerController::ReloadLevel()
 {
 	UGameplayStatics::SetGamePaused(this, false);
 	UGameplayStatics::SetGlobalTimeDilation(this, 1.f);
+	if (UDCGameFlowSubsystem* Flow = UDCGameFlowSubsystem::Get(this))
+	{
+		// Behind the loading screen: the room comes back in its start state, the plan stays.
+		Flow->ReloadCurrentMap(this);
+		return;
+	}
 	const FString Map = UWorld::RemovePIEPrefix(GetWorld()->GetOutermost()->GetName());
 	UGameplayStatics::OpenLevel(this, FName(*Map));
+}
+
+void ADCPlayerController::StartPlaybackWhenLoaded()
+{
+	const UDCGameFlowSubsystem* Flow = UDCGameFlowSubsystem::Get(this);
+	if (Flow && Flow->IsLoading())
+	{
+		FTimerHandle Retry;
+		GetWorldTimerManager().SetTimer(Retry, this, &ADCPlayerController::StartPlaybackWhenLoaded, 0.1f, false);
+		return;
+	}
+	StartPlayback();
+}
+
+void ADCPlayerController::OpenPauseMenu()
+{
+	if (!PauseMenu || IsPauseMenuOpen())
+	{
+		return;
+	}
+	if (RadialMenu && RadialMenu->IsOpen())
+	{
+		RadialMenu->Close();
+	}
+	PauseMenu->Refresh();
+	PauseMenu->SetVisibility(ESlateVisibility::Visible);
+	// A running plan stops while the menu is open.
+	bPausedByMenu = GetMode() == EDCPlanMode::Playing && !UGameplayStatics::IsGamePaused(this);
+	if (bPausedByMenu)
+	{
+		UGameplayStatics::SetGamePaused(this, true);
+	}
+}
+
+void ADCPlayerController::ClosePauseMenu()
+{
+	if (!IsPauseMenuOpen())
+	{
+		return;
+	}
+	PauseMenu->SetVisibility(ESlateVisibility::Collapsed);
+	if (bPausedByMenu)
+	{
+		UGameplayStatics::SetGamePaused(this, false);
+		bPausedByMenu = false;
+	}
+}
+
+bool ADCPlayerController::IsPauseMenuOpen() const
+{
+	return PauseMenu && PauseMenu->GetVisibility() == ESlateVisibility::Visible;
 }
 
 void ADCPlayerController::SetDirectMode(bool bDirect)
@@ -4807,10 +4900,9 @@ void ADCPlayerController::StartVariantsSelfTest()
 	});
 	SelfTestSteps.Add(Wait(1.f));
 	SelfTestSteps.Add(Shot(TEXT("ghost_figure.png")));
-	SelfTestSteps.Add([this]() { SetVariant(0, true); if (TimelinePanel) { TimelinePanel->OpenVariants(); } return true; });
+	SelfTestSteps.Add([this]() { SetVariant(0, true); return true; });
 	SelfTestSteps.Add(Wait(1.f));
 	SelfTestSteps.Add(Shot(TEXT("ghost_pin.png")));
-	SelfTestSteps.Add([this]() { if (TimelinePanel) { TimelinePanel->CloseVariants(); } return true; });
 	// The help as a menu at the mouse: a click that makes the plan hang opens it.
 	SelfTestSteps.Add([this, Expect, Setup, RoomFloor]()
 	{

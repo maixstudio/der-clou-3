@@ -239,6 +239,25 @@ void UDCPlanSubsystem::ClearAll()
 	Plans.Reset();
 }
 
+void UDCPlanSubsystem::ResetForNewHeist()
+{
+	SetPlans({});
+	Speed = 1.f;
+}
+
+void UDCPlanSubsystem::SetPlans(const TArray<FDCCrewPlan>& InPlans)
+{
+	Plans = InPlans;
+	UndoStack.Reset();
+	RedoStack.Reset();
+	OpenEdit = FDCPlanHistoryEntry();
+	EditDepth = 0;
+	bEditChanged = false;
+	Mode = EDCPlanMode::Planning;
+	bPlayAfterLoad = false;
+	OnPlanChanged.Broadcast();
+}
+
 void UDCPlanSubsystem::BeginEdit(const FText& What)
 {
 	if (EditDepth++ == 0)

@@ -1,5 +1,7 @@
 #include "DCCameraPawn.h"
 
+#include "DCOptions.h"
+
 #include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -59,7 +61,7 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 		const FRotator Yaw(0.0, GetActorRotation().Yaw, 0.0);
 		const FVector Direction = (Yaw.RotateVector(FVector::ForwardVector) * Pan.X + Yaw.RotateVector(FVector::RightVector) * Pan.Y).GetSafeNormal();
 		const float Scale = SpringArm->TargetArmLength / StartDistance;
-		AddActorWorldOffset(Direction * PanSpeed * Scale * DeltaSeconds);
+		AddActorWorldOffset(Direction * PanSpeed * DCOptions::CameraSpeedFactor() * Scale * DeltaSeconds);
 		FocusTarget.Reset();
 	}
 	// Storeys: the pivot glides to the shown storey's floor (kept relative to the start height).
@@ -87,7 +89,7 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 	const float Rotate = (PC->IsInputKeyDown(EKeys::E) ? 1.f : 0.f) - (PC->IsInputKeyDown(EKeys::Q) ? 1.f : 0.f);
 	if (Rotate != 0.f)
 	{
-		AddActorWorldRotation(FRotator(0.0, Rotate * RotateSpeed * DeltaSeconds, 0.0));
+		AddActorWorldRotation(FRotator(0.0, Rotate * RotateSpeed * DCOptions::CameraSpeedFactor() * DeltaSeconds, 0.0));
 	}
 
 	// Drag with the right or middle mouse button: left/right rotates, up/down tilts.

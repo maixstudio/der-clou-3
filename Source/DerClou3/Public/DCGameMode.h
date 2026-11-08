@@ -5,7 +5,7 @@
 
 #include "DCGameMode.generated.h"
 
-/** Top-down camera pawn and mouse controller. */
+/** Top-down camera pawn and mouse controller - or, on the start menu, the menu controller. */
 UCLASS()
 class DERCLOU3_API ADCGameMode : public AGameModeBase
 {
@@ -13,4 +13,6 @@ class DERCLOU3_API ADCGameMode : public AGameModeBase
 
 public:
 	ADCGameMode();
+
+	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 };

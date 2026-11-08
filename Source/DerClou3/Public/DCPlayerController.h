@@ -17,6 +17,7 @@ class UDCTimelinePanel;
 class UDCCrewBar;
 class UDCFrame;
 class UDCWaitDialog;
+class UDCMenuWidget;
 struct FDCWaitChoice;
 struct FDCPlanTask;
 struct FDCRadialOption;
@@ -123,6 +124,12 @@ public:
 	void OpenProfile(ADCCrewCharacter* Crew);
 	/** 1x, 2x, 4x. */
 	void CycleSpeed();
+
+	//~ Game menu (Esc, "Menü" top right): pause, save, load, options, main menu
+	void OpenPauseMenu();
+	void ClosePauseMenu();
+	bool IsPauseMenuOpen() const;
+	UDCMenuWidget* GetPauseMenu() const { return PauseMenu; }
 
 	//~ Finds during the heist
 	/** A crew member found something while searching: pause the game and let the player decide (one find at a time). */
@@ -231,6 +238,13 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCWaitDialog> WaitDialog;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDCMenuWidget> PauseMenu;
+	/** The menu stopped a running plan (and lets it go on when it closes). */
+	bool bPausedByMenu = false;
+	/** "Abspielen" after a reload: starts once the loading screen is gone. */
+	void StartPlaybackWhenLoaded();
 
 	float RefreshTimer = 0.f;
 	FText ToastText;

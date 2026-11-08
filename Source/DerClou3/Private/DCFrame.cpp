@@ -5,6 +5,7 @@
 #include "DCHeistState.h"
 #include "DCItemWidgets.h"
 #include "DCPlan.h"
+#include "DCPlayerController.h"
 #include "Engine/World.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -150,8 +151,27 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				return Heist ? Heist->DescribeViewMoment() : FText::GetEmpty();
 			})
 		]
-		// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
+		// The game menu (pause, save, load, options), top right; Esc opens it too.
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f))
+		[
+			SNew(SButton)
+			.IsFocusable(false)
+			.ToolTipText(LOCTEXT("MenuTip", "Pause, Plan speichern, Laden, Optionen, Hauptmenü (Esc)"))
+			.ContentPadding(FMargin(14.f, 1.f))
+			.OnClicked_Lambda([WeakThis]()
+			{
+				if (ADCPlayerController* Controller = WeakThis.IsValid() ? Cast<ADCPlayerController>(WeakThis->GetOwningPlayer()) : nullptr)
+				{
+					Controller->OpenPauseMenu();
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Font(Font(13, true)).Text(LOCTEXT("Menu", "Menü"))
+			]
+		]
+		// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f, 108.f, 7.f))
 		[
 			SNew(SHorizontalBox)
 			.Visibility_Lambda([WeakThis]()
