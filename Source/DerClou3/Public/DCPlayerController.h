@@ -134,6 +134,10 @@ protected:
 
 private:
 	void HandleClick();
+	/** A left click at this point of the screen (viewport pixels). */
+	void HandleClickAt(const FVector2D& ScreenPosition);
+	/** Self-tests: a real click (trace from the camera, menus, ground check) on this world point; false if it is off screen. */
+	bool ClickWorldPoint(const FVector& Location);
 	void Select(ADCCrewCharacter* Crew);
 	void OpenDoorMenu(ADCDoor* Door);
 	void OpenPickupMenu(ADCItemPickup* Pickup);

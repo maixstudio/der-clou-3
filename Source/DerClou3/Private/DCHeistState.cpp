@@ -17,6 +17,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NavigationData.h"
 #include "NavigationPath.h"
 #include "NavigationSystem.h"
 
@@ -553,11 +554,28 @@ void UDCHeistStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	if (UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(&InWorld))
 	{
 		Navigation->OnNavigationGenerationFinishedDelegate.AddDynamic(this, &UDCHeistStateSubsystem::OnNavigationRebuilt);
+		// Play in the editor: build the nav mesh of this world ourselves (see bRebuildingAtStart).
+		if (InWorld.WorldType == EWorldType::PIE)
+		{
+			for (ANavigationData* Data : Navigation->NavDataSet)
+			{
+				if (Data && Data->SupportsRuntimeGeneration())
+				{
+					Data->RebuildAll();
+					bRebuildingAtStart = true;
+				}
+			}
+			UE_LOG(LogDerClou, Display, TEXT("Navigation: play in editor builds its own nav mesh%s"), bRebuildingAtStart ? TEXT("") : TEXT(" - nothing to build"));
+		}
 	}
 }
 
 void UDCHeistStateSubsystem::OnNavigationRebuilt(ANavigationData* NavData)
 {
+	if (!bNavigationGenerated)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Navigation: nav mesh built %.1f s after start"), GetWorld()->GetTimeSeconds());
+	}
 	bNavigationGenerated = true;
 	LastNavigationGenerated = GetWorld()->GetTimeSeconds();
 	// Only while planning: during playback the schedule stays as it was when it started.
@@ -2112,7 +2130,7 @@ bool UDCHeistStateSubsystem::IsNavigationReady(const UObject* WorldContext)
 	const ANavigationData* Data = Navigation->GetDefaultNavDataInstance();
 	const UDCHeistStateSubsystem* Heist = World->GetSubsystem<UDCHeistStateSubsystem>();
 	const double Now = World->GetTimeSeconds();
-	if (Data && Data->NeedsRebuildOnLoad() && Heist && Now < 20.0
+	if (Data && Heist && (Data->NeedsRebuildOnLoad() || Heist->bRebuildingAtStart) && Now < 20.0
 		&& (!Heist->bNavigationGenerated || Now - Heist->LastNavigationGenerated < 1.0))
 	{
 		return false;

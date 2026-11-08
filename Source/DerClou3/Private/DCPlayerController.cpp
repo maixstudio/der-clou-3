@@ -717,8 +717,29 @@ void ADCPlayerController::Select(ADCCrewCharacter* Crew)
 
 void ADCPlayerController::HandleClick()
 {
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	if (GetMousePosition(MouseX, MouseY))
+	{
+		HandleClickAt(FVector2D(MouseX, MouseY));
+	}
+}
+
+bool ADCPlayerController::ClickWorldPoint(const FVector& Location)
+{
+	FVector2D Screen;
+	if (!ProjectWorldLocationToScreen(Location, Screen))
+	{
+		return false;
+	}
+	HandleClickAt(Screen);
+	return true;
+}
+
+void ADCPlayerController::HandleClickAt(const FVector2D& ScreenPosition)
+{
 	FHitResult Hit;
-	if (!UDCFloorSubsystem::HitUnderCursor(this, Hit))
+	if (!UDCFloorSubsystem::HitUnderScreenPosition(this, ScreenPosition, Hit))
 	{
 		return;
 	}
@@ -785,6 +806,7 @@ void ADCPlayerController::HandleClick()
 			}
 			else if (UDCHeistStateSubsystem::IsNavigationReady(this))
 			{
+				UE_LOG(LogDerClou, Display, TEXT("No ground: click at %s on %s"), *Hit.ImpactPoint.ToCompactString(), *GetNameSafe(Hit.GetActor()));
 				ShowToast(LOCTEXT("NoGround", "Dort kann niemand stehen"), true);
 				if (Marker)
 				{

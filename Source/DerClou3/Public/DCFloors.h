@@ -49,6 +49,8 @@ public:
 
 	/** Like GetHitResultUnderCursor(ECC_Visibility), but looks through everything on hidden storeys. */
 	static bool HitUnderCursor(APlayerController* Controller, FHitResult& OutHit);
+	/** The same for a point on the screen (viewport pixels), e.g. a self-test's click. */
+	static bool HitUnderScreenPosition(APlayerController* Controller, const FVector2D& ScreenPosition, FHitResult& OutHit);
 
 private:
 	void CollectFloorActors();

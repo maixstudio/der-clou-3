@@ -238,6 +238,17 @@ void UDCFloorSubsystem::Tick(float DeltaTime)
 
 bool UDCFloorSubsystem::HitUnderCursor(APlayerController* Controller, FHitResult& OutHit)
 {
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	if (!Controller || !Controller->GetMousePosition(MouseX, MouseY))
+	{
+		return false;
+	}
+	return HitUnderScreenPosition(Controller, FVector2D(MouseX, MouseY), OutHit);
+}
+
+bool UDCFloorSubsystem::HitUnderScreenPosition(APlayerController* Controller, const FVector2D& ScreenPosition, FHitResult& OutHit)
+{
 	if (!Controller)
 	{
 		return false;
@@ -245,7 +256,7 @@ bool UDCFloorSubsystem::HitUnderCursor(APlayerController* Controller, FHitResult
 	const UDCFloorSubsystem* Floors = Get(Controller);
 	FVector Origin;
 	FVector Direction;
-	if (!Controller->DeprojectMousePositionToWorld(Origin, Direction))
+	if (!Controller->DeprojectScreenPositionToWorld(ScreenPosition.X, ScreenPosition.Y, Origin, Direction))
 	{
 		return false;
 	}

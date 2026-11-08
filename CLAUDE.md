@@ -437,6 +437,15 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Offen: Katalogeinträge für `grand_piano` (im Level steht noch `piano`), neue Beute (`gold_bar`, `wine_bottle`,
     `silverware_case`, `watch_box`, `flour_tin`) und Werkzeug (`bolt_cutter`, `ladder`, `cordless_drill`, `key_ring`,
     `garage_remote`) – Werte mit dem User besprechen; Zustände sichtbar machen (Tresortür offen …); Möbel 1. Stock.
+- **„Dort kann niemand stehen“ im Editor-Spiel behoben (Schritt 27, User-Bug 2026-11-08):** Nach „Rosa wartet auf Vic“ bzw.
+  „Plan leeren“ ging kein Bodenklick mehr. Ursache: PIE kopiert das NavMesh des Editors statt ein eigenes zu bauen. Der
+  Editor rechnet die Villa nach dem Laden neu (im Hintergrund über 30 s). Wer vorher Play drückt, hat im Spiel ein halbes
+  oder leeres Wegenetz, und zwar für immer. Nachgestellt mit `Scripts/Tests/pie_nav_probe.py` (Editor starten, sofort Play,
+  Punkte projizieren, beendet sich selbst): vorher 0/7 Punkte auf dem NavMesh, jetzt 7/7. Jetzt baut die PIE-Welt ihr NavMesh beim Start selbst
+  (`UDCHeistStateSubsystem::OnWorldBeginPlay`, `bRebuildingAtStart`, ~1,5 s), `IsNavigationReady` wartet darauf. Log:
+  „Navigation: play in editor builds its own nav mesh“ / „nav mesh built … s after start“; ein misslungener Bodenklick
+  schreibt „No ground: click at … on …“. Klicks gehen über `HandleClickAt(Bildschirmpunkt)`, Selbsttests klicken mit
+  `ClickWorldPoint(Weltpunkt)` echt (Trace, Bodencheck). Selbsttest Villa klickt jetzt den User-Fall durch.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -468,6 +477,10 @@ dem gewählten Schritt, Rückgängig/Strg+Z – und welche der drei Varianten be
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.
 - NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
   100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock.
+- PIE übernimmt das NavMesh des Editors, so wie es gerade ist, und baut es nicht selbst. Darum baut
+  `UDCHeistStateSubsystem` es in PIE beim Start neu. `-game` baut ohnehin neu, weil die Maps kein passendes NavMesh gespeichert
+  haben. Editor-Prüfungen ohne Klicken: `UnrealEditor.exe DerClou3.uproject -ExecCmds="py <absoluter Pfad>.py"` mit
+  `unreal.register_slate_post_tick_callback` (`-ExecutePythonScript` beendet den Editor gleich nach dem PIE-Start).
 - Slate-Buttons mit `IsFocusable(false)`, sonst kommen Tastatureingaben danach nicht mehr im Spiel an.
 - Unity-Build: neue .cpp-Dateien mischen die Gruppen neu – Konstanten in anonymen Namespaces müssen
   projektweit eindeutig heißen (z. B. `SimItemReach`, `RunnerLootStepSeconds`).

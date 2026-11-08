@@ -325,6 +325,12 @@ private:
 	bool bNavigationGenerated = false;
 	/** World time of the last "nav mesh finished" (a rebuild after loading comes in many batches). */
 	double LastNavigationGenerated = -1.0;
+	/**
+	 * Play in the editor copies the editor's nav mesh instead of building its own. Pressed while the editor was
+	 * still building it (the villa takes many seconds), the game kept a half-built or empty one for good: nobody
+	 * could walk ("Dort kann niemand stehen"). So the PIE world always builds its own at start.
+	 */
+	bool bRebuildingAtStart = false;
 	void UpdateMarkers();
 	void UpdateGhosts();
 	/** Planning without a preview: one ghost of the selected crew member where their next step begins. */

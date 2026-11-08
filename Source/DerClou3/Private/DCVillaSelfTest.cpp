@@ -314,6 +314,75 @@ void ADCPlayerController::StartVillaSelfTest()
 		return true;
 	});
 
+	// User bug 2026-11-08: after "Rosa waits for Vic" and after "Plan leeren" every click on the ground said
+	// "Dort kann niemand stehen". Here with real clicks (trace from the camera, ground check), as in the game.
+	const FVector GardenClick = VillaPoint(32.5, 12.0, 0.0);
+	const FVector StreetClick = VillaPoint(20.0, -1.6, 0.0);
+	SelfTestSteps.Add([this, Expect, CrewNamed, DoorNamed, Camera]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCDoor* Gate = DoorNamed(TEXT("Gartenpforte"));
+		if (!Plans || !Vic || !Rosa || !Gate)
+		{
+			Expect(false, TEXT("pieces for the click test found"));
+			return true;
+		}
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		// Vic: "knacken und durchgehen" at the garden gate; Rosa waits until he has picked it.
+		SelectFromBar(Vic);
+		FDCPlanTask Pick;
+		Pick.Type = EDCPlanTaskType::Door;
+		Pick.Target = Gate->GetFName();
+		Pick.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+		FDCPlanTask Through = Pick;
+		Through.Action = static_cast<uint8>(EDCDoorAction::GoThrough);
+		IssueTasks({ Pick, Through });
+		SelectFromBar(Rosa);
+		FDCWaitChoice Choice;
+		Choice.Kind = FDCWaitChoice::EKind::AfterStep;
+		Choice.Crew = Vic->GetFName();
+		Choice.Step = 0;
+		ApplyWaitChoice(Choice);
+		Camera(VillaPoint(26.0, 5.0, 0.0), 3600.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.5f));
+	SelfTestSteps.Add([this, Expect, CrewNamed, GardenClick, StreetClick]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		if (!Plans || !Vic || !Rosa)
+		{
+			return true;
+		}
+		const auto ClickedWalk = [this, Plans](ADCCrewCharacter* Crew, const FVector& Where, int32 StepsBefore)
+		{
+			const bool bOnScreen = ClickWorldPoint(Where);
+			const TArray<FDCPlanTask>& Tasks = Plans->GetTasks(Crew->GetFName());
+			const bool bWalk = bOnScreen && Tasks.Num() == StepsBefore + 1 && Tasks.Last().Type == EDCPlanTaskType::Move
+				&& FVector::Dist2D(Tasks.Last().Location, Where) < 150.0;
+			return FString::Printf(TEXT("%s%s clicks: %d -> %d steps"), bWalk ? TEXT("") : TEXT("NO WALK - "), *Crew->GetCrewName().ToString(),
+				StepsBefore, Tasks.Num());
+		};
+		const auto IsWalk = [](const FString& Result) { return !Result.StartsWith(TEXT("NO WALK")); };
+
+		const FString Garden = ClickedWalk(Rosa, GardenClick, Plans->GetTasks(Rosa->GetFName()).Num());
+		Expect(IsWalk(Garden), FString::Printf(TEXT("after \"wait for Vic\" a click into the garden is a walk for Rosa (%s)"), *Garden));
+		ClearPlan();
+		Expect(Plans->GetTasks(Rosa->GetFName()).IsEmpty() && Plans->GetTasks(Vic->GetFName()).IsEmpty(), TEXT("\"Plan leeren\" empties both plans"));
+		const FString RosaStreet = ClickedWalk(Rosa, StreetClick, 0);
+		SelectFromBar(Vic);
+		const FString VicStreet = ClickedWalk(Vic, StreetClick + FVector(0.0, 150.0, 0.0), 0);
+		Expect(IsWalk(RosaStreet) && IsWalk(VicStreet), FString::Printf(TEXT("after \"Plan leeren\" both can walk again (%s; %s)"), *RosaStreet, *VicStreet));
+		Plans->ClearAll();
+		SetPreviewTime(-1.f);
+		return true;
+	});
+
 	// Plan: Vic picks the garden gate, the front door and the cellar door, then walks into the cellar corridor.
 	SelfTestSteps.Add([this, Expect, CrewNamed, DoorNamed, RoomNamed, Camera]()
 	{
