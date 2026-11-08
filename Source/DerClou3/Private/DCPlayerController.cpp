@@ -33,6 +33,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "DCFloors.h"
 
 #define LOCTEXT_NAMESPACE "DCPlayerController"
 
@@ -198,6 +199,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartVariantsSelfTest();
 	}
+	else if (SelfTest == TEXT("Villa"))
+	{
+		StartVillaSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -338,7 +343,7 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 void ADCPlayerController::UpdateHoverCursor()
 {
 	FHitResult Hit;
-	const bool bHit = GetHitResultUnderCursor(ECC_Visibility, false, Hit);
+	const bool bHit = UDCFloorSubsystem::HitUnderCursor(this, Hit);
 	ADCItemPickup* Pickup = bHit ? Cast<ADCItemPickup>(Hit.GetActor()) : nullptr;
 	const bool bOverDoor = bHit && (Cast<ADCDoor>(Hit.GetActor()) || Cast<ADCNoiseListener>(Hit.GetActor()));
 	CurrentMouseCursor = bOverDoor || Pickup ? EMouseCursor::Hand : EMouseCursor::Default;
@@ -717,7 +722,7 @@ void ADCPlayerController::Select(ADCCrewCharacter* Crew)
 void ADCPlayerController::HandleClick()
 {
 	FHitResult Hit;
-	if (!GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+	if (!UDCFloorSubsystem::HitUnderCursor(this, Hit))
 	{
 		return;
 	}

@@ -25,6 +25,9 @@ public:
 	/** Glides over to look at this place (stops as soon as the player pans). */
 	void FocusOn(const FVector& Location);
 
+	/** Glides up or down so the camera looks at this storey (finished floor height in cm). */
+	void SetFloorHeight(double FloorZ);
+
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Camera")
 	TObjectPtr<USceneComponent> Root;
@@ -48,7 +51,7 @@ protected:
 	float MinDistance = 600.f;
 
 	UPROPERTY(EditAnywhere, Category = "Camera")
-	float MaxDistance = 3500.f;
+	float MaxDistance = 5500.f;
 
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float StartDistance = 1600.f;
@@ -70,5 +73,8 @@ protected:
 private:
 	bool bDragging = false;
 	TOptional<FVector> FocusTarget;
+	/** Pivot height at the start (ground floor) and the storey to look at. */
+	TOptional<double> BaseZ;
+	double FloorZ = 0.0;
 	FVector2D LastMouse = FVector2D::ZeroVector;
 };

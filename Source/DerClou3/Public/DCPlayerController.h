@@ -177,6 +177,8 @@ private:
 	void StartInsertSelfTest();
 	/** -DCSelfTest=Variants (map L_House01): the three switches in "Varianten …" (ghost, help, insert). */
 	void StartVariantsSelfTest();
+	/** -DCSelfTest=Villa (map L_Villa01): rooms, doors, stairs walkable, the camera shows one storey. */
+	void StartVillaSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */

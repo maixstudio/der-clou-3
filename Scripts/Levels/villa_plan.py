@@ -1144,7 +1144,7 @@ def page():
 <style>{CSS}</style>
 <div class="wrap">
 <header>
-  <div class="eyebrow">der clou 3 · Demo-Level · Grundriss v1 · 8. November 2026</div>
+  <div class="eyebrow">der clou 3 · Demo-Level · Grundriss v1 · Bauabschnitt 1 gebaut · 8. November 2026</div>
   <h1>Villa Lindenhof</h1>
   <p class="lead">Eine freistehende Villa am Ortsrand, {esc(V.ADDRESS)}: Keller, Erdgeschoss und 1. Stock, dazu eine Remise mit
   Garage und Werkstatt, Pool, Garten, Zaun und Hecke. Diese Fassung legt nur den Grundriss fest. Möbel und Beute sind
@@ -1251,7 +1251,7 @@ def page():
       <ul class="plain">
         <li>Ebenen: Keller − 2,90 m, Erdgeschoss ± 0, 1. Stock + 3,10 m.</li>
         <li>Haupttreppe 1,6 m breit, 5 m lang, 18 Stufen. Kellertreppe 1,5 m breit, 4,45 m lang, 16 Stufen.</li>
-        <li>Türen mindestens 0,9 m breit, damit die Wegfindung (Radius 30 cm) durchpasst.</li>
+        <li>Türen mindestens 1,0 m breit, damit die Wegfindung (Radius 30 cm, 10-cm-Raster) durchpasst.</li>
         <li>Daten: <code>Scripts/Levels/villa_layout.py</code>. Diese Seite: <code>Scripts/Levels/villa_plan.py</code>.</li>
       </ul>
     </div>
@@ -1260,11 +1260,13 @@ def page():
 
 <section id="entscheidungen">
   <div class="sec-head"><h2>Entscheidungen</h2><span class="tag">mit dem User abgestimmt am 8. November 2026</span></div>
+  <p class="note"><b>Stand:</b> Bauabschnitt 1 ist gebaut (Level L_Villa01: Grundstück, Remise, Erdgeschoss, Keller). Die
+  Kamera zeigt eine Ebene. Noch offen: Fenster als Einstieg, Bewegungsmelder, Alarm, 1. Stock, Modelle statt Kisten.</p>
   <ol class="q">
     <li><b>Stockwerke in der Kamera:</b> Die Kamera zeigt eine Ebene, alles darüber wird ausgeblendet. Sie folgt der
     ausgewählten Figur, mit Bild auf / Bild ab schaltet man selbst um.</li>
     <li><b>Fenster sind gleich Einstiege.</b> Kippfenster, Glas einschlagen und später die Leiter zum Balkon gehören von
-    Anfang an dazu. Die Regeln unten sind mein Vorschlag.</li>
+    Anfang an dazu. Die Regeln unten sind bestätigt.</li>
     <li><b>Bauabschnitte:</b> Zuerst Grundstück, Remise, Erdgeschoss und Keller mit Tresorraum. Der 1. Stock folgt als
     zweiter Abschnitt, mit ihm Leiter und Balkon.</li>
     <li><b>Das Haus ist leer.</b> Die Familie ist im Urlaub. Gefahr kommt vom Nachbarn, vom Licht und vom Alarm.</li>
@@ -1276,7 +1278,7 @@ def page():
 </section>
 
 <section id="fenster">
-  <div class="sec-head"><h2>Fenster als Einstieg</h2><span class="tag">Vorschlag · vor dem Bauen bestätigen</span></div>
+  <div class="sec-head"><h2>Fenster als Einstieg</h2><span class="tag">Regeln bestätigt · Mechanik noch nicht gebaut</span></div>
   <div class="table-wrap"><table class="doors"><thead><tr><th>Fenster</th><th>Was man tut</th><th class="num">Dauer</th>
   <th>Lärm</th><th>Bedingung</th></tr></thead><tbody>
     <tr><td>gekipptes Fenster</td><td>durchgreifen, Griff drehen, öffnen</td><td class="num">8&nbsp;s</td><td>leise (Klicken)</td>

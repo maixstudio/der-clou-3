@@ -35,6 +35,11 @@ void ADCCameraPawn::FocusOn(const FVector& Location)
 	FocusTarget = Location;
 }
 
+void ADCCameraPawn::SetFloorHeight(double InFloorZ)
+{
+	FloorZ = InFloorZ;
+}
+
 void ADCCameraPawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -56,6 +61,18 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 		const float Scale = SpringArm->TargetArmLength / StartDistance;
 		AddActorWorldOffset(Direction * PanSpeed * Scale * DeltaSeconds);
 		FocusTarget.Reset();
+	}
+	// Storeys: the pivot glides to the shown storey's floor (kept relative to the start height).
+	if (!BaseZ.IsSet())
+	{
+		BaseZ = GetActorLocation().Z;
+	}
+	const double WantZ = *BaseZ + FloorZ;
+	if (!FMath::IsNearlyEqual(GetActorLocation().Z, WantZ, 0.5))
+	{
+		FVector Location = GetActorLocation();
+		Location.Z = FMath::FInterpTo(Location.Z, WantZ, DeltaSeconds, 6.f);
+		SetActorLocation(Location);
 	}
 	if (FocusTarget.IsSet())
 	{

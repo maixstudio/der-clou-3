@@ -116,6 +116,13 @@ namespace
 				Points = { Nodes[A].Location, Nodes[B].Location };
 				Length = FVector::Dist2D(Nodes[A].Location, Nodes[B].Location);
 			}
+			else if (FVector::Dist(Nodes[A].Location, Nodes[B].Location) < 5.0)
+			{
+				// Already standing at that door side (right after picking its lock): nothing to walk.
+				// The nav query gives no usable path for a zero-length way, which used to force a detour.
+				Points = { Nodes[A].Location, Nodes[B].Location };
+				Length = 0.0;
+			}
 			else if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, Nodes[A].Location, Nodes[B].Location))
 			{
 				if (Path->IsValid() && !Path->IsPartial() && Path->PathPoints.Num() >= 2)

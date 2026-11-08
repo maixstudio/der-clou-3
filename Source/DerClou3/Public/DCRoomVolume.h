@@ -24,6 +24,7 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 	const FText& GetRoomName() const { return RoomName; }
+	bool IsOutdoors() const { return bOutdoors; }
 	/** True if the point lies inside the room (seen from above). */
 	bool ContainsPoint(const FVector& Location) const;
 	/** The room around this point (nullptr outside every room). */

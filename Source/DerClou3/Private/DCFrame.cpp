@@ -1,10 +1,12 @@
 #include "DCFrame.h"
 
+#include "DCFloors.h"
 #include "DCGameViewportClient.h"
 #include "DCHeistState.h"
 #include "DCItemWidgets.h"
 #include "DCPlan.h"
 #include "Engine/World.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -45,6 +47,30 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 	using namespace DCItemWidgets;
 	TWeakObjectPtr<UDCFrame> WeakThis = this;
 	const auto LineColor = [WeakThis]() -> FSlateColor { return ModeColor(FrameMode(WeakThis.Get())); };
+	// Up / down one storey; greyed out at the top and bottom storey.
+	const auto FloorButton = [WeakThis](int32 Delta, const FText& Label, const FText& Tip) -> TSharedRef<SWidget>
+	{
+		return SNew(SButton)
+			.IsFocusable(false)
+			.ToolTipText(Tip)
+			.ContentPadding(FMargin(9.f, 1.f))
+			.IsEnabled_Lambda([WeakThis, Delta]()
+			{
+				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
+				return Floors && Floors->CanStep(Delta);
+			})
+			.OnClicked_Lambda([WeakThis, Delta]()
+			{
+				if (UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr)
+				{
+					Floors->StepFloor(Delta);
+				}
+				return FReply::Handled();
+			})
+			[
+				SNew(STextBlock).Font(Font(14, true)).Text(Label)
+			];
+	};
 
 	// A frame zone: solid, and it keeps clicks from reaching the scene behind it.
 	const auto Zone = [](float Width, float Height)
@@ -123,6 +149,35 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
 				return Heist ? Heist->DescribeViewMoment() : FText::GetEmpty();
 			})
+		]
+		// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
+		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f))
+		[
+			SNew(SHorizontalBox)
+			.Visibility_Lambda([WeakThis]()
+			{
+				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
+				return Floors && Floors->HasSeveralFloors() ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+			[
+				SNew(STextBlock)
+				.Font(Font(13, true))
+				.ColorAndOpacity(TitleColor)
+				.Text_Lambda([WeakThis]()
+				{
+					const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
+					return FText::Format(LOCTEXT("FloorShown", "Ebene: {0}"), UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0));
+				})
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+			[
+				FloorButton(1, LOCTEXT("FloorUp", "↑"), LOCTEXT("FloorUpTip", "Eine Ebene höher zeigen (Bild ↑)"))
+			]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+			[
+				FloorButton(-1, LOCTEXT("FloorDown", "↓"), LOCTEXT("FloorDownTip", "Eine Ebene tiefer zeigen (Bild ↓)"))
+			]
 		];
 	return Root.ToSharedRef();
 }

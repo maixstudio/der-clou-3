@@ -48,7 +48,9 @@ void ADCRoomVolume::OnConstruction(const FTransform& Transform)
 bool ADCRoomVolume::ContainsPoint(const FVector& Location) const
 {
 	const FVector Local = GetActorTransform().InverseTransformPosition(Location);
-	return FMath::Abs(Local.X) <= HalfSize.X && FMath::Abs(Local.Y) <= HalfSize.Y;
+	// Height band of one storey (the actor sits 120 cm above the floor): from a bit below the floor
+	// up to just under the next storey, so a cellar room does not claim the hall above it.
+	return FMath::Abs(Local.X) <= HalfSize.X && FMath::Abs(Local.Y) <= HalfSize.Y && Local.Z >= -150.0 && Local.Z < 150.0;
 }
 
 ADCRoomVolume* ADCRoomVolume::FindAt(const UObject* WorldContext, const FVector& Location)
@@ -58,12 +60,17 @@ ADCRoomVolume* ADCRoomVolume::FindAt(const UObject* WorldContext, const FVector&
 	{
 		return nullptr;
 	}
+	// Rooms may lie inside other rooms (pantry in the kitchen, garden around the house): the smallest wins.
+	ADCRoomVolume* Best = nullptr;
+	double BestArea = TNumericLimits<double>::Max();
 	for (TActorIterator<ADCRoomVolume> It(World); It; ++It)
 	{
-		if (It->ContainsPoint(Location))
+		const double Area = It->HalfSize.X * It->HalfSize.Y;
+		if (Area < BestArea && It->ContainsPoint(Location))
 		{
-			return *It;
+			Best = *It;
+			BestArea = Area;
 		}
 	}
-	return nullptr;
+	return Best;
 }

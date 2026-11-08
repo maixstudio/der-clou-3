@@ -4,7 +4,7 @@ Taktisches Einbruchs-Planungsspiel in **Unreal Engine 5.8** (C++), eigenständig
 von „Der Clou!“. **Keine** Namen, Figuren, Texte, Grafiken oder Musik des Originals verwenden – nur
 Genre und Mechaniken. Mit dem User **Deutsch** sprechen.
 
-## Stand (2026-11-07)
+## Stand (2026-11-08)
 
 Das Projekt wurde am 2026-11-05 bewusst auf ein leeres Gerüst zurückgesetzt. Wir bauen **Schritt für
 Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der nächste kommt.
@@ -369,13 +369,33 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   `DerClou.Variants`). Selbsttests nutzen immer die Standardwerte (`-DCVariant=GhostPin,HelpMenu,InsertButton`
   setzt sie) und speichern nichts. Selbsttest `-DCSelfTest=Variants` (L_House01, Screenshots `ghost_figure.png`,
   `ghost_pin.png`).
-- **Villa für die Demo (Entwurf, 2026-11-08, noch nicht gebaut):** „Villa Lindenhof“ – Grundstück 60 × 48 m, Haupthaus
-  22 × 14 m mit Keller/EG/1. Stock, Remise (Garage, Werkstatt, Geräteraum), Pool, Garten, Zaun, Hecken, 30 Außenleuchten.
-  Daten (einzige Quelle, später auch für den Level-Bau): `Scripts/Levels/villa_layout.py` (Meter, x = Ost, y = Nord;
-  Unreal X = y·100, Y = x·100). Zeichnung: `python Scripts/Levels/villa_plan.py` → `Docs/Villa/Villa-Grundriss.html`
-  (auch als Artifact veröffentlicht). Entschieden (Details in `Docs/Plan-Naechste-Schritte.md`): Kamera zeigt eine
-  Ebene, Fenster gleich als Einstieg, erst Grundstück + Remise + EG + Keller (1. Stock danach), Haus leer, Geheimkammer
-  mit Suche später. Noch zu bestätigen: Fenster-Regeln (Vorschlag auf der Seite).
+- **Villa Lindenhof, Bauabschnitt 1 (Schritt 22, 2026-11-08):** Grundstück 60 × 48 m, Remise, Erdgeschoss, Keller.
+  Plan + Entscheidungen: `Docs/Villa/Villa-Grundriss.html` (aus `python Scripts/Levels/villa_plan.py`, auch als Artifact),
+  `Docs/Plan-Naechste-Schritte.md` (Abschnitt Villa). Daten (einzige Quelle für Zeichnung und Level):
+  `Scripts/Levels/villa_layout.py` (Meter, x = Ost, y = Nord; Unreal X = y·100, Y = x·100).
+  - Map `/Game/DerClou/Maps/L_Villa01` (jetzt Editor-Startmap), gebaut von `Scripts/Levels/build_villa.py` (Commandlet,
+    Editor zu, **absoluter Skriptpfad**, vorher `Content/DerClou/Maps/L_Villa01.umap` löschen). Kopiert L_House01 (Himmel,
+    Mond, Nachbearbeitung, Crew, Nachbar, NavMesh), baut Gelände mit Löchern (Haus, Außentreppe), Decke EG mit Treppenloch,
+    Wände aus den Raumkanten (außen 30, innen 15 cm, Öffnungen mit Brüstung/Sturz, Glas mit Kollision), 34 `ADCDoor`
+    (Typ-Farbe, Breite, Schloss aus den Daten; Garagen-/Einfahrtstor LockDifficulty 10 „elektrisch“; Hebeschiebetür =
+    halbe Breite + Festglas), Kellertreppe und Kelleraußentreppe (Stufenblöcke), 29 `ADCRoomVolume`, 39 Gegenstände
+    (Tresor + Vitrine im Tresorraum, Brecheisen in der Werkstatt, Rucksack auf dem Gehweg …), Möbel-Kisten, Hecken, Zaun
+    mit drei Toren, 18 Bäume, Pool mit unsichtbarer Sperre, 30 Außen- + 13 Innenleuchten (Bewegungsmelder-Strahler aus,
+    Tag `DCMotionLight`), Nachbarhaus mit `Nachbar`. Materialien `/Game/DerClou/Villa/Materials/MI_Villa_*`.
+  - Crew startet auf dem Gehweg vor der Pforte. Türen mindestens 1,0 m, Tore 2,10 m hoch (sonst stößt die Figur an).
+  - **Eine Ebene zeigen:** `UDCFloorSubsystem` (`DCFloors.h`): Hausteile tragen Tag `DCFloor_KG/EG/OG`; alles über der
+    gezeigten Ebene wird ausgeblendet (`SetActorHiddenInGame`, Kollision und NavMesh bleiben), Figuren im Haus auf
+    höheren Ebenen auch. Folgt der gewählten Figur, Bild ↑/↓ oder die Pfeile oben rechts („Ebene: Keller“) wählen selbst.
+    Mausklicks gehen durch Ausgeblendetes (`UDCFloorSubsystem::HitUnderCursor`). Kamera gleitet auf die Ebenenhöhe
+    (`ADCCameraPawn::SetFloorHeight`), Zoom bis 55 m.
+  - `ADCRoomVolume`: Höhe zählt (ein Stockwerk), verschachtelte Räume → der kleinste gewinnt (Speisekammer in der Küche).
+  - Fehler in der Wegsuche behoben: stand die Figur genau am Türstandpunkt (nach dem Knacken), wurde ein Umweg über
+    eine andere Tür geplant (`WayThroughDoors`, Null-Meter-Stück).
+  - Selbsttest `-DCSelfTest=Villa` (Map L_Villa01): Räume, Türen, Treppen begehbar, Zaun dicht, Vic plant Pforte →
+    Haustür → Kellertür → Kellerflur, spielt ab, Kamera folgt in den Keller (Screenshots `villa_plan/keller/eg/overview.png`).
+  - **Noch nicht gebaut:** Fenster als Einstieg (Regeln auf der Seite, vom User bestätigt), Bewegungsmelder, Alarm,
+    Panzertür mit Fertigkeit Tresore (bisher Schlösser 8), 1. Stock, Modelle statt Kisten (Blender-Chat, siehe
+    `Docs/Villa/Villa-Modelle.md`).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -400,7 +420,8 @@ Neu seit 2026-11-08: Türregel (öffnet unterwegs, wartet an verschlossener Tür
 dem gewählten Schritt, Rückgängig/Strg+Z – und welche der drei Varianten besser ist (Geist, Hinweis, Einfügen).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01).
+  Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

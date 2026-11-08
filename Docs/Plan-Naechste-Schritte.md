@@ -127,10 +127,18 @@ Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „O
   auf Ereignisse warten.
 - Später **Zeitbudget** je Suche („höchstens 45 s“) und Räume als eigene Bereiche (`ADCRoomVolume`).
 
-### Villa für die Demo – Grundriss-Entwurf 2026-11-08
+### Villa für die Demo – Grundriss 2026-11-08, Bauabschnitt 1 gebaut
 Auftrag des Users: größere Villa mit Keller, EG, 1. Stock, Nebengebäude, Zaun, Bäumen, Hecke, Außenlicht, Fenstern,
-verschiedenen Türen, Pool und Garten – zuerst nur der Grundriss. Entwurf: `Docs/Villa/Villa-Grundriss.html`
-(Daten `Scripts/Levels/villa_layout.py`). Noch nicht gebaut.
+verschiedenen Türen, Pool und Garten. Plan: `Docs/Villa/Villa-Grundriss.html` (Daten `Scripts/Levels/villa_layout.py`).
+**Bauabschnitt 1 gebaut** (CLAUDE.md, Schritt 22): Map L_Villa01 mit Grundstück, Remise, EG, Keller; Kamera zeigt eine Ebene.
+
+**Nächste Villa-Schritte (Reihenfolge):**
+1. Fenster als Einstieg nach den Regeln unten (`ADCWindow`: Radialmenü, Plan-Schritte, Simulation, durchsteigen als
+   NavLink, kleine Fenster ohne Rucksack).
+2. Bewegungsmelder (Licht an, Nachbar in Sichtweite misstrauischer) und Alarmanlage an den Türen (Bedienteil, Zentrale).
+3. Panzertür mit Fertigkeit Tresore statt Schlösser.
+4. 1. Stock (Bauabschnitt 2) mit Haupttreppe, Leiter und Balkon.
+5. Modelle statt Kisten übernimmt der Blender-Chat (`Docs/Villa/Villa-Modelle.md`).
 
 **Entscheidungen des Users (2026-11-08):**
 
@@ -143,7 +151,7 @@ verschiedenen Türen, Pool und Garten – zuerst nur der Grundriss. Entwurf: `Do
 | Geheimkammer | **drin, Suche später** – Regal vorerst normale verschlossene Tür |
 | Pool/Garten, Bewegungsmelder | Claudes Vorschlag: Pool Kulisse; Bewegungsmelder schaltet Licht an, Nachbar in Sichtweite wird misstrauischer |
 
-**Vorschlag Fenster-Regeln (noch vom User zu bestätigen, Tabelle auf der Seite):** gekippt durchgreifen 8 s leise
+**Fenster-Regeln (vom User bestätigt 2026-11-08, Tabelle auf der Seite):** gekippt durchgreifen 8 s leise
 (Schlösser 3, eine Hand), aufhebeln 6 s laut (Brecheisen, Kraft 4, beide Hände), Glas einschlagen 1 s sehr laut,
 durchsteigen 3 s (nichts Großes in den Händen, kleine Fenster ohne Rucksack), Kellerfenster vergittert (später
 Bolzenschneider). Alarm überwacht Haustür, Terrassentüren, Kelleraußentür – keine Fenster. Erst öffnen, dann durchsteigen.
