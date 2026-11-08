@@ -50,6 +50,7 @@ void UDCPlanRunnerComponent::Start(const TArray<FDCPlanTask>& InTasks)
 	Tries = 0;
 	WaitText = FText::GetEmpty();
 	LootSkip.Reset();
+	PassingDoor.Reset();
 	bRunning = !Tasks.IsEmpty();
 }
 
@@ -100,9 +101,32 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	case EStep::Approach:
 		if (!bStepStarted)
 		{
-			// A closed door on the way: wait here until someone opens it (as the plan expects).
+			// Going through a door on the way first: wait until that is done, then look again.
+			if (PassingDoor.IsValid())
+			{
+				if (Crew->IsBusy())
+				{
+					return;
+				}
+				PassingDoor.Reset();
+			}
+			// A closed door on the way is opened in passing; a locked one means waiting here until
+			// someone unlocks it (as the plan expects).
 			FText DoorWait;
-			if (DoorOnWay(DoorWait))
+			ADCDoor* OpenOnWay = nullptr;
+			ADCDoor* WaitAtDoor = nullptr;
+			const bool bDoorWait = DoorOnWay(DoorWait, OpenOnWay, WaitAtDoor);
+			if (!bDoorWait && OpenOnWay)
+			{
+				bWentToDoorWait = false;
+				PassingDoor = OpenOnWay;
+				WaitText = FText::GetEmpty();
+				Statuses[Index] = EDCTaskStatus::Running;
+				UE_LOG(LogDerClou, Log, TEXT("%s opens %s on the way"), *Crew->GetCrewName().ToString(), *OpenOnWay->GetInteractableName().ToString());
+				Crew->InteractWithDoor(OpenOnWay, EDCDoorAction::GoThrough);
+				return;
+			}
+			if (bDoorWait)
 			{
 				// Trying things out directly: nobody else will open it, so say so at once.
 				const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -111,6 +135,16 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 					Crew->Say(DoorWait);
 					FinishTask(EDCTaskStatus::Failed);
 					return;
+				}
+				// Walk up to the door and wait beside it (whoever unlocks it needs the spot in front).
+				if (WaitAtDoor && !bWentToDoorWait && !Crew->IsBusy())
+				{
+					bWentToDoorWait = true;
+					const FVector Near = WaitAtDoor->GetStandPoint(Crew->GetActorLocation(), false) + WaitAtDoor->GetActorRightVector().GetSafeNormal2D() * WaitAside;
+					if (FVector::Dist2D(Crew->GetActorLocation(), Near) > 60.0)
+					{
+						Crew->MoveToLocation(Near);
+					}
 				}
 				if (!DoorWait.EqualTo(WaitText))
 				{
@@ -121,6 +155,7 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 				return;
 			}
 			WaitText = FText::GetEmpty();
+			bWentToDoorWait = false;
 			bStepStarted = true;
 			Statuses[Index] = EDCTaskStatus::Running;
 			StartApproach();
@@ -342,8 +377,11 @@ bool UDCPlanRunnerComponent::ConditionMet(FText& OutWait) const
 	return true;
 }
 
-bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait) const
+bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt) const
 {
+	OutOpen = nullptr;
+	OutWaitAt = nullptr;
+	OutWait = FText::GetEmpty();
 	const ADCCrewCharacter* Crew = GetCrew();
 	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
 	if (!Crew || !Heist)
@@ -382,18 +420,33 @@ bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait) const
 	default:
 		return false;
 	}
-	const TArray<ADCDoor*> Closed = Heist->FindClosedDoorsOnWay(Crew->GetActorLocation(), Destination);
-	if (Closed.IsEmpty())
+	// The doors still in the way, in the order they are met: the first one decides.
+	const TArray<ADCDoor*> InWay = Heist->FindClosedDoorsOnWay(Crew->GetActorLocation(), Destination);
+	if (InWay.IsEmpty())
 	{
 		return false;
 	}
-	TArray<FString> Names;
-	for (const ADCDoor* Door : Closed)
+	ADCDoor* First = InWay[0];
+	if (First->IsLocked())
 	{
-		Names.Add(Door->GetInteractableName().ToString());
+		OutWait = FText::Format(LOCTEXT("WaitAtLockedDoor", "wartet an der {0}, bis sie aufgesperrt ist"), First->GetInteractableName());
+		OutWaitAt = First;
+		return true;
 	}
-	OutWait = FText::Format(LOCTEXT("WaitDoorOnWay", "wartet, bis {0} offen ist"), FText::FromString(FString::Join(Names, TEXT(", "))));
-	return true;
+	if (First->IsOpen())
+	{
+		// Just swinging open: the way is free in a moment.
+		OutWait = FText::Format(LOCTEXT("WaitDoorOpening", "wartet, bis {0} offen ist"), First->GetInteractableName());
+		return true;
+	}
+	if (!Crew->CheckDoorAction(First, EDCDoorAction::Open).bPossible)
+	{
+		OutWait = FText::Format(LOCTEXT("WaitAtShutDoor", "wartet an der {0}, bis sie offen ist (keine Hand frei)"), First->GetInteractableName());
+		OutWaitAt = First;
+		return true;
+	}
+	OutOpen = First;
+	return false;
 }
 
 bool UDCPlanRunnerComponent::AlreadyDone() const

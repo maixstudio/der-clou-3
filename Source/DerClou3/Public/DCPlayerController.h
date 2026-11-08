@@ -144,6 +144,8 @@ private:
 	void StartDoorWaySelfTest();
 	/** -DCSelfTest=House (map L_House01): rooms, doors, crew in the garden; Vic plans through two locked doors into the office and gets there. */
 	void StartHouseSelfTest();
+	/** -DCSelfTest=AutoDoor (map L_House01): the user's plan - Vic only picks the back door, Rosa waits for it, walks in, opens it herself and searches the dresser. */
+	void StartAutoDoorSelfTest();
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 

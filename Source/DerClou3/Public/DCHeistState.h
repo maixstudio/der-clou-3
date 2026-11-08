@@ -67,6 +67,14 @@ struct FDCWorldSnapshot
 	static bool IsReachable(const FDCSimPickup& Pickup, int32 Index);
 };
 
+/** One stretch of walking in a step; between two stretches the crew member waits (at a locked door). */
+struct FDCWalkLeg
+{
+	TArray<FVector> Path;
+	float Start = 0.f;
+	float End = 0.f;
+};
+
 /** One planned step as the simulation sees it: when it starts, waits, works and ends. */
 struct FDCScheduledTask
 {
@@ -83,6 +91,40 @@ struct FDCScheduledTask
 	float End = 0.f;
 	/** Will never happen (a condition is never met, or the crew member cannot do it). */
 	bool bBlocked = false;
+	/** Blocked before even starting to walk (a locked door on the way): stays where the walk would begin. */
+	bool bWalkBlocked = false;
+	/** Doors opened on the way (closed but not locked: the crew member opens them in passing). */
+	TArray<FName> OpenedOnWay;
+	/** The walk in stretches: up to a locked door, wait beside it, on (one stretch without waiting). */
+	TArray<FDCWalkLeg> Legs;
+	/** Seconds spent waiting on the way (before or between the stretches). */
+	float WaitedOnTheWay() const
+	{
+		float Waited = 0.f;
+		float Previous = Start;
+		for (const FDCWalkLeg& Leg : Legs)
+		{
+			Waited += FMath::Max(0.f, Leg.Start - Previous);
+			Previous = Leg.End;
+		}
+		return Waited;
+	}
+	/** True while the crew member waits on the way (before or between the stretches). */
+	bool IsWaitingOnTheWay(float Time) const
+	{
+		float Previous = Start;
+		for (const FDCWalkLeg& Leg : Legs)
+		{
+			if (Time >= Previous && Time < Leg.Start)
+			{
+				return true;
+			}
+			Previous = Leg.End;
+		}
+		return bBlocked && bWalkBlocked && Time >= Previous;
+	}
+	/** "öffnet unterwegs Hintertür". */
+	FText WayNote;
 	/** Makes a loud noise. */
 	bool bLoud = false;
 	float FailChance = 0.f;
@@ -215,6 +257,8 @@ private:
 
 	FDCSchedule Schedule;
 	FString ScheduleSignature;
+	/** What each planned inventory held at the last refresh (kept as long as this stays the same). */
+	TMap<FName, FString> PlannedInventorySignatures;
 	int32 ScheduleVersion = 0;
 	FDCWorldSnapshot PlannedState;
 	double PlaybackStart = -1.0;

@@ -7,6 +7,7 @@
 #include "DCPlanRunner.generated.h"
 
 class ADCCrewCharacter;
+class ADCDoor;
 class ADCItemPickup;
 class UDCItem;
 
@@ -70,8 +71,12 @@ private:
 	void StartApproach();
 	/** True if the step may start; otherwise OutWait says what it waits for. */
 	bool ConditionMet(FText& OutWait) const;
-	/** True if a closed door is on the way to where the step happens (OutWait: "wartet, bis Hintertür offen ist"). */
-	bool DoorOnWay(FText& OutWait) const;
+	/**
+	 * Doors on the way to where the step happens. Returns true if the crew member has to wait
+	 * (a locked door, or a closed one with no hand free: OutWait says which). OutOpen is a closed,
+	 * unlocked door she can open in passing (she goes through it first, then on).
+	 */
+	bool DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt) const;
 	/** True if there is nothing left to do (lock already open, ...). */
 	bool AlreadyDone() const;
 	void StartExecute();
@@ -96,6 +101,10 @@ private:
 	int32 Tries = 0;
 	FText WaitText;
 	TSet<TWeakObjectPtr<UDCItem>> LootSkip;
+	/** Opening a door on the way (going through it) before walking on to the step. */
+	TWeakObjectPtr<ADCDoor> PassingDoor;
+	/** Waiting at a locked door: already sent there (once per wait). */
+	bool bWentToDoorWait = false;
 
 	enum class ELootPhase : uint8
 	{

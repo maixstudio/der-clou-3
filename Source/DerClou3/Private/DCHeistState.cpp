@@ -28,6 +28,8 @@ namespace
 	constexpr float TakeSeconds = 0.6f;
 	constexpr float SimLootStepSeconds = 0.8f;
 	constexpr double SimItemReach = 40.0;
+	/** Waiting at a locked door: this far beside the spot in front of it (whoever unlocks it stands there). */
+	constexpr double SimDoorWaitAside = 110.0;
 	/** Without a nav path (e.g. behind a closed door) the way is guessed as this much longer than straight. */
 	constexpr double DetourFactor = 1.4;
 
@@ -231,6 +233,55 @@ namespace
 		return static_cast<float>(Length / FMath::Max(50.f, Speed)) + 0.3f;
 	}
 
+	/** Everything that matters about an inventory as text (slots, items, cells, states): equal text = same contents. */
+	FString DescribeItemForCompare(const UDCItem* Item)
+	{
+		if (!Item)
+		{
+			return TEXT("-");
+		}
+		FString Text = FString::Printf(TEXT("%s@%d,%d:%d%d%d%d{"), *Item->GetDefId().ToString(), Item->GetGridPos().X, Item->GetGridPos().Y,
+			Item->IsOpen() ? 1 : 0, Item->IsLocked() ? 1 : 0, Item->IsLockBroken() ? 1 : 0, Item->IsDestroyed() ? 1 : 0);
+		for (const UDCItem* Child : Item->GetContents())
+		{
+			Text += DescribeItemForCompare(Child);
+		}
+		return Text + TEXT("}");
+	}
+
+	FString DescribeInventoryForCompare(const UDCInventoryComponent* Inventory)
+	{
+		FString Text;
+		for (const EDCEquipSlot EquipSlot : { EDCEquipSlot::Head, EDCEquipSlot::Body, EDCEquipSlot::Vest, EDCEquipSlot::Back, EDCEquipSlot::LeftHand, EDCEquipSlot::RightHand })
+		{
+			Text += DescribeItemForCompare(Inventory ? Inventory->GetSlotItem(EquipSlot) : nullptr) + TEXT("|");
+		}
+		return Text;
+	}
+
+	/** Doors the way passes through, in the order they are met, with the distance walked up to each (cm). */
+	TArray<TPair<FName, double>> DoorCrossings(UWorld* World, const TArray<FVector>& Path)
+	{
+		TArray<TPair<FName, double>> Crossings;
+		double Walked = 0.0;
+		for (int32 Point = 1; Point < Path.Num(); ++Point)
+		{
+			const double Segment = FVector::Dist2D(Path[Point - 1], Path[Point]);
+			for (TActorIterator<ADCDoor> It(World); It; ++It)
+			{
+				const FName Name = It->GetFName();
+				if (!Crossings.ContainsByPredicate([Name](const TPair<FName, double>& Entry) { return Entry.Key == Name; })
+					&& It->CrossesOpening(Path[Point - 1], Path[Point]))
+				{
+					const double Into = FMath::Clamp(FVector::Dist2D(Path[Point - 1], It->GetCenter()), 0.0, Segment);
+					Crossings.Add({ Name, Walked + Into });
+				}
+			}
+			Walked += Segment;
+		}
+		return Crossings;
+	}
+
 	/** Doors the way passes through (actor names), in the order they are met. */
 	TArray<FName> DoorsOnPath(UWorld* World, const TArray<FVector>& Path)
 	{
@@ -268,6 +319,23 @@ namespace
 			}
 		}
 		return Item;
+	}
+
+	/** All stretches joined into one line (for drawing the route). */
+	TArray<FVector> JoinLegs(const TArray<FDCWalkLeg>& Legs)
+	{
+		TArray<FVector> Points;
+		for (const FDCWalkLeg& Leg : Legs)
+		{
+			for (int32 Point = 0; Point < Leg.Path.Num(); ++Point)
+			{
+				if (Points.IsEmpty() || FVector::DistSquared(Points.Last(), Leg.Path[Point]) > 1.0)
+				{
+					Points.Add(Leg.Path[Point]);
+				}
+			}
+		}
+		return Points;
 	}
 
 	/** A point along a polyline, Fraction 0..1 of its length. */
@@ -1052,6 +1120,10 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			Out.Carry = FText::Format(LOCTEXT("CarryDrop", "legt {0} auf den Boden"), ItemName(DropId));
 		}
 
+		if (!Out.WayNote.IsEmpty())
+		{
+			Out.Detail = Out.Detail.IsEmpty() ? Out.WayNote : FText::Format(LOCTEXT("DetailWithWay", "{0} · {1}"), Out.Detail, Out.WayNote);
+		}
 		Out.End = T + Duration;
 		if (Out.bHasLocation && Out.EndLocation.IsZero())
 		{
@@ -1114,34 +1186,108 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			}
 			break;
 		}
-		const float Walk = WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed, &Out.Path);
-		// A closed door on the way: wait here until someone opens it (or forever: "geht nicht").
-		TArray<FName> Closed;
-		TArray<FText> ClosedNames;
-		for (const FName DoorName : DoorsOnPath(World, Out.Path))
+		TArray<FVector> Way;
+		const float Walk = WalkSeconds(World, Cursor.Location, Spot, Cursor.Speed, &Way);
+		// Doors on the way, in the order they are met: a closed one she opens in passing (a hand free
+		// is enough). At a locked one - or a closed one with both hands full - she walks up to it and
+		// waits beside it until someone else changes it (or forever: "geht nicht"), then goes on.
+		const TArray<TPair<FName, double>> Crossings = DoorCrossings(World, Way);
+		int32 Blocking = INDEX_NONE;
+		for (int32 Crossing = 0; Crossing < Crossings.Num() && Blocking == INDEX_NONE; ++Crossing)
 		{
-			const FDCSimDoor* Door = State.FindDoor(DoorName);
-			if (Door && !Door->bOpen)
+			const FDCSimDoor* Door = State.FindDoor(Crossings[Crossing].Key);
+			const ADCDoor* Actor = FindDoor(Crossings[Crossing].Key);
+			if (!Door || Door->bOpen || !Actor)
 			{
-				Closed.Add(DoorName);
-				const ADCDoor* Actor = FindDoor(DoorName);
-				ClosedNames.Add(Actor ? Actor->GetInteractableName() : FText::FromName(DoorName));
+				continue;
+			}
+			const bool bCanOpen = !Door->bLocked && Cursor.Crew && Cursor.Crew->PlanCheckDoor(Actor, EDCDoorAction::Open, Cursor.Inventory).bPossible;
+			if (!bCanOpen)
+			{
+				Blocking = Crossing;
 			}
 		}
-		if (!Closed.IsEmpty())
+		// Opening a door in passing: hand on the handle and the swing; the door is open from then on.
+		const auto OpenOnTheWay = [&](const TArray<FVector>& Path, float From) -> float
 		{
+			float Extra = 0.f;
+			for (const TPair<FName, double>& Crossing : DoorCrossings(World, Path))
+			{
+				const FDCSimDoor* Door = State.FindDoor(Crossing.Key);
+				if (!Door || Door->bOpen || Door->bLocked)
+				{
+					continue;
+				}
+				const float Reached = From + static_cast<float>(Crossing.Value / FMath::Max(50.f, Cursor.Speed)) + Extra;
+				Extra += HandSeconds + SwingSeconds;
+				const FName DoorName = Crossing.Key;
+				AddEvent(Cursor, Reached + HandSeconds, [DoorName](FDCWorldSnapshot& S) { if (FDCSimDoor* D = S.FindDoor(DoorName)) { D->bOpen = true; } });
+				Out.OpenedOnWay.AddUnique(DoorName);
+			}
+			return Extra;
+		};
+		if (Blocking != INDEX_NONE)
+		{
+			const FName DoorName = Crossings[Blocking].Key;
+			const ADCDoor* Actor = FindDoor(DoorName);
+			const FDCSimDoor* Door = State.FindDoor(DoorName);
+			// Up to the door, beside it: whoever unlocks it needs the spot in front of the handle.
+			double Total = 0.0;
+			for (int32 Point = 1; Point < Way.Num(); ++Point)
+			{
+				Total += FVector::Dist2D(Way[Point - 1], Way[Point]);
+			}
+			const FVector Before = AlongPath(Way, Total > 0.0 ? static_cast<float>(FMath::Max(0.0, Crossings[Blocking].Value - 60.0) / Total) : 0.f);
+			const FVector Near = Actor->GetStandPoint(Before, false) + Actor->GetActorRightVector().GetSafeNormal2D() * SimDoorWaitAside;
+			if (FVector::Dist2D(Cursor.Location, Near) > 40.0)
+			{
+				FDCWalkLeg Leg;
+				const float LegWalk = WalkSeconds(World, Cursor.Location, Near, Cursor.Speed, &Leg.Path);
+				const float Extra = OpenOnTheWay(Leg.Path, Cursor.Time);
+				Leg.Start = Cursor.Time;
+				Leg.End = Cursor.Time + LegWalk + Extra;
+				Out.Legs.Add(Leg);
+				Cursor.Time = Leg.End;
+				Cursor.Location = Near;
+			}
 			Cursor.bWalkPending = true;
-			Cursor.WaitDoors = Closed;
+			Cursor.WaitDoors = { DoorName };
 			Cursor.bBlocked = true;
 			Cursor.BlockedSince = Cursor.Time;
-			Out.WalkStart = Out.Ready = Cursor.Time;
-			Out.WaitReason = FText::Format(LOCTEXT("WaitDoorOnWay", "wartet, bis {0} offen ist"), JoinNames(ClosedNames));
+			Out.bWalkBlocked = true;
+			Out.WalkStart = Out.Legs.IsEmpty() ? Cursor.Time : Out.Legs[0].Start;
+			Out.Ready = Cursor.Time;
+			Out.Path = Out.Legs.IsEmpty() ? TArray<FVector>{ Cursor.Location } : JoinLegs(Out.Legs);
+			// The marker stands where she waits (not at the world origin).
+			Out.EndLocation = Cursor.Location;
+			const FText Name = Actor->GetInteractableName();
+			Out.WaitReason = Door && Door->bLocked
+				? FText::Format(LOCTEXT("WaitAtLockedDoor", "wartet an der {0}, bis sie aufgesperrt ist"), Name)
+				: FText::Format(LOCTEXT("WaitAtShutDoor", "wartet an der {0}, bis sie offen ist (keine Hand frei)"), Name);
 			return;
 		}
 		Cursor.bWalkPending = false;
 		Cursor.WaitDoors.Reset();
-		Out.WalkStart = Cursor.Time;
-		Out.Ready = Cursor.Time + Walk;
+		Out.bWalkBlocked = false;
+		FDCWalkLeg Leg;
+		Leg.Path = Way;
+		Leg.Start = Cursor.Time;
+		const float Extra = OpenOnTheWay(Way, Cursor.Time);
+		Leg.End = Cursor.Time + Walk + Extra;
+		Out.Legs.Add(Leg);
+		Out.Path = JoinLegs(Out.Legs);
+		Out.WalkStart = Out.Legs[0].Start;
+		TArray<FText> OpenedNames;
+		for (const FName DoorName : Out.OpenedOnWay)
+		{
+			const ADCDoor* Actor = FindDoor(DoorName);
+			OpenedNames.Add(Actor ? Actor->GetInteractableName() : FText::FromName(DoorName));
+		}
+		if (!OpenedNames.IsEmpty())
+		{
+			Out.WayNote = FText::Format(LOCTEXT("OpensOnWay", "\u00f6ffnet unterwegs {0}"), JoinNames(OpenedNames));
+		}
+		Out.Ready = Leg.End;
 		Cursor.Location = Spot;
 		Out.EndLocation = Spot;
 		Cursor.Time = Out.Ready;
@@ -1158,8 +1304,9 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				continue;
 			}
 			FText Ignored;
+			// A waiting walk tries again once a door it waits for has changed (BeginTask looks again).
 			const bool bFree = Cursor.bWalkPending
-				? !Cursor.WaitDoors.ContainsByPredicate([&State](FName DoorName) { const FDCSimDoor* Door = State.FindDoor(DoorName); return Door && !Door->bOpen; })
+				? Cursor.WaitDoors.ContainsByPredicate([&State](FName DoorName) { const FDCSimDoor* Door = State.FindDoor(DoorName); return Door && (!Door->bLocked || Door->bOpen); })
 				: ConditionHolds((*Cursor.Tasks)[Cursor.Next], Ignored);
 			if (bFree)
 			{
@@ -1273,10 +1420,25 @@ void UDCHeistStateSubsystem::Refresh(bool bMarkers)
 {
 	TMap<FName, UDCInventoryComponent*> Inventories;
 	Schedule = Simulate(&PlannedState, &Inventories);
-	PlannedInventories.Reset();
+	// Keep the planned inventories while their contents stay the same: windows that show them
+	// rebuild when the object changes, and the planning refreshes twice a second (no flicker).
 	for (const TPair<FName, UDCInventoryComponent*>& Entry : Inventories)
 	{
-		PlannedInventories.Add(Entry.Key, Entry.Value);
+		const FString Contents = DescribeInventoryForCompare(Entry.Value);
+		const FString* Known = PlannedInventorySignatures.Find(Entry.Key);
+		if (!Known || *Known != Contents || !PlannedInventories.Contains(Entry.Key))
+		{
+			PlannedInventories.Add(Entry.Key, Entry.Value);
+			PlannedInventorySignatures.Add(Entry.Key, Contents);
+		}
+	}
+	for (auto It = PlannedInventories.CreateIterator(); It; ++It)
+	{
+		if (!Inventories.Contains(It.Key()))
+		{
+			PlannedInventorySignatures.Remove(It.Key());
+			It.RemoveCurrent();
+		}
 	}
 	FString Signature;
 	for (const FDCCrewSchedule& Crew : Schedule.Crews)
@@ -1427,12 +1589,30 @@ FVector UDCHeistStateSubsystem::GetPositionAt(const FDCCrewSchedule& Crew, float
 		{
 			return Location;
 		}
-		if (Time < Task.Ready && Task.Path.Num() >= 2)
+		if (!Task.Legs.IsEmpty())
 		{
-			const float WalkStart = FMath::Max(Task.Start, Task.WalkStart);
-			return AlongPath(Task.Path, FMath::Max(0.f, Time - WalkStart) / FMath::Max(0.01f, Task.Ready - WalkStart));
+			// Stretch by stretch; in between (and before the first) she waits where the stretch begins.
+			for (const FDCWalkLeg& Leg : Task.Legs)
+			{
+				if (Time < Leg.Start)
+				{
+					return Leg.Path.IsEmpty() ? Location : Leg.Path[0];
+				}
+				if (Time < Leg.End && Leg.Path.Num() >= 2)
+				{
+					return AlongPath(Leg.Path, (Time - Leg.Start) / FMath::Max(0.01f, Leg.End - Leg.Start));
+				}
+				if (!Leg.Path.IsEmpty())
+				{
+					Location = Leg.Path.Last();
+				}
+			}
 		}
-		if (!Task.Path.IsEmpty())
+		else if (Time < Task.Ready && Task.Path.Num() >= 2)
+		{
+			return AlongPath(Task.Path, (Time - Task.Start) / FMath::Max(0.01f, Task.Ready - Task.Start));
+		}
+		else if (!Task.Path.IsEmpty())
 		{
 			Location = Task.Path.Last();
 		}
@@ -1491,7 +1671,7 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 	{
 		return FText::Format(LOCTEXT("ActivityBlocked", "{0}. {1}: geht nicht"), Number, Task->Label);
 	}
-	if (Time < Task->WalkStart)
+	if (Task->IsWaitingOnTheWay(Time))
 	{
 		return Task->WaitFor.IsNone()
 			? FText::Format(LOCTEXT("ActivityWaitDoor", "{0}. {1}"), Number, Task->WaitReason)

@@ -172,6 +172,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartHouseSelfTest();
 	}
+	else if (SelfTest == TEXT("AutoDoor"))
+	{
+		StartAutoDoorSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -2903,31 +2907,30 @@ void ADCPlayerController::StartDoorWaySelfTest()
 		Pick.Type = EDCPlanTaskType::Door;
 		Pick.Target = Door->GetFName();
 		Pick.Action = static_cast<uint8>(EDCDoorAction::PickLock);
-		FDCPlanTask Open = Pick;
-		Open.Action = static_cast<uint8>(EDCDoorAction::Open);
 		FDCPlanTask Go;
 		Go.Type = EDCPlanTaskType::Move;
 		Go.Location = *Outside;
+		// The user's case: Vic only PICKS the lock; Rosa should open the door herself on her way out.
 		Plans->AddTask(Vic->GetFName(), Pick);
-		Plans->AddTask(Vic->GetFName(), Open);
 		Plans->AddTask(Rosa->GetFName(), Go);
 
 		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
 		Heist->Refresh();
 		const FDCCrewSchedule* VicPlan = Heist->GetSchedule().Find(Vic->GetFName());
 		const FDCCrewSchedule* RosaPlan = Heist->GetSchedule().Find(Rosa->GetFName());
-		if (!VicPlan || !RosaPlan || VicPlan->Tasks.Num() != 2 || RosaPlan->Tasks.Num() != 1)
+		if (!VicPlan || !RosaPlan || VicPlan->Tasks.Num() != 1 || RosaPlan->Tasks.Num() != 1)
 		{
 			Expect(false, TEXT("both plans are scheduled"));
 			return true;
 		}
 		const FDCScheduledTask& Walk = RosaPlan->Tasks[0];
-		const float Opened = VicPlan->Tasks[1].End;
-		UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa start %.1f, walks from %.1f, arrives %.1f (door open at %.1f): %s / waits for %s"),
-			Walk.Start, Walk.WalkStart, Walk.Ready, Opened, *Walk.WaitReason.ToString(), *Walk.WaitForName.ToString());
-		Expect(!Walk.bBlocked, TEXT("Rosa's walk outside can happen"));
-		Expect(Walk.WalkStart >= Opened - 0.6f, TEXT("... she starts walking once Vic has opened the door"));
+		const float Unlocked = VicPlan->Tasks[0].End;
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: Rosa start %.1f, walks from %.1f, arrives %.1f (door unlocked at %.1f): %s / waits for %s / %s"),
+			Walk.Start, Walk.WalkStart, Walk.Ready, Unlocked, *Walk.WaitReason.ToString(), *Walk.WaitForName.ToString(), *Walk.Detail.ToString());
+		Expect(!Walk.bBlocked, TEXT("Rosa's walk outside can happen without an extra \u201e\u00f6ffnen\u201c step"));
+		Expect(Walk.Legs.Num() == 2 && Walk.Legs[1].Start >= Unlocked - 0.6f, TEXT("... she walks up to the door, waits beside it and goes on once Vic has picked the lock"));
 		Expect(Walk.WaitFor == Vic->GetFName(), TEXT("... and the plan says she waits for Vic"));
+		Expect(Walk.Detail.ToString().Contains(TEXT("\u00f6ffnet unterwegs")), TEXT("... and opens the door herself on the way"));
 		float Closest = TNumericLimits<float>::Max();
 		for (const FVector& Point : Walk.Path)
 		{
@@ -2940,14 +2943,15 @@ void ADCPlayerController::StartDoorWaySelfTest()
 		}
 		Expect(bThroughDoor, FString::Printf(TEXT("the drawn way leads through the door (closest point %.0f cm, %d points)"), Closest, Walk.Path.Num()));
 
-		// Without Vic opening it, the walk cannot happen – and the plan says why.
-		Plans->RemoveTask(Vic->GetFName(), 1);
+		// Without Vic picking it, the walk cannot happen – and the plan says why.
+		Plans->RemoveTask(Vic->GetFName(), 0);
 		Heist->Refresh();
 		RosaPlan = Heist->GetSchedule().Find(Rosa->GetFName());
 		const bool bBlocked = RosaPlan && RosaPlan->Tasks.Num() == 1 && RosaPlan->Tasks[0].bBlocked;
-		UE_LOG(LogDerClou, Display, TEXT("Self-test: without opening: %s"), RosaPlan && RosaPlan->Tasks.Num() ? *RosaPlan->Tasks[0].WaitReason.ToString() : TEXT("-"));
-		Expect(bBlocked && RosaPlan->Tasks[0].WaitReason.ToString().Contains(TEXT("offen")), TEXT("door never opened: \u201egeht nicht\u201c, because it stays shut"));
-		Plans->AddTask(Vic->GetFName(), Open);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: without picking: %s"), RosaPlan && RosaPlan->Tasks.Num() ? *RosaPlan->Tasks[0].WaitReason.ToString() : TEXT("-"));
+		Expect(bBlocked && RosaPlan->Tasks[0].WaitReason.ToString().Contains(TEXT("aufgesperrt")), TEXT("lock never picked: \u201egeht nicht\u201c, because the door stays locked"));
+		Expect(RosaPlan && !RosaPlan->Tasks.IsEmpty() && RosaPlan->Tasks[0].EndLocation.Size2D() > 100.0, TEXT("... and its red marker stands where she waits, not at the world origin"));
+		Plans->AddTask(Vic->GetFName(), Pick);
 		Heist->Refresh();
 		Plans->SetSpeed(2.f);
 		StartPlayback();
@@ -2959,7 +2963,7 @@ void ADCPlayerController::StartDoorWaySelfTest()
 		const double Now = FPlatformTime::Seconds();
 		Started = Started < 0.0 ? Now : Started;
 		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
-		const bool bWaiting = Rosa && Rosa->GetPlanRunner()->GetWaitText().ToString().Contains(TEXT("offen"));
+		const bool bWaiting = Rosa && Rosa->GetPlanRunner()->GetWaitText().ToString().Contains(TEXT("Hintert\u00fcr"));
 		if (bWaiting || Now - Started > 20.0)
 		{
 			Expect(bWaiting, FString::Printf(TEXT("during playback Rosa waits: %s"), Rosa ? *Rosa->GetPlanRunner()->GetWaitText().ToString() : TEXT("-")));
@@ -3096,8 +3100,8 @@ void ADCPlayerController::StartHouseSelfTest()
 		const FDCCrewSchedule* Plan = Heist->GetSchedule().Find(Vic->GetFName());
 		const bool bBlocked = Plan && Plan->Tasks.Num() == 1 && Plan->Tasks[0].bBlocked;
 		UE_LOG(LogDerClou, Display, TEXT("Self-test: straight into the office: %s"), Plan && Plan->Tasks.Num() ? *Plan->Tasks[0].WaitReason.ToString() : TEXT("-"));
-		Expect(bBlocked && Plan->Tasks[0].WaitReason.ToString().Contains(TEXT("Hintertür")) && Plan->Tasks[0].WaitReason.ToString().Contains(TEXT("Bürotür")),
-			TEXT("walking straight into the office waits for both doors - and they never open"));
+		Expect(bBlocked && Plan->Tasks[0].WaitReason.ToString().Contains(TEXT("Hintertür")),
+			TEXT("walking straight into the office waits at the locked back door - and nobody unlocks it"));
 
 		// Now with the doors: pick and open the back door, then the office door, then walk in.
 		Plans->ClearAll();
@@ -3152,6 +3156,155 @@ void ADCPlayerController::StartHouseSelfTest()
 		{
 			Expect(Vic->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("Vic step %d done"), Index + 1));
 		}
+		FinishSelfTest(*bPassed);
+		return true;
+	});
+}
+
+void ADCPlayerController::StartAutoDoorSelfTest()
+{
+	UE_LOG(LogDerClou, Display, TEXT("Self-test AutoDoor started"));
+	UDCPlanSubsystem::Get(this)->bAutoDecideFinds = true;
+	const TSharedRef<bool> bPassed = MakeShared<bool>(true);
+	const auto Expect = [bPassed](bool bCondition, const FString& What)
+	{
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %s"), bCondition ? TEXT("ok  ") : TEXT("FAIL"), *What);
+		*bPassed &= bCondition;
+	};
+	const auto Wait = [this](float Seconds)
+	{
+		return [this, Seconds, End = -1.0]() mutable
+		{
+			const double Now = FPlatformTime::Seconds();
+			if (End < 0.0)
+			{
+				End = Now + Seconds;
+			}
+			return Now >= End;
+		};
+	};
+	const auto Shot = [](const TCHAR* Name)
+	{
+		return [Name]()
+		{
+			const FString File = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Screenshots") / Name);
+			FScreenshotRequest::RequestScreenshot(File, true, false);
+			UE_LOG(LogDerClou, Display, TEXT("Self-test: screenshot %s"), *File);
+			return true;
+		};
+	};
+	const auto CrewNamed = [this](const TCHAR* Name) -> ADCCrewCharacter*
+	{
+		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+		{
+			if (It->GetCrewName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+	const auto RoomNamed = [this](const TCHAR* Name) -> ADCRoomVolume*
+	{
+		for (TActorIterator<ADCRoomVolume> It(GetWorld()); It; ++It)
+		{
+			if (It->GetRoomName().ToString() == Name)
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	SelfTestSteps.Add(Wait(2.f));
+	// The user's plan: Vic picks the back door; Rosa waits until he has, then walks into the hallway
+	// and searches the dresser - without any "open" step.
+	SelfTestSteps.Add([this, Expect, CrewNamed, RoomNamed]()
+	{
+		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		Plans->SetMode(EDCPlanMode::Planning);
+		Plans->ClearAll();
+		ADCCrewCharacter* Vic = CrewNamed(TEXT("Vic"));
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		ADCRoomVolume* Hall = RoomNamed(TEXT("Flur"));
+		ADCItemPickup* Dresser = FindPickup(TEXT("dresser"));
+		ADCDoor* Back = nullptr;
+		for (TActorIterator<ADCDoor> It(GetWorld()); It; ++It)
+		{
+			Back = It->GetInteractableName().ToString() == TEXT("Hintert\u00fcr") ? *It : Back;
+		}
+		Expect(Vic && Rosa && Hall && Dresser && Back, TEXT("Vic, Rosa, hallway, dresser and back door are there"));
+		if (!Vic || !Rosa || !Hall || !Dresser || !Back)
+		{
+			return true;
+		}
+		FDCPlanTask Pick;
+		Pick.Type = EDCPlanTaskType::Door;
+		Pick.Target = Back->GetFName();
+		Pick.Action = static_cast<uint8>(EDCDoorAction::PickLock);
+		Plans->AddTask(Vic->GetFName(), Pick);
+		// Rosa: "Warten ..." - until Vic has done step 1 (as the user did).
+		Select(Rosa);
+		FDCWaitChoice Choice;
+		Choice.Kind = FDCWaitChoice::EKind::AfterStep;
+		Choice.Crew = Vic->GetFName();
+		Choice.Step = 0;
+		ApplyWaitChoice(Choice);
+		FDCPlanTask Go;
+		Go.Type = EDCPlanTaskType::Move;
+		Go.Location = Hall->GetActorLocation() - FVector(0.0, 0.0, 120.0);
+		Plans->AddTask(Rosa->GetFName(), Go);
+		FDCPlanTask Search;
+		Search.Type = EDCPlanTaskType::Loot;
+		Search.Target = Dresser->GetFName();
+		Plans->AddTask(Rosa->GetFName(), Search);
+
+		UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		Heist->Refresh();
+		bool bAllPossible = true;
+		for (const FDCCrewSchedule& Crew : Heist->GetSchedule().Crews)
+		{
+			for (const FDCScheduledTask& Task : Crew.Tasks)
+			{
+				UE_LOG(LogDerClou, Display, TEXT("Self-test: %s %d. %s %.1f-%.1f%s | %s | %s"), *Crew.Name.ToString(), Task.Index + 1, *Task.Label.ToString(), Task.Start, Task.End,
+					Task.bBlocked ? TEXT(" BLOCKED") : TEXT(""), *Task.WaitReason.ToString(), *Task.Detail.ToString());
+				bAllPossible &= !Task.bBlocked;
+			}
+		}
+		Expect(bAllPossible, TEXT("the user's plan can happen: nothing is red"));
+		const FDCCrewSchedule* RosaPlan = Heist->GetSchedule().Find(Rosa->GetFName());
+		const FDCScheduledTask* Walk = RosaPlan ? RosaPlan->Tasks.FindByPredicate([](const FDCScheduledTask& Task) { return Task.Type == EDCPlanTaskType::Move; }) : nullptr;
+		Expect(Walk && Walk->Detail.ToString().Contains(TEXT("\u00f6ffnet unterwegs")), TEXT("Rosa opens the back door herself on her way into the hallway"));
+		Plans->SetSpeed(2.f);
+		return true;
+	});
+	SelfTestSteps.Add(Wait(1.f));
+	SelfTestSteps.Add(Shot(TEXT("autodoor_plan.png")));
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add([this]() { StartPlayback(); return true; });
+	SelfTestSteps.Add([this, Started = -1.0]() mutable
+	{
+		const double Now = FPlatformTime::Seconds();
+		Started = Started < 0.0 ? Now : Started;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return (Heist && Heist->IsPlaybackFinished()) || Now - Started > 90.0;
+	});
+	SelfTestSteps.Add(Wait(0.5f));
+	SelfTestSteps.Add(Shot(TEXT("autodoor_done.png")));
+	SelfTestSteps.Add([this, Expect, CrewNamed, bPassed]()
+	{
+		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
+		const ADCRoomVolume* Room = Rosa ? ADCRoomVolume::FindAt(this, Rosa->GetActorLocation()) : nullptr;
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		UE_LOG(LogDerClou, Display, TEXT("Self-test: playback took %.1f s (planned %.1f s), Rosa in %s"), Heist->GetPlaybackTime(), Heist->GetSchedule().Duration,
+			Room ? *Room->GetRoomName().ToString() : TEXT("-"));
+		Expect(Heist->IsPlaybackFinished(), TEXT("everyone is through with the plan"));
+		Expect(Room && Room->GetRoomName().ToString() == TEXT("Flur"), TEXT("Rosa ends up in the hallway"));
+		for (int32 Index = 0; Rosa && Index < UDCPlanSubsystem::Get(this)->GetTasks(Rosa->GetFName()).Num(); ++Index)
+		{
+			Expect(Rosa->GetPlanRunner()->GetStatus(Index) == EDCTaskStatus::Done, FString::Printf(TEXT("Rosa step %d done"), Index + 1));
+		}
+		Expect(Rosa && Rosa->GetInventory()->HasTool(TEXT("cash")), TEXT("Rosa took the cash from the dresser"));
 		FinishSelfTest(*bPassed);
 		return true;
 	});

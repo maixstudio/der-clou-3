@@ -262,6 +262,25 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     -DCSelfTest=House`): Räume, Türen, Crew im Garten, Weg ins Büro wartet auf beide Türen, mit Knacken
     und Öffnen kommt Vic hin (Screenshots `house_plan.png`, `house_done.png`).
   - Noch kein Nebel – das ist N2.
+- **Türregel „Wer durchgeht, öffnet“ + Profil flackert nicht mehr (Schritt 17 = Bauschritt 1 aus
+  `Docs/Planung-Bedienung-Konzept.md`, nach User-Feedback 2026-11-08 „knacken öffnet nicht, Fehler erst am
+  Schluss, Einfügen sperrig, Signal nicht auffindbar“):**
+  - Neues Konzept für eine einfache Planung: `Docs/Planung-Bedienung-Konzept.md` (Analyse mit 4 Agenten,
+    Design-Panel mit 3 Entwürfen, 12 Bauschritte, Varianten-Schalter zum Vergleichen). Spielregeln stehen dort.
+  - Eine geschlossene, nicht verschlossene Tür auf dem Weg öffnet die Figur unterwegs selbst (+1,1 s,
+    Ereignis „Tür offen“, Zeile „öffnet unterwegs Hintertür“). Knacken sperrt nur auf.
+  - Verschlossene Tür auf dem Weg (User-Entscheidung „direkt an der Tür“): Die Figur geht bis zur Tür,
+    wartet seitlich daneben (110 cm) und geht weiter, sobald die Tür im Plan aufgesperrt ist. Die Simulation
+    hat dafür Teilstrecken (`FDCWalkLeg`, `FDCScheduledTask::Legs`, `WaitedOnTheWay`, `IsWaitingOnTheWay`).
+    Zeitleiste, Vorschau und Stecknadeln folgen ihnen. Die rote Nummer steht dort, wo die Figur hängen bleibt.
+  - Live: `UDCPlanRunnerComponent::DoorOnWay` öffnet über `InteractWithDoor(GoThrough)` (`PassingDoor`) und
+    wartet an verschlossenen Türen daneben.
+  - Profil flackerte, weil das geplante Inventar alle 0,5 s neu angelegt wurde. Jetzt wird es nur ersetzt,
+    wenn sich der Inhalt ändert (`DescribeInventoryForCompare`, `PlannedInventorySignatures`). Nach einem
+    NavMesh-Neubau rechnet die Planung neu (`OnNavigationRebuilt`).
+  - Selbsttest `-DCSelfTest=AutoDoor` (L_House01) spielt genau den User-Fall durch: Vic knackt nur, Rosa
+    wartet per „Warten …“, geht in den Flur, öffnet selbst und durchsucht die Kommode. DoorWay und House
+    sind angepasst.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -282,7 +301,8 @@ und Zeit-Vorschau übersichtlich genug sind, ob „kurz ablegen“ (+1 s) als Re
 Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem UI-Leitfaden (Titel weiß);
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
-  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` (Map L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
+  (beide Map L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.
