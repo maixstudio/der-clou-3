@@ -56,6 +56,9 @@ public:
 	void AddWait(float Seconds);
 	void RemoveLastStep();
 	void ClearPlan();
+	/** Planning: takes the last plan change back / brings it back (Strg+Z, Strg+Y). */
+	void UndoPlan();
+	void RedoPlan();
 
 	//~ Plan list
 	/** Selects the crew member and picks one of their steps (INDEX_NONE = none). */
@@ -146,6 +149,10 @@ private:
 	void StartHouseSelfTest();
 	/** -DCSelfTest=AutoDoor (map L_House01): the user's plan - Vic only picks the back door, Rosa waits for it, walks in, opens it herself and searches the dresser. */
 	void StartAutoDoorSelfTest();
+	/** -DCSelfTest=Undo: every plan change can be taken back and brought back, a click's pair and "Plan leeren" too. */
+	void StartUndoSelfTest();
+	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
+	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */
 	TArray<TFunction<bool()>> SelfTestSteps;
 

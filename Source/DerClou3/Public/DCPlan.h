@@ -113,6 +113,13 @@ struct FDCCrewPlan
 	TArray<FDCPlanTask> Tasks;
 };
 
+/** The plans as they were before a change, and what the change was ("„Hintertür knacken“ gelöscht"). */
+struct FDCPlanHistoryEntry
+{
+	TArray<FDCCrewPlan> Plans;
+	FText What;
+};
+
 /**
  * The heist plan: a list of steps per crew member, plus the current mode. Lives in the game
  * instance, so it survives reloading the level ("back to planning" restores the start state).
@@ -148,7 +155,28 @@ public:
 	int32 GetNextSignalNumber() const;
 	/** Moves a step earlier (Delta < 0) or later in the crew member's plan. */
 	void MoveTask(FName Crew, int32 Index, int32 Delta);
+	/** Puts the step at From to place To in the same plan. */
+	void MoveTaskTo(FName Crew, int32 From, int32 To);
+	/** Inserts several steps at Index in one go (one undo step); returns their ids. */
+	TArray<FGuid> InsertTasks(FName Crew, int32 Index, const TArray<FDCPlanTask>& Tasks);
 	void ClearAll();
+
+	/**
+	 * Groups plan changes: everything between BeginEdit and its EndEdit is one undo step and one
+	 * OnPlanChanged. Only the outermost pair counts; its What names the change. FDCPlanEditScope
+	 * does both. Mode, speed and the self-test fields are not part of the history.
+	 */
+	void BeginEdit(const FText& What);
+	void EndEdit();
+	bool CanUndo() const { return !UndoStack.IsEmpty(); }
+	bool CanRedo() const { return !RedoStack.IsEmpty(); }
+	/** What "Rückgängig" would take back / "Wiederholen" would bring back. */
+	FText GetUndoText() const { return UndoStack.IsEmpty() ? FText::GetEmpty() : UndoStack.Last().What; }
+	FText GetRedoText() const { return RedoStack.IsEmpty() ? FText::GetEmpty() : RedoStack.Last().What; }
+	/** Takes the last change back (false if there is none). */
+	bool Undo();
+	/** Brings back what Undo took back (false if there is nothing). */
+	bool Redo();
 
 	/** Playback speed (1, 2, 4). */
 	float GetSpeed() const { return Speed; }
@@ -173,4 +201,38 @@ private:
 
 	EDCPlanMode Mode = EDCPlanMode::Planning;
 	float Speed = 1.f;
+
+	/** Something changed inside the open edit. */
+	void MarkChanged() { bEditChanged = true; }
+	int32 EditDepth = 0;
+	bool bEditChanged = false;
+	FDCPlanHistoryEntry OpenEdit;
+	TArray<FDCPlanHistoryEntry> UndoStack;
+	TArray<FDCPlanHistoryEntry> RedoStack;
+	static constexpr int32 MaxHistory = 50;
+};
+
+/** One undo step for everything done while it lives (see UDCPlanSubsystem::BeginEdit). */
+struct FDCPlanEditScope
+{
+	FDCPlanEditScope(UDCPlanSubsystem* InPlans, const FText& What)
+		: Plans(InPlans)
+	{
+		if (Plans)
+		{
+			Plans->BeginEdit(What);
+		}
+	}
+	~FDCPlanEditScope()
+	{
+		if (Plans)
+		{
+			Plans->EndEdit();
+		}
+	}
+	FDCPlanEditScope(const FDCPlanEditScope&) = delete;
+	FDCPlanEditScope& operator=(const FDCPlanEditScope&) = delete;
+
+private:
+	UDCPlanSubsystem* Plans;
 };

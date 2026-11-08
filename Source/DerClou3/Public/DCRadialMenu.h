@@ -33,6 +33,8 @@ public:
 	void Open(const FText& Title, TArray<FDCRadialOption> Options);
 	void Close();
 	bool IsOpen() const { return bOpen; }
+	/** The title of the menu opened last ("Hintertür · verschlossen\nplant: Vic"). */
+	const FText& GetTitle() const { return ShownTitle; }
 	/** Self-tests: picks the open menu's first entry whose label contains the text (as a click would). False if there is none. */
 	bool ChooseOption(const FString& LabelPart);
 
@@ -45,6 +47,7 @@ private:
 	TSharedPtr<SCanvas> Canvas;
 	FGeometry LastGeometry;
 	bool bOpen = false;
+	FText ShownTitle;
 	TArray<FDCRadialOption> Current;
 	/** Clearing waits for the next tick, never inside one of the menu's own click handlers. */
 	bool bClearPending = false;

@@ -281,6 +281,31 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=AutoDoor` (L_House01) spielt genau den User-Fall durch: Vic knackt nur, Rosa
     wartet per „Warten …“, geht in den Flur, öffnet selbst und durchsucht die Kommode. DoorWay und House
     sind angepasst.
+- **Tür-Menü, klare Texte, Aufgeben, Rückgängig (Schritte 18–19 = Bauschritte 1 Rest, 2 und 3 aus
+  `Docs/Planung-Bedienung-Konzept.md`):**
+  - Bleibt eine Tür im Plan zu, nennt der Grund, wer helfen kann: „Hintertür bleibt verschlossen – Vic könnte
+    sie knacken (ca. 2 s)“ (oder „… selbst knacken“, „niemand hier kann sie knacken“). Mit vollen Händen:
+    „Schlafzimmertür: keine Hand frei – erst ablegen oder jemand öffnet sie“. Gewartet wird nur auf die
+    passende Änderung (`FCursor::bWaitForLock`, Vorher-Stand in `ApplyEvent`).
+  - `FDCScheduledTask::WaitForLabel`: Wartezeile „wartet 3 s auf Vic (1. Hintertür knacken)“
+    (`UDCHeistStateSubsystem::DescribeWaited`), Vorschau „wartet auf Vic (Hintertür knacken)“.
+  - Live: `DoorOnWay` nimmt die erste nicht offene Tür (`FindDoorsOnWay`, früher `FindClosedDoorsOnWay`),
+    wartet kurz auf den NavMesh, gibt nach 3 vergeblichen Öffnungsversuchen auf. Wer ein Türschloss knackt und
+    danach stehen bleibt, tritt zur Seite. Wartet jemand vergeblich (der Knacker gab auf oder niemand
+    arbeitet mehr), kommt die rote Meldung „Rosa kommt nicht weiter: Bürotür bleibt verschlossen“.
+  - Tür-Menü: verschlossen → zuerst „knacken und durchgehen“ (zwei Schritte mit einem Klick); geschlossen →
+    „Durchgehen“, dann „Öffnen“. Titel „Hintertür · verschlossen / zu / offen“ nach dem Plan
+    (`DescribePlannedDoor`). Gehen heißt nach dem Zielraum: „gehen (Flur)“.
+  - Ausprobieren: `TryMoveTo` – geht der Weg durch eine Tür, läuft er über den Runner (öffnet unterwegs,
+    an verschlossener Tür „Bürotür ist verschlossen“). Roter Ring nur, wenn das Ziel gar nicht erreichbar ist
+    (`CanReach`).
+  - Rückgängig/Wiederholen: `UDCPlanSubsystem` mit Verlauf (50 Einträge), `FDCPlanEditScope` fasst
+    Änderungen zu einem Schritt zusammen (ein Klick mit zwei Schritten = einmal Rückgängig), neue
+    `InsertTasks`, `MoveTaskTo`. Knöpfe „Rückgängig“/„Wiederholen“ neben „Planen | Ausprobieren“ (Tooltip
+    sagt, was), Strg+Z, Strg+Y / Strg+Umschalt+Z. „Plan leeren“ ohne zweiten Klick.
+  - Test-Schalter `ADCCrewCharacter::bTestFailTasks` (jede Probe misslingt), `GetNotice`,
+    `UDCRadialMenu::GetTitle`. Neuer Selbsttest `-DCSelfTest=Undo`; AutoDoor prüft jetzt auch Menü,
+    volle Hände, offene + geschlossene Tür hintereinander, vergebliches Warten und Ausprobieren.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -302,7 +327,7 @@ Profilkarten und die neue Planungsleiste mit der Maus; Farbvorschläge aus dem U
 Rahmen um die Szene (auch im Editor-PIE – der eigene Viewport-Client wurde nur im `-game`-Test geprüft).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
-  (beide Map L_House01). Die Direkt-Tests schalten selbst in den Direkt-Modus.
+  (beide Map L_House01), `Undo`. Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.

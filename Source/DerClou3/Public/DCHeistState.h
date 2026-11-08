@@ -140,6 +140,8 @@ struct FDCScheduledTask
 	FName WaitFor;
 	FText WaitForName;
 	int32 WaitForIndex = INDEX_NONE;
+	/** That step as the list names it ("Hintertür knacken"). */
+	FText WaitForLabel;
 	/** What it changes in what the crew member carries: "→ rechte Hand", "nimmt Ring, Goldkette". */
 	FText Carry;
 	FVector EndLocation = FVector::ZeroVector;
@@ -214,12 +216,21 @@ public:
 	const FDCWorldSnapshot& GetPlannedState() const { return PlannedState; }
 	/** What the crew member will carry once their whole plan has run (nullptr if unknown). */
 	const UDCInventoryComponent* GetPlannedInventory(FName Crew) const;
-	/** Closed doors on the way from From to To (the way the crew would take once they are open). */
-	TArray<ADCDoor*> FindClosedDoorsOnWay(const FVector& From, const FVector& To) const;
+	/**
+	 * The doors on the way from From to To, in the order they are met (the way the crew would take
+	 * once they are open). Empty when the nav mesh lets one through as it is.
+	 */
+	TArray<ADCDoor*> FindDoorsOnWay(const FVector& From, const FVector& To) const;
+	/** True if From reaches To on foot - directly or through doors (open or not). */
+	bool CanReach(const FVector& From, const FVector& To) const;
 	/** Short name of a step: "Hintertür knacken", "Wandtresor ausräumen". */
 	FText DescribeTask(const FDCPlanTask& Task) const;
 	/** A wait-for step: "warten, bis Rosa „Wandtresor knacken“ erledigt hat" – or, bWaiting, "wartet, bis …". */
 	FText DescribeWaitFor(const FDCPlanTask& Task, bool bWaiting) const;
+	/** A door as the plan leaves it (while planning) or as it is: "Hintertür · verschlossen", "… · zu", "… · offen". */
+	FText DescribePlannedDoor(const ADCDoor* Door) const;
+	/** The wait before a step: "wartet 4 s auf Vic (1. Hintertür knacken)" – or "wartet 4 s – {reason}". */
+	static FText DescribeWaited(const FDCScheduledTask& Task, float Waited);
 
 	/** Where the crew member is at this time of the plan. */
 	static FVector GetPositionAt(const FDCCrewSchedule& Crew, float Time);

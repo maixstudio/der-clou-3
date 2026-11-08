@@ -44,10 +44,6 @@ private:
 	FString MakeSignature() const;
 	float GetScale() const;
 
-public:
-	/** "Plan leeren" was clicked once: the next click within a few seconds deletes. */
-	bool IsClearArmed() const { return FPlatformTime::Seconds() < ClearArmedUntil; }
-	double ClearArmedUntil = 0.0;
 
 private:
 

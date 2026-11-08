@@ -54,6 +54,7 @@ void UDCRadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 
 void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 {
+	ShownTitle = Title;
 	if (!Canvas.IsValid() || Options.IsEmpty())
 	{
 		return;

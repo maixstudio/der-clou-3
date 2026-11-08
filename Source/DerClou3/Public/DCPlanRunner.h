@@ -76,7 +76,9 @@ private:
 	 * (a locked door, or a closed one with no hand free: OutWait says which). OutOpen is a closed,
 	 * unlocked door she can open in passing (she goes through it first, then on).
 	 */
-	bool DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt) const;
+	bool DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt, bool& bOutSettling) const;
+	/** Waiting at a locked door for nothing: the planned unlocker gave up, or nobody else is at work any more. */
+	bool IsWaitInVain() const;
 	/** True if there is nothing left to do (lock already open, ...). */
 	bool AlreadyDone() const;
 	void StartExecute();
@@ -105,6 +107,11 @@ private:
 	TWeakObjectPtr<ADCDoor> PassingDoor;
 	/** Waiting at a locked door: already sent there (once per wait). */
 	bool bWentToDoorWait = false;
+	/** Opening the same door on the way again and again: give up after a few tries. */
+	TWeakObjectPtr<ADCDoor> LastPassDoor;
+	int32 PassTries = 0;
+	/** All doors on the way are open but the nav mesh does not know yet: how long already. */
+	float DoorSettleTime = 0.f;
 
 	enum class ELootPhase : uint8
 	{

@@ -3,6 +3,8 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 
+#define LOCTEXT_NAMESPACE "DCPlan"
+
 UDCPlanSubsystem* UDCPlanSubsystem::Get(const UObject* WorldContext)
 {
 	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
@@ -33,6 +35,7 @@ FGuid UDCPlanSubsystem::AddTask(FName Crew, const FDCPlanTask& Task)
 
 FGuid UDCPlanSubsystem::InsertTask(FName Crew, int32 Index, const FDCPlanTask& Task)
 {
+	FDCPlanEditScope Edit(this, LOCTEXT("EditAdd", "Schritt angelegt"));
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
 	if (!Plan)
 	{
@@ -45,8 +48,22 @@ FGuid UDCPlanSubsystem::InsertTask(FName Crew, int32 Index, const FDCPlanTask& T
 		Added.Id = FGuid::NewGuid();
 	}
 	Plan->Tasks.Insert(Added, FMath::Clamp(Index, 0, Plan->Tasks.Num()));
-	OnPlanChanged.Broadcast();
+	MarkChanged();
 	return Added.Id;
+}
+
+TArray<FGuid> UDCPlanSubsystem::InsertTasks(FName Crew, int32 Index, const TArray<FDCPlanTask>& Tasks)
+{
+	FDCPlanEditScope Edit(this, LOCTEXT("EditAddSeveral", "Schritte angelegt"));
+	TArray<FGuid> Ids;
+	int32 At = Index;
+	for (const FDCPlanTask& Task : Tasks)
+	{
+		At = FMath::Clamp(At, 0, GetTasks(Crew).Num());
+		Ids.Add(InsertTask(Crew, At, Task));
+		++At;
+	}
+	return Ids;
 }
 
 const FDCPlanTask* UDCPlanSubsystem::FindTask(const FGuid& Id, FName* OutCrew, int32* OutIndex) const
@@ -94,16 +111,18 @@ int32 UDCPlanSubsystem::GetNextSignalNumber() const
 
 void UDCPlanSubsystem::RemoveLastTask(FName Crew)
 {
+	FDCPlanEditScope Edit(this, LOCTEXT("EditRemove", "Schritt gelöscht"));
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
 	if (Plan && !Plan->Tasks.IsEmpty())
 	{
 		Plan->Tasks.Pop();
-		OnPlanChanged.Broadcast();
+		MarkChanged();
 	}
 }
 
 void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 {
+	FDCPlanEditScope Edit(this, LOCTEXT("EditRemove", "Schritt gelöscht"));
 	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
 	if (!Plan || !Plan->Tasks.IsValidIndex(Index))
 	{
@@ -136,24 +155,98 @@ void UDCPlanSubsystem::RemoveTask(FName Crew, int32 Index)
 			Entry.Tasks.RemoveAll([&Removed](const FDCPlanTask& Task) { return Task.Type == EDCPlanTaskType::Signal && Task.Id == Removed.Ref; });
 		}
 	}
-	OnPlanChanged.Broadcast();
+	MarkChanged();
 }
 
 void UDCPlanSubsystem::MoveTask(FName Crew, int32 Index, int32 Delta)
 {
-	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
-	const int32 Target = Index + Delta;
-	if (Plan && Plan->Tasks.IsValidIndex(Index) && Plan->Tasks.IsValidIndex(Target) && Delta != 0)
+	const TArray<FDCPlanTask>& Tasks = GetTasks(Crew);
+	if (Delta != 0 && Tasks.IsValidIndex(Index) && Tasks.IsValidIndex(Index + Delta))
 	{
-		const FDCPlanTask Task = Plan->Tasks[Index];
-		Plan->Tasks.RemoveAt(Index);
-		Plan->Tasks.Insert(Task, Target);
-		OnPlanChanged.Broadcast();
+		MoveTaskTo(Crew, Index, Index + Delta);
 	}
+}
+
+void UDCPlanSubsystem::MoveTaskTo(FName Crew, int32 From, int32 To)
+{
+	FDCPlanEditScope Edit(this, LOCTEXT("EditMove", "Schritt verschoben"));
+	FDCCrewPlan* Plan = Plans.FindByPredicate([Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew; });
+	if (!Plan || !Plan->Tasks.IsValidIndex(From))
+	{
+		return;
+	}
+	To = FMath::Clamp(To, 0, Plan->Tasks.Num() - 1);
+	if (To == From)
+	{
+		return;
+	}
+	const FDCPlanTask Task = Plan->Tasks[From];
+	Plan->Tasks.RemoveAt(From);
+	Plan->Tasks.Insert(Task, To);
+	MarkChanged();
 }
 
 void UDCPlanSubsystem::ClearAll()
 {
+	FDCPlanEditScope Edit(this, LOCTEXT("EditClear", "Plan geleert"));
+	if (Plans.ContainsByPredicate([](const FDCCrewPlan& Plan) { return !Plan.Tasks.IsEmpty(); }))
+	{
+		MarkChanged();
+	}
 	Plans.Reset();
+}
+
+void UDCPlanSubsystem::BeginEdit(const FText& What)
+{
+	if (EditDepth++ == 0)
+	{
+		OpenEdit.Plans = Plans;
+		OpenEdit.What = What;
+		bEditChanged = false;
+	}
+}
+
+void UDCPlanSubsystem::EndEdit()
+{
+	if (EditDepth <= 0 || --EditDepth > 0 || !bEditChanged)
+	{
+		return;
+	}
+	bEditChanged = false;
+	UndoStack.Add(MoveTemp(OpenEdit));
+	OpenEdit = FDCPlanHistoryEntry();
+	if (UndoStack.Num() > MaxHistory)
+	{
+		UndoStack.RemoveAt(0);
+	}
+	RedoStack.Reset();
 	OnPlanChanged.Broadcast();
 }
+
+bool UDCPlanSubsystem::Undo()
+{
+	if (UndoStack.IsEmpty() || EditDepth > 0)
+	{
+		return false;
+	}
+	FDCPlanHistoryEntry Entry = UndoStack.Pop();
+	RedoStack.Add({ Plans, Entry.What });
+	Plans = MoveTemp(Entry.Plans);
+	OnPlanChanged.Broadcast();
+	return true;
+}
+
+bool UDCPlanSubsystem::Redo()
+{
+	if (RedoStack.IsEmpty() || EditDepth > 0)
+	{
+		return false;
+	}
+	FDCPlanHistoryEntry Entry = RedoStack.Pop();
+	UndoStack.Add({ Plans, Entry.What });
+	Plans = MoveTemp(Entry.Plans);
+	OnPlanChanged.Broadcast();
+	return true;
+}
+
+#undef LOCTEXT_NAMESPACE

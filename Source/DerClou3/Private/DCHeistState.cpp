@@ -9,6 +9,7 @@
 #include "DCItemPickup.h"
 #include "DCPlanMarker.h"
 #include "DCPlanRunner.h"
+#include "DCRoomVolume.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -60,6 +61,8 @@ namespace
 		/** The pending step has not started walking yet: closed doors (WaitDoors) are in the way. */
 		bool bWalkPending = false;
 		TArray<FName> WaitDoors;
+		/** The door it waits at is locked: unlocking frees it. Otherwise (hands full) only opening does. */
+		bool bWaitForLock = false;
 		float BlockedSince = 0.f;
 		FDCScheduledTask Pending;
 	};
@@ -634,6 +637,11 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 	switch (Task.Type)
 	{
 	case EDCPlanTaskType::Move:
+		// Named after the room it ends in: "gehen (Flur)".
+		if (const ADCRoomVolume* Room = ADCRoomVolume::FindAt(this, Task.Location))
+		{
+			return FText::Format(LOCTEXT("TaskMoveRoom", "gehen ({0})"), Room->GetRoomName());
+		}
 		return LOCTEXT("TaskMove", "gehen");
 	case EDCPlanTaskType::Wait:
 		return FText::Format(LOCTEXT("TaskWait", "warten {0} s"), FText::AsNumber(FMath::RoundToInt(Task.Seconds)));
@@ -1093,6 +1101,8 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 				Out.WaitFor = Task.Target;
 				Out.WaitForName = Other ? Other->Name : FText::FromName(Task.Target);
 				Out.WaitForIndex = RefIndex;
+				const TArray<FDCPlanTask>& Theirs = Plans->GetTasks(Task.Target);
+				Out.WaitForLabel = Theirs.IsValidIndex(RefIndex) ? DescribeTask(Theirs[RefIndex]) : FText::GetEmpty();
 			}
 			const float Waited = T - Out.Ready;
 			const int32 GoOn = FMath::RoundToInt(T);
@@ -1252,6 +1262,7 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			}
 			Cursor.bWalkPending = true;
 			Cursor.WaitDoors = { DoorName };
+			Cursor.bWaitForLock = Door && Door->bLocked;
 			Cursor.bBlocked = true;
 			Cursor.BlockedSince = Cursor.Time;
 			Out.bWalkBlocked = true;
@@ -1296,6 +1307,21 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 	// Applies an event; crew members waiting for it may continue.
 	const auto ApplyEvent = [&](const FSimEvent& Event)
 	{
+		// The doors that waiting walks stand at, as they were before: only the right change frees them.
+		TMap<FName, TPair<bool, bool>> DoorsBefore;
+		for (const FCursor& Cursor : Cursors)
+		{
+			if (Cursor.bBlocked && Cursor.bWalkPending)
+			{
+				for (const FName DoorName : Cursor.WaitDoors)
+				{
+					if (const FDCSimDoor* Door = State.FindDoor(DoorName))
+					{
+						DoorsBefore.Add(DoorName, TPair<bool, bool>(Door->bLocked, Door->bOpen));
+					}
+				}
+			}
+		}
 		Event.Apply(State);
 		for (FCursor& Cursor : Cursors)
 		{
@@ -1303,11 +1329,30 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			{
 				continue;
 			}
-			FText Ignored;
-			// A waiting walk tries again once a door it waits for has changed (BeginTask looks again).
-			const bool bFree = Cursor.bWalkPending
-				? Cursor.WaitDoors.ContainsByPredicate([&State](FName DoorName) { const FDCSimDoor* Door = State.FindDoor(DoorName); return Door && (!Door->bLocked || Door->bOpen); })
-				: ConditionHolds((*Cursor.Tasks)[Cursor.Next], Ignored);
+			bool bFree = false;
+			if (Cursor.bWalkPending)
+			{
+				// A waiting walk tries again (BeginTask looks again) once its door got unlocked or opened -
+				// with both hands full only once it got opened.
+				const bool bForLock = Cursor.bWaitForLock;
+				bFree = Cursor.WaitDoors.ContainsByPredicate([&State, &DoorsBefore, bForLock](FName DoorName)
+				{
+					const FDCSimDoor* Door = State.FindDoor(DoorName);
+					const TPair<bool, bool>* Before = DoorsBefore.Find(DoorName);
+					if (!Door || !Before)
+					{
+						return false;
+					}
+					const bool bOpened = !Before->Value && Door->bOpen;
+					const bool bUnlocked = Before->Key && !Door->bLocked;
+					return bOpened || (bForLock && bUnlocked);
+				});
+			}
+			else
+			{
+				FText Ignored;
+				bFree = ConditionHolds((*Cursor.Tasks)[Cursor.Next], Ignored);
+			}
 			if (bFree)
 			{
 				Cursor.bBlocked = false;
@@ -1317,6 +1362,8 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 					Cursor.Pending.WaitFor = Result.Crews[Event.CrewIndex].Crew;
 					Cursor.Pending.WaitForName = Result.Crews[Event.CrewIndex].Name;
 					Cursor.Pending.WaitForIndex = Event.TaskIndex;
+					const FCursor& By = Cursors[Event.CrewIndex];
+					Cursor.Pending.WaitForLabel = By.Tasks && By.Tasks->IsValidIndex(Event.TaskIndex) ? DescribeTask((*By.Tasks)[Event.TaskIndex]) : FText::GetEmpty();
 				}
 			}
 		}
@@ -1377,6 +1424,42 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 	}
 	ApplyEventsUpTo(TNumericLimits<float>::Max());
 
+	// A door that never opens in the plan: say what would help ("Vic könnte sie knacken (ca. 2 s)").
+	const auto DescribeDoorNeverOpens = [&](const FCursor& Stuck) -> FText
+	{
+		const ADCDoor* Actor = FindDoor(Stuck.WaitDoors[0]);
+		const FText Name = Actor ? Actor->GetInteractableName() : FText::FromName(Stuck.WaitDoors[0]);
+		if (!Stuck.bWaitForLock)
+		{
+			return FText::Format(LOCTEXT("NeverHandsFree", "{0}: keine Hand frei – erst ablegen oder jemand öffnet sie"), Name);
+		}
+		const FCursor* Helper = nullptr;
+		float Fastest = TNumericLimits<float>::Max();
+		for (const FCursor& Other : Cursors)
+		{
+			if (!Actor || !Other.Crew)
+			{
+				continue;
+			}
+			const FDCTaskCheck Check = Other.Crew->PlanCheckDoor(Actor, EDCDoorAction::PickLock, Other.Inventory);
+			// The stuck one wins a tie: then nobody has to wait for anybody.
+			const float Seconds = Check.Seconds - (&Other == &Stuck ? 0.01f : 0.f);
+			if (Check.bPossible && Seconds < Fastest)
+			{
+				Fastest = Seconds;
+				Helper = &Other;
+			}
+		}
+		if (!Helper)
+		{
+			return FText::Format(LOCTEXT("NeverPickNobody", "{0} bleibt verschlossen – niemand hier kann sie knacken"), Name);
+		}
+		const FText About = FText::AsNumber(FMath::Max(1, FMath::RoundToInt(Fastest)));
+		return Helper == &Stuck
+			? FText::Format(LOCTEXT("NeverPickSelf", "{0} bleibt verschlossen – {1} könnte sie selbst knacken (ca. {2} s)"), Name, Stuck.Crew->GetCrewName(), About)
+			: FText::Format(LOCTEXT("NeverPickOther", "{0} bleibt verschlossen – {1} könnte sie knacken (ca. {2} s)"), Name, Helper->Crew->GetCrewName(), About);
+	};
+
 	// Whoever still waits, waits forever.
 	for (FCursor& Cursor : Cursors)
 	{
@@ -1385,7 +1468,9 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 			Cursor.Pending.bBlocked = true;
 			Cursor.Pending.WorkStart = Cursor.Pending.End = Cursor.BlockedSince;
 			const FText Reason = Cursor.Pending.WaitReason;
-			Cursor.Pending.WaitReason = FText::Format(LOCTEXT("NeverHappens", "{0} – passiert im Plan nie"), Reason);
+			Cursor.Pending.WaitReason = Cursor.bWalkPending && !Cursor.WaitDoors.IsEmpty()
+				? DescribeDoorNeverOpens(Cursor)
+				: FText::Format(LOCTEXT("NeverHappens", "{0} – passiert im Plan nie"), Reason);
 			Cursor.Time = Cursor.BlockedSince;
 			Result.Crews[Cursor.CrewIndex].Tasks.Add(Cursor.Pending);
 			for (++Cursor.Next; Cursor.Next < Cursor.Tasks->Num(); ++Cursor.Next)
@@ -1675,7 +1760,9 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 	{
 		return Task->WaitFor.IsNone()
 			? FText::Format(LOCTEXT("ActivityWaitDoor", "{0}. {1}"), Number, Task->WaitReason)
-			: FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName);
+			: (Task->WaitForLabel.IsEmpty()
+				? FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName)
+				: FText::Format(LOCTEXT("ActivityWaitForStep", "{0}. wartet auf {1} ({2})"), Number, Task->WaitForName, Task->WaitForLabel));
 	}
 	if (Time < Task->Ready)
 	{
@@ -1685,12 +1772,71 @@ FText UDCHeistStateSubsystem::DescribeActivityAt(const FDCCrewSchedule& Crew, fl
 	{
 		return Task->WaitFor.IsNone()
 			? FText::Format(LOCTEXT("ActivityWait", "{0}. {1}"), Number, Task->WaitReason)
-			: FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName);
+			: (Task->WaitForLabel.IsEmpty()
+				? FText::Format(LOCTEXT("ActivityWaitFor", "{0}. wartet auf {1}"), Number, Task->WaitForName)
+				: FText::Format(LOCTEXT("ActivityWaitForStep", "{0}. wartet auf {1} ({2})"), Number, Task->WaitForName, Task->WaitForLabel));
 	}
 	return FText::Format(LOCTEXT("ActivityWork", "{0}. {1}"), Number, Task->Label);
 }
 
-TArray<ADCDoor*> UDCHeistStateSubsystem::FindClosedDoorsOnWay(const FVector& From, const FVector& To) const
+FText UDCHeistStateSubsystem::DescribePlannedDoor(const ADCDoor* Door) const
+{
+	if (!Door)
+	{
+		return FText::GetEmpty();
+	}
+	bool bLocked = Door->IsLocked();
+	bool bOpen = Door->IsOpen();
+	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(GetWorld());
+	if (Plans && Plans->GetMode() == EDCPlanMode::Planning)
+	{
+		if (const FDCSimDoor* Planned = const_cast<FDCWorldSnapshot&>(PlannedState).FindDoor(Door->GetFName()))
+		{
+			bLocked = Planned->bLocked;
+			bOpen = Planned->bOpen;
+		}
+	}
+	const FText State = bOpen ? LOCTEXT("DoorStateOpen", "offen") : bLocked ? LOCTEXT("DoorStateLocked", "verschlossen") : LOCTEXT("DoorStateShut", "zu");
+	return FText::Format(LOCTEXT("PlannedDoor", "{0} · {1}"), Door->GetInteractableName(), State);
+}
+
+FText UDCHeistStateSubsystem::DescribeWaited(const FDCScheduledTask& Task, float Waited)
+{
+	const FText Seconds = FText::AsNumber(FMath::Max(0, FMath::RoundToInt(Waited)));
+	if (Task.WaitFor.IsNone())
+	{
+		return FText::Format(LOCTEXT("WaitedPlain", "wartet {0} s – {1}"), Seconds, Task.WaitReason);
+	}
+	if (Task.WaitForLabel.IsEmpty())
+	{
+		return FText::Format(LOCTEXT("WaitedForStep", "wartet {0} s, bis {1} Schritt {2} erledigt hat"), Seconds, Task.WaitForName, FText::AsNumber(Task.WaitForIndex + 1));
+	}
+	return FText::Format(LOCTEXT("WaitedForLabel", "wartet {0} s auf {1} ({2}. {3})"), Seconds, Task.WaitForName, FText::AsNumber(Task.WaitForIndex + 1), Task.WaitForLabel);
+}
+
+bool UDCHeistStateSubsystem::CanReach(const FVector& From, const FVector& To) const
+{
+	UWorld* World = GetWorld();
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (!Navigation)
+	{
+		return true;
+	}
+	FNavLocation Goal;
+	if (!Navigation->ProjectPointToNavigation(To, Goal, FVector(200.0, 200.0, 300.0)))
+	{
+		return false;
+	}
+	const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, Goal.Location);
+	if (Path && Path->IsValid() && !Path->IsPartial())
+	{
+		return true;
+	}
+	TArray<FVector> Through;
+	return WayThroughDoors(World, From, Goal.Location, Through);
+}
+
+TArray<ADCDoor*> UDCHeistStateSubsystem::FindDoorsOnWay(const FVector& From, const FVector& To) const
 {
 	TArray<ADCDoor*> Closed;
 	UWorld* World = GetWorld();

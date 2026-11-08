@@ -87,7 +87,7 @@ namespace
 	};
 
 	/** A flat button that calls the controller. */
-	TSharedRef<SWidget> PanelButton(TWeakObjectPtr<UDCTimelinePanel> Panel, const TAttribute<FText>& Label, const FText& Tip,
+	TSharedRef<SWidget> PanelButton(TWeakObjectPtr<UDCTimelinePanel> Panel, const TAttribute<FText>& Label, const TAttribute<FText>& Tip,
 		TFunction<void(ADCPlayerController*)> OnClick, int32 FontSize = 12, const FMargin& Padding = FMargin(10.f, 3.f), EPanelButton Kind = EPanelButton::Normal)
 	{
 		using namespace DCItemWidgets;
@@ -227,6 +227,41 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 									Segment(LOCTEXT("ModeTry", "Ausprobieren"), LOCTEXT("ModeTryTip", "Ohne Plan ausprobieren: Klicks wirken sofort (der Raum wird beim Abspielen zurückgesetzt)"), EDCPlanMode::Direct,
 										[](ADCPlayerController* C) { C->SetDirectMode(true); })
 								]
+								// Every plan change can be taken back and brought back.
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(10.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SBox)
+									.Visibility(ShowIn({ EDCPlanMode::Planning }))
+									.IsEnabled(TAttribute<bool>::CreateLambda([WeakThis]()
+									{
+										const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+										return Plans && Plans->CanUndo();
+									}))
+									[
+										PanelButton(WeakThis, LOCTEXT("Undo", "Rückgängig"), TAttribute<FText>::CreateLambda([WeakThis]()
+										{
+											const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+											return Plans && Plans->CanUndo() ? FText::Format(LOCTEXT("UndoTip", "Rückgängig: {0} · Strg+Z"), Plans->GetUndoText()) : LOCTEXT("UndoNone", "Nichts zum Zurücknehmen");
+										}), [](ADCPlayerController* C) { C->UndoPlan(); }, 11, FMargin(8.f, 3.f))
+									]
+								]
+								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(2.f, 0.f, 0.f, 0.f)
+								[
+									SNew(SBox)
+									.Visibility(ShowIn({ EDCPlanMode::Planning }))
+									.IsEnabled(TAttribute<bool>::CreateLambda([WeakThis]()
+									{
+										const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+										return Plans && Plans->CanRedo();
+									}))
+									[
+										PanelButton(WeakThis, LOCTEXT("Redo", "Wiederholen"), TAttribute<FText>::CreateLambda([WeakThis]()
+										{
+											const UDCPlanSubsystem* Plans = WeakThis.IsValid() ? UDCPlanSubsystem::Get(WeakThis.Get()) : nullptr;
+											return Plans && Plans->CanRedo() ? FText::Format(LOCTEXT("RedoTip", "Wiederholen: {0} · Strg+Y"), Plans->GetRedoText()) : LOCTEXT("RedoNone", "Nichts zum Wiederholen");
+										}), [](ADCPlayerController* C) { C->RedoPlan(); }, 11, FMargin(8.f, 3.f))
+									]
+								]
 								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f, 0.f, 0.f)
 								[
 									SNew(STextBlock)
@@ -292,26 +327,13 @@ TSharedRef<SWidget> UDCTimelinePanel::RebuildWidget()
 										}), LOCTEXT("SpeedTip", "Abspieltempo 1×, 2×, 4×"), [](ADCPlayerController* C) { C->CycleSpeed(); })
 									]
 								]
-								// Deleting everything asks once more: a second click within a few seconds.
+								// Deleting everything at once: "Rückgängig" brings it back.
 								+ SHorizontalBox::Slot().AutoWidth().Padding(16.f, 0.f, 0.f, 0.f)
 								[
 									SNew(SBox).Visibility(ShowIn({ EDCPlanMode::Planning }))
 									[
-										PanelButton(WeakThis, TAttribute<FText>::CreateLambda([WeakThis]()
-										{
-											return WeakThis.IsValid() && WeakThis->IsClearArmed() ? LOCTEXT("ClearSure", "Wirklich alles löschen?") : LOCTEXT("Clear", "Plan leeren");
-										}), LOCTEXT("ClearTip", "Alle Schritte aller Figuren löschen (zweimal klicken)"), [WeakThis](ADCPlayerController* C)
-										{
-											if (WeakThis.IsValid() && WeakThis->IsClearArmed())
-											{
-												WeakThis->ClearArmedUntil = 0.0;
-												C->ClearPlan();
-											}
-											else if (WeakThis.IsValid())
-											{
-												WeakThis->ClearArmedUntil = FPlatformTime::Seconds() + 4.0;
-											}
-										}, 12, FMargin(10.f, 3.f), EPanelButton::Danger)
+										PanelButton(WeakThis, LOCTEXT("Clear", "Plan leeren"), LOCTEXT("ClearTip", "Alle Schritte aller Figuren löschen (\u201eRückgängig\u201c holt sie zurück)"),
+											[](ADCPlayerController* C) { C->ClearPlan(); }, 12, FMargin(10.f, 3.f), EPanelButton::Danger)
 									]
 								]
 							]
@@ -635,9 +657,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 		const float Waited = Task.WorkStart - Task.Ready + Task.WaitedOnTheWay();
 		if (!Task.bBlocked && Waited > 0.5f && Task.Type != EDCPlanTaskType::WaitFor)
 		{
-			const FText WaitText = Task.WaitFor.IsNone()
-				? FText::Format(LOCTEXT("WaitsPlain", "wartet {0} s – {1}"), FormatSeconds(Waited), Task.WaitReason)
-				: FText::Format(LOCTEXT("WaitsFor", "wartet {0} s, bis {1} Schritt {2} erledigt hat"), FormatSeconds(Waited), Task.WaitForName, FText::AsNumber(Task.WaitForIndex + 1));
+			const FText WaitText = UDCHeistStateSubsystem::DescribeWaited(Task, Waited);
 			ListRows->AddSlot().AutoHeight().Padding(30.f, 1.f, 4.f, 1.f)
 			[
 				SNew(SHorizontalBox)
@@ -647,7 +667,7 @@ void UDCTimelinePanel::RebuildList(const FDCSchedule& Schedule, FName Focus)
 				]
 				+ SHorizontalBox::Slot().FillWidth(1.f)
 				[
-					SNew(STextBlock).Text(WaitText).Font(Font(11)).ColorAndOpacity(Task.WaitFor.IsNone() ? WaitTextColor : CoordinationColor).AutoWrapText(true)
+					SNew(STextBlock).Text(WaitText).Font(Font(12)).ColorAndOpacity(Task.WaitFor.IsNone() ? WaitTextColor : CoordinationColor).AutoWrapText(true)
 				]
 			];
 		}

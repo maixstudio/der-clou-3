@@ -967,6 +967,10 @@ FDCTaskCheck ADCCrewCharacter::PlanCheckDoor(const ADCDoor* Door, EDCDoorAction 
 
 bool ADCCrewCharacter::RollSuccess() const
 {
+	if (bTestFailTasks)
+	{
+		return false;
+	}
 	return TaskFailChance <= 0.f || FMath::FRand() >= TaskFailChance;
 }
 

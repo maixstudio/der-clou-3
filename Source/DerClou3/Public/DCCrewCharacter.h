@@ -78,6 +78,10 @@ public:
 	const FLinearColor& GetBodyColor() const { return BodyColor; }
 	/** Short feedback under the name ("gibt auf"). */
 	void Say(const FText& Text) { ShowNotice(Text); }
+	/** What the crew member said last ("Bürotür ist verschlossen"). */
+	const FText& GetNotice() const { return Notice; }
+	/** Self-tests: every roll fails (picks, forcing), as if the crew member had bad luck. */
+	bool bTestFailTasks = false;
 
 	UDCInventoryComponent* GetInventory() const { return Inventory; }
 	bool IsBusy() const { return Phase != ETaskPhase::Idle; }

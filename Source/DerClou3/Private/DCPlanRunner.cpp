@@ -9,6 +9,7 @@
 #include "DCPlayerController.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 
 #define LOCTEXT_NAMESPACE "DCPlanRunner"
 
@@ -18,6 +19,10 @@ namespace
 	constexpr float RunnerLootStepSeconds = 0.8f;
 	/** Waiting for a door: stand this far beside the spot in front of it, so whoever opens it has room. */
 	constexpr double WaitAside = 110.0;
+	/** All doors on the way open, yet no way: the nav mesh catches up within this long. */
+	constexpr float RunnerNavSettleSeconds = 1.5f;
+	/** Opening the same door on the way more often than this: something is in the way. */
+	constexpr int32 RunnerMaxPassTries = 3;
 
 	void Collect(UDCItem* Item, TArray<UDCItem*>& Out)
 	{
@@ -51,6 +56,9 @@ void UDCPlanRunnerComponent::Start(const TArray<FDCPlanTask>& InTasks)
 	WaitText = FText::GetEmpty();
 	LootSkip.Reset();
 	PassingDoor.Reset();
+	LastPassDoor.Reset();
+	PassTries = 0;
+	DoorSettleTime = 0.f;
 	bRunning = !Tasks.IsEmpty();
 }
 
@@ -115,9 +123,35 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			FText DoorWait;
 			ADCDoor* OpenOnWay = nullptr;
 			ADCDoor* WaitAtDoor = nullptr;
-			const bool bDoorWait = DoorOnWay(DoorWait, OpenOnWay, WaitAtDoor);
+			bool bSettling = false;
+			bool bDoorWait = DoorOnWay(DoorWait, OpenOnWay, WaitAtDoor, bSettling);
+			if (bDoorWait && bSettling)
+			{
+				// Every door on the way is open: give the nav mesh a moment, then walk anyway.
+				DoorSettleTime += DeltaTime;
+				if (DoorSettleTime < RunnerNavSettleSeconds)
+				{
+					WaitText = DoorWait;
+					Statuses[Index] = EDCTaskStatus::Waiting;
+					return;
+				}
+				bDoorWait = false;
+			}
+			else
+			{
+				DoorSettleTime = 0.f;
+			}
 			if (!bDoorWait && OpenOnWay)
 			{
+				PassTries = LastPassDoor.Get() == OpenOnWay ? PassTries + 1 : 1;
+				LastPassDoor = OpenOnWay;
+				if (PassTries > RunnerMaxPassTries)
+				{
+					UE_LOG(LogDerClou, Log, TEXT("%s does not get through %s"), *Crew->GetCrewName().ToString(), *OpenOnWay->GetInteractableName().ToString());
+					Crew->Say(LOCTEXT("CannotPass", "kommt nicht durch"));
+					FinishTask(EDCTaskStatus::Failed);
+					return;
+				}
 				bWentToDoorWait = false;
 				PassingDoor = OpenOnWay;
 				WaitText = FText::GetEmpty();
@@ -132,8 +166,22 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 				const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
 				if (Plans && Plans->GetMode() == EDCPlanMode::Direct)
 				{
-					Crew->Say(DoorWait);
+					Crew->Say(WaitAtDoor && WaitAtDoor->IsLocked() ? FText::Format(LOCTEXT("DoorIsLocked", "{0} ist verschlossen"), WaitAtDoor->GetInteractableName()) : DoorWait);
 					FinishTask(EDCTaskStatus::Failed);
+					return;
+				}
+				// Waiting in vain: whoever should unlock it gave up, or nobody else is at work any more.
+				if (WaitAtDoor && WaitAtDoor->IsLocked() && IsWaitInVain())
+				{
+					const FText Stuck = FText::Format(LOCTEXT("StuckAtDoor", "{0} kommt nicht weiter: {1} bleibt verschlossen"), Crew->GetCrewName(), WaitAtDoor->GetInteractableName());
+					UE_LOG(LogDerClou, Log, TEXT("%s"), *Stuck.ToString());
+					Crew->Say(LOCTEXT("SayStuck", "kommt nicht weiter"));
+					if (ADCPlayerController* Player = Cast<ADCPlayerController>(GetWorld()->GetFirstPlayerController()))
+					{
+						Player->ShowToast(Stuck, true);
+					}
+					FinishTask(EDCTaskStatus::Failed);
+					Stop();
 					return;
 				}
 				// Walk up to the door and wait beside it (whoever unlocks it needs the spot in front).
@@ -377,10 +425,40 @@ bool UDCPlanRunnerComponent::ConditionMet(FText& OutWait) const
 	return true;
 }
 
-bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt) const
+bool UDCPlanRunnerComponent::IsWaitInVain() const
+{
+	const ADCCrewCharacter* Crew = GetCrew();
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Crew || !Heist)
+	{
+		return false;
+	}
+	// The plan says whose step unlocks it: did that step fail for good?
+	if (const FDCCrewSchedule* Mine = Heist->GetSchedule().Find(Crew->GetFName()))
+	{
+		const FDCScheduledTask* Planned = Mine->Tasks.FindByPredicate([this](const FDCScheduledTask& Entry) { return Entry.Index == Index; });
+		const ADCCrewCharacter* Other = Planned && !Planned->WaitFor.IsNone() ? Heist->FindCrew(Planned->WaitFor) : nullptr;
+		if (Other && Other->GetPlanRunner()->GetStatus(Planned->WaitForIndex) == EDCTaskStatus::Failed)
+		{
+			return true;
+		}
+	}
+	// Nobody else is still at work: nobody will come.
+	for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It; ++It)
+	{
+		if (*It != Crew && It->GetPlanRunner()->IsRunning())
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoor*& OutWaitAt, bool& bOutSettling) const
 {
 	OutOpen = nullptr;
 	OutWaitAt = nullptr;
+	bOutSettling = false;
 	OutWait = FText::GetEmpty();
 	const ADCCrewCharacter* Crew = GetCrew();
 	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
@@ -420,23 +498,30 @@ bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoo
 	default:
 		return false;
 	}
-	// The doors still in the way, in the order they are met: the first one decides.
-	const TArray<ADCDoor*> InWay = Heist->FindClosedDoorsOnWay(Crew->GetActorLocation(), Destination);
+	// The doors on the way, in the order they are met: the first one that is not open decides.
+	const TArray<ADCDoor*> InWay = Heist->FindDoorsOnWay(Crew->GetActorLocation(), Destination);
 	if (InWay.IsEmpty())
 	{
 		return false;
 	}
-	ADCDoor* First = InWay[0];
-	if (First->IsLocked())
+	ADCDoor* const* FirstShut = InWay.FindByPredicate([](const ADCDoor* Door) { return !Door->IsOpen(); });
+	if (!FirstShut)
 	{
-		OutWait = FText::Format(LOCTEXT("WaitAtLockedDoor", "wartet an der {0}, bis sie aufgesperrt ist"), First->GetInteractableName());
-		OutWaitAt = First;
+		// All open (one may still be swinging): the nav mesh lets one through in a moment.
+		bOutSettling = true;
+		OutWait = FText::Format(LOCTEXT("WaitDoorOpening", "wartet, bis {0} offen ist"), InWay.Last()->GetInteractableName());
 		return true;
 	}
-	if (First->IsOpen())
+	ADCDoor* First = *FirstShut;
+	if (First->IsLocked())
 	{
-		// Just swinging open: the way is free in a moment.
-		OutWait = FText::Format(LOCTEXT("WaitDoorOpening", "wartet, bis {0} offen ist"), First->GetInteractableName());
+		// The plan knows who unlocks it: "wartet auf Vic (Hintertür knacken)".
+		const FDCCrewSchedule* Mine = Heist->GetSchedule().Find(Crew->GetFName());
+		const FDCScheduledTask* Planned = Mine ? Mine->Tasks.FindByPredicate([this](const FDCScheduledTask& Entry) { return Entry.Index == Index; }) : nullptr;
+		OutWait = Planned && !Planned->WaitFor.IsNone() && !Planned->WaitForLabel.IsEmpty()
+			? FText::Format(LOCTEXT("WaitDoorForStep", "wartet auf {0} ({1})"), Planned->WaitForName, Planned->WaitForLabel)
+			: FText::Format(LOCTEXT("WaitAtLockedDoor", "wartet an der {0}, bis sie aufgesperrt ist"), First->GetInteractableName());
+		OutWaitAt = First;
 		return true;
 	}
 	if (!Crew->CheckDoorAction(First, EDCDoorAction::Open).bPossible)
@@ -688,6 +773,21 @@ void UDCPlanRunnerComponent::ResolveFind(float HandlingSeconds)
 
 void UDCPlanRunnerComponent::FinishTask(EDCTaskStatus Status)
 {
+	// Picked a door lock and stands still now: step aside, the next one needs the handle.
+	ADCCrewCharacter* Crew = GetCrew();
+	if (Status == EDCTaskStatus::Done && Crew && Tasks.IsValidIndex(Index) && Tasks[Index].Type == EDCPlanTaskType::Door
+		&& static_cast<EDCDoorAction>(Tasks[Index].Action) == EDCDoorAction::PickLock)
+	{
+		const bool bStays = !Tasks.IsValidIndex(Index + 1) || Tasks[Index + 1].Type == EDCPlanTaskType::Wait || Tasks[Index + 1].Type == EDCPlanTaskType::WaitFor;
+		const ADCDoor* Door = UDCHeistStateSubsystem::Get(this)->FindDoor(Tasks[Index].Target);
+		if (bStays && Door)
+		{
+			Crew->MoveToLocation(Door->GetStandPoint(Crew->GetActorLocation(), false) - Door->GetActorRightVector().GetSafeNormal2D() * WaitAside);
+		}
+	}
+	LastPassDoor.Reset();
+	PassTries = 0;
+	DoorSettleTime = 0.f;
 	if (Statuses.IsValidIndex(Index))
 	{
 		Statuses[Index] = Status;
