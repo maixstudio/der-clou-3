@@ -9,6 +9,8 @@
 --sheet      name of the contact sheet: _sheet_<name>.png (default _sheet.png) – use one per parallel run
 --ref        put a grey 180 cm figure next to items taller than 40 cm (preview only, never exported)
 --export     write Art/Items/Export/SM_<id>.fbx
+--icons      render one inventory icon per item (transparent, orthographic, Saved/ItemIcons/raw/<id>.png);
+             Scripts/Tools/prepare_item_icons.py then fits them to the grid footprint for the game
 """
 
 import math
@@ -31,6 +33,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 TEX_DIR = os.path.join(HERE, "Textures")
 EXPORT_DIR = os.path.join(HERE, "Export")
 PREVIEW_DIR = os.path.join(ROOT, "Saved", "ItemPreviews")
+ICON_DIR = os.path.join(ROOT, "Saved", "ItemIcons", "raw")
 
 
 def log(msg):
@@ -40,7 +43,7 @@ def log(msg):
 def parse_args():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     opts = {"textures": "--textures" in argv, "preview": "--preview" in argv, "export": "--export" in argv, "items": None,
-            "sheet": None, "ref": "--ref" in argv}
+            "sheet": None, "ref": "--ref" in argv, "icons": "--icons" in argv}
     if "--items" in argv:
         opts["items"] = argv[argv.index("--items") + 1].split(",")
     if "--sheet" in argv:
@@ -239,6 +242,85 @@ def frame(obs, key_ob, rim_ob, cam, view=VIEW_THREE_QUARTER):
     rim_ob.data.energy = 25 * (radius * 6) ** 2
 
 
+# ---------------------------------------------------------------------------------------------
+# Inventory icons: same item from above-front-right, no floor, transparent, lit to read on dark tiles
+# ---------------------------------------------------------------------------------------------
+
+VIEW_ICON = (0.75, -1.35, 1.35)
+# Items that read better from elsewhere: the painting's canvas faces -X, the flat pick case needs a steep look inside.
+ICON_VIEWS = {
+    "painting": (-1.4, -0.7, 0.55),
+    "lockpicks": (0.35, -0.6, 1.6),
+}
+ICON_PIXELS = 512
+
+
+def setup_icon_scene():
+    scene = bpy.context.scene
+    try:
+        scene.render.engine = "BLENDER_EEVEE"
+    except TypeError as err:
+        log(f"engine: {err}")
+    for attr, value in (("use_raytracing", True), ("use_shadows", True), ("taa_render_samples", 32)):
+        try:
+            setattr(scene.eevee, attr, value)
+        except (AttributeError, TypeError):
+            pass
+    scene.render.resolution_x = ICON_PIXELS
+    scene.render.resolution_y = ICON_PIXELS
+    scene.render.film_transparent = True
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGBA"
+    try:
+        scene.view_settings.view_transform = "AgX"
+        scene.view_settings.look = "AgX - Medium High Contrast"
+    except TypeError:
+        pass
+    scene.view_settings.exposure = -0.3
+    # Even grey surround so dark materials keep their shape.
+    world = bpy.data.worlds.new("IconStudio")
+    scene.world = world
+    world.use_nodes = True
+    bg = node_of_type(world.node_tree.nodes, "BACKGROUND")
+    bg.inputs["Color"].default_value = (0.55, 0.58, 0.64, 1)
+    bg.inputs["Strength"].default_value = 0.3
+    lights = []
+    # Warm key from front-left-top, cool rim from behind-right (like the game's lamps and moon), soft fill from the camera.
+    for name, energy, colour, direction, size in (("IconKey", 60, (1.0, 0.92, 0.82), (-1.1, -1.5, 2.0), 3.0),
+                                                  ("IconRim", 55, (0.75, 0.85, 1.0), (1.6, 1.6, 1.1), 2.0),
+                                                  ("IconFill", 18, (1.0, 1.0, 1.0), VIEW_ICON, 4.0)):
+        light = bpy.data.lights.new(name, "AREA")
+        light.color = colour
+        ob = bpy.data.objects.new(name, light)
+        scene.collection.objects.link(ob)
+        lights.append((ob, energy, Vector(direction).normalized(), size))
+    cam_data = bpy.data.cameras.new("IconCam")
+    cam_data.type = "ORTHO"
+    cam = bpy.data.objects.new("IconCam", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    return lights, cam
+
+
+def frame_icon(ob, lights, cam, view=VIEW_ICON):
+    corners = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
+    lo = Vector([min(c[i] for c in corners) for i in range(3)])
+    hi = Vector([max(c[i] for c in corners) for i in range(3)])
+    centre = (lo + hi) / 2
+    radius = max((hi - lo).length / 2, 0.01)
+    direction = Vector(view).normalized()
+    cam.location = centre + direction * radius * 4
+    cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+    cam.data.ortho_scale = radius * 2.1
+    cam.data.clip_start = radius * 0.1
+    cam.data.clip_end = radius * 10
+    for light_ob, energy, light_dir, size in lights:
+        light_ob.location = centre + light_dir * radius * 6
+        light_ob.rotation_euler = (centre - light_ob.location).to_track_quat("-Z", "Y").to_euler()
+        light_ob.data.size = radius * size
+        light_ob.data.energy = energy * (radius * 6) ** 2
+
+
 def reference_figure(ob):
     """Grey 180 cm stand-in person beside the item, for judging proportions in the preview."""
     corners = [ob.matrix_world @ Vector(c) for c in ob.bound_box]
@@ -306,7 +388,13 @@ def main():
     ids = opts["items"] or list(dc_items.BUILDERS)
     os.makedirs(EXPORT_DIR, exist_ok=True)
     os.makedirs(PREVIEW_DIR, exist_ok=True)
+    if opts["icons"] and opts["preview"]:
+        log("--icons and --preview need different scenes: run them one after the other")
+        return
     rig = setup_render_scene() if opts["preview"] else None
+    icon_rig = setup_icon_scene() if opts["icons"] else None
+    if icon_rig:
+        os.makedirs(ICON_DIR, exist_ok=True)
     previews = []
     for item_id in ids:
         builder = dc_items.BUILDERS.get(item_id)
@@ -331,12 +419,18 @@ def main():
                 previews.append(path)
             for o in ref:
                 bpy.data.objects.remove(o, do_unlink=True)
+        if icon_rig:
+            frame_icon(ob, *icon_rig, view=ICON_VIEWS.get(item_id, VIEW_ICON))
+            path = os.path.join(ICON_DIR, f"{item_id}.png")
+            bpy.context.scene.render.filepath = path
+            bpy.ops.render.render(write_still=True)
+            previews.append(path)
         ob.hide_render = True
         ob.hide_set(True)
     if previews:
-        name = f"_sheet_{opts['sheet']}.png" if opts["sheet"] else "_sheet.png"
-        contact_sheet(previews, os.path.join(PREVIEW_DIR, name))
-        log(f"previews in {PREVIEW_DIR} ({name})")
+        name = f"_sheet_{opts['sheet']}.png" if opts["sheet"] else ("_sheet_icons.png" if icon_rig else "_sheet.png")
+        contact_sheet(previews, os.path.join(PREVIEW_DIR, name), cols=8 if icon_rig else 4)
+        log(f"{'icons in ' + ICON_DIR if icon_rig else 'previews in ' + PREVIEW_DIR} ({name})")
 
 
 if __name__ == "__main__":

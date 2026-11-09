@@ -185,6 +185,21 @@ spielend, zeitlose dunkle Kleidung. Prompts und Ablauf: `Docs/UI-Mockup/Portraet
 - Das Spiel lädt sie zur Laufzeit (`DCItemWidgets::Portrait`, `MakePortrait`, dynamischer Slate-Pinsel; andere
   Seitenverhältnisse schneidet es selbst zu: Mitte bei breiten, oberer Teil bei hohen Bildern).
 
+**Gegenstands-Icons** – aus den Blender-Modellen gerendert, alle gleich: orthografisch schräg von oben, transparent,
+warmes Licht von links, kühles Gegenlicht von rechts. Jedes Bild hat das Seitenverhältnis seines Rasters (64 px je Feld;
+Brecheisen 1 × 4 hochkant, Laptop 3 × 2 quer), Dinge ohne Raster (Möbel, Gemälde) sind quadratisch.
+- Raster: das Bild füllt die Kachel auf neutralem Grund; ab 2 × 2 Feldern steht der Kurzname klein unten links, kleinere
+  zeigen nur das Bild (Name im Tooltip).
+- Kopfzeilen (getragene Kleidung, Weste, Rucksack, Möbel und Behälter beim Durchsuchen, „Ausgewählt“): Bild 22 × 20 vor
+  dem Namen. Hände: Bild 34 × 30 vor dem Namen. Beim Ziehen: Bild 44 × 44 neben Name und Hinweis.
+- Fehlt ein Bild (z. B. Schublade), bleibt die alte Kachel mit Kurzname und Katalogfarbe.
+- Ablauf: `blender -b --factory-startup -P Art/Items/build_items.py -- --icons --items <ids>` (Rohbilder nach
+  `Saved/ItemIcons/raw`), dann `python Scripts/Tools/prepare_item_icons.py` (liest die Rastergrößen aus
+  `DCItemTypes.cpp`, schneidet zu, dreht nur deutlich längliche Dinge, schreibt `Content/Slate/ItemIcons/<id>.png`).
+  `--ids` gibt die Katalog-Ids für `--items` aus. Andere Blickrichtung je Gegenstand: `ICON_VIEWS` in `build_items.py`.
+- Code: `DCItemWidgets::ItemIcon(DefId)` (dynamischer Slate-Pinsel, Pixelgröße = Wunschgröße), `MakeItemIcon(DefId,
+  MaxBreite, MaxHöhe)` (Seitenverhältnis bleibt).
+
 **Tooltips**: nach ca. 0,4 s; höchstens vier Zeilen: was es tut · Kürzel · warum nicht · Zahlen.
 Nichts, was man zum Spielen *braucht*, steht nur im Tooltip.
 

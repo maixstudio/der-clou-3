@@ -136,6 +136,14 @@ namespace DCItemWidgets
 	DERCLOU3_API TSharedRef<SWidget> MakePortrait(const FString& CrewName, const FLinearColor& CrewColor, float Width);
 
 	/**
+	 * Rendered picture of an item (Content/Slate/ItemIcons/<id>.png from Blender, transparent, with the aspect of its grid
+	 * footprint – see Scripts/Tools/prepare_item_icons.py). Null while there is none.
+	 */
+	DERCLOU3_API const FSlateBrush* ItemIcon(FName DefId);
+	/** The item picture scaled to fit MaxWidth × MaxHeight (aspect kept); nothing while there is no picture. */
+	DERCLOU3_API TSharedRef<SWidget> MakeItemIcon(FName DefId, float MaxWidth, float MaxHeight);
+
+	/**
 	 * Takes dropped items; Check decides green or red while hovering, and the reason shows next to
 	 * the dragged item. Target names the place in that line ("→ Rechte Hand").
 	 */

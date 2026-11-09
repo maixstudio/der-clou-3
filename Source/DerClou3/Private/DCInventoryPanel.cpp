@@ -599,11 +599,20 @@ TSharedRef<SWidget> UDCInventoryPanel::MakeHands()
 				.Cursor(EMouseCursor::GrabHand)
 				.ToolTipText(FText::Format(LOCTEXT("HandTip", "{0} · {1}"), Item->GetDisplayName(), DCItems::FormatKg(Item->GetTotalMass())))
 				[
-					SNew(STextBlock)
-					.Text(PlannedOnly.Contains(Item) ? FText::Format(LOCTEXT("HandPlanned", "{0} \u00b7 geplant"), Item->GetDisplayName()) : Item->GetDisplayName())
-					.Font(Font(11, true))
-					.ColorAndOpacity(PlannedOnly.Contains(Item) ? CoordinationColor : (Item->GetDef().Value > 0 ? LootColor : TextColor))
-					.AutoWrapText(true)
+					SNew(SHorizontalBox)
+					// The picture of what the hand holds, then its name.
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, ItemIcon(Item->GetDef().Id) ? 6.f : 0.f, 0.f)
+					[
+						MakeItemIcon(Item->GetDef().Id, 34.f, 30.f)
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+					[
+						SNew(STextBlock)
+						.Text(PlannedOnly.Contains(Item) ? FText::Format(LOCTEXT("HandPlanned", "{0} \u00b7 geplant"), Item->GetDisplayName()) : Item->GetDisplayName())
+						.Font(Font(11, true))
+						.ColorAndOpacity(PlannedOnly.Contains(Item) ? CoordinationColor : (Item->GetDef().Value > 0 ? LootColor : TextColor))
+						.AutoWrapText(true)
+					]
 				]);
 		}
 		return MakeDropZone(

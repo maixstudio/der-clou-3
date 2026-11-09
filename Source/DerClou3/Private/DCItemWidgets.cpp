@@ -19,7 +19,9 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SCanvas.h"
 #include "Widgets/SCompoundWidget.h"
@@ -389,6 +391,48 @@ namespace DCItemWidgets
 		return Entry.Get();
 	}
 
+	const FSlateBrush* ItemIcon(FName DefId)
+	{
+		static TMap<FName, TSharedPtr<FSlateDynamicImageBrush>> Cache;
+		if (DefId.IsNone())
+		{
+			return nullptr;
+		}
+		if (const TSharedPtr<FSlateDynamicImageBrush>* Found = Cache.Find(DefId))
+		{
+			return Found->Get();
+		}
+		TSharedPtr<FSlateDynamicImageBrush>& Entry = Cache.Add(DefId);
+		const FString Path = FPaths::ProjectContentDir() / TEXT("Slate/ItemIcons") / (DefId.ToString().ToLower() + TEXT(".png"));
+		FImage Picture;
+		if (FPaths::FileExists(Path) && FImageUtils::LoadImage(*Path, Picture) && Picture.SizeX > 0 && Picture.SizeY > 0)
+		{
+			// The pixel size is the desired size, so a scale box keeps the aspect of the footprint.
+			Entry = MakeShared<FSlateDynamicImageBrush>(FName(*Path), FVector2f(static_cast<float>(Picture.SizeX), static_cast<float>(Picture.SizeY)));
+		}
+		return Entry.Get();
+	}
+
+	TSharedRef<SWidget> MakeItemIcon(FName DefId, float MaxWidth, float MaxHeight)
+	{
+		const FSlateBrush* Picture = ItemIcon(DefId);
+		if (!Picture)
+		{
+			return SNullWidget::NullWidget;
+		}
+		return SNew(SBox)
+			.WidthOverride(MaxWidth)
+			.HeightOverride(MaxHeight)
+			.Visibility(EVisibility::HitTestInvisible)
+			[
+				SNew(SScaleBox)
+				.Stretch(EStretch::ScaleToFit)
+				[
+					SNew(SImage).Image(Picture)
+				]
+			];
+	}
+
 	TSharedRef<SWidget> MakePortrait(const FString& CrewName, const FLinearColor& CrewColor, float Width)
 	{
 		const float Height = FMath::RoundToFloat(Width * 4.f / 3.f);
@@ -569,31 +613,41 @@ namespace
 		virtual TSharedPtr<SWidget> GetDefaultDecorator() const override
 		{
 			const TSharedRef<FDCDragHint> HintRef = Hint;
+			const FName DefId = Item.IsValid() ? Item->GetDef().Id : NAME_None;
 			return SNew(SBorder)
 				.BorderImage(FramedBrush())
 				.BorderBackgroundColor(PanelColor)
 				.Padding(FMargin(10.f, 6.f))
 				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight()
+					SNew(SHorizontalBox)
+					// The picture of what is being carried.
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, ItemIcon(DefId) ? 8.f : 0.f, 0.f)
 					[
-						SNew(STextBlock)
-						.Text(Item.IsValid() ? FText::Format(LOCTEXT("DragName", "{0}  ({1})"), Item->GetDisplayName(),
-							Item->GetDef().FitsInGrid() ? DCItems::FormatCells(Item->GetGridSize()) : LOCTEXT("DragHands", "nur Hände")) : FText::GetEmpty())
-						.Font(Font(12, true))
-						.ColorAndOpacity(TextColor)
+						MakeItemIcon(DefId, 44.f, 44.f)
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 					[
-						SNew(SBox)
-						.MaxDesiredWidth(320.f)
-						.Visibility_Lambda([HintRef]() { return HintRef->Text.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot().AutoHeight()
 						[
 							SNew(STextBlock)
-							.Text_Lambda([HintRef]() { return HintRef->Text; })
-							.ColorAndOpacity_Lambda([HintRef]() { return FSlateColor(HintRef->bOk ? HintOkColor : MessageColor); })
-							.Font(Font(11, true))
-							.AutoWrapText(true)
+							.Text(Item.IsValid() ? FText::Format(LOCTEXT("DragName", "{0}  ({1})"), Item->GetDisplayName(),
+								Item->GetDef().FitsInGrid() ? DCItems::FormatCells(Item->GetGridSize()) : LOCTEXT("DragHands", "nur Hände")) : FText::GetEmpty())
+							.Font(Font(12, true))
+							.ColorAndOpacity(TextColor)
+						]
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 2.f, 0.f, 0.f)
+						[
+							SNew(SBox)
+							.MaxDesiredWidth(320.f)
+							.Visibility_Lambda([HintRef]() { return HintRef->Text.IsEmpty() ? EVisibility::Collapsed : EVisibility::HitTestInvisible; })
+							[
+								SNew(STextBlock)
+								.Text_Lambda([HintRef]() { return HintRef->Text; })
+								.ColorAndOpacity_Lambda([HintRef]() { return FSlateColor(HintRef->bOk ? HintOkColor : MessageColor); })
+								.Font(Font(11, true))
+								.AutoWrapText(true)
+							]
 						]
 					]
 				];
@@ -938,7 +992,38 @@ namespace
 					]
 				];
 
-			const FLinearColor Fill = FMath::Lerp(ItemTileColor, Def.Color.CopyWithNewOpacity(1.f), 0.25f);
+			// With a rendered picture: the picture fills the tile (it has the footprint's aspect), and tiles of at least 2 × 2
+			// cells keep the short name in a small strip at the bottom. Smaller ones: picture only (the strip would cover it),
+			// the name is in the tooltip.
+			TSharedRef<SWidget> Inside = Label;
+			const FSlateBrush* Picture = ItemIcon(Def.Id);
+			if (Picture)
+			{
+				TSharedRef<SOverlay> Shown = SNew(SOverlay).Visibility(EVisibility::HitTestInvisible)
+					+ SOverlay::Slot().Padding(1.f)
+					[
+						SNew(SImage).Image(Picture)
+					];
+				if (Size.X >= 2 && Size.Y >= 2)
+				{
+					Shown->AddSlot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(2.f)
+					[
+						SNew(SBorder)
+						.BorderImage(RoundBrush())
+						.BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.6f))
+						.Padding(FMargin(4.f, 0.f))
+						[
+							SNew(STextBlock)
+							.Text(Def.GetShortName())
+							.Font(Font(9, true))
+							.ColorAndOpacity(NameColor(Item))
+						]
+					];
+				}
+				Inside = Shown;
+			}
+
+			const FLinearColor Fill = Picture ? ItemTileColor : FMath::Lerp(ItemTileColor, Def.Color.CopyWithNewOpacity(1.f), 0.25f);
 			const bool bPlanned = IsPlannedItem(Context, Item);
 			TSharedRef<SWidget> Look = SNew(SBorder)
 				.BorderImage(RoundBrush())
@@ -952,7 +1037,7 @@ namespace
 					.BorderBackgroundColor(Fill)
 					.Padding(FMargin(1.f))
 					[
-						Label
+						Inside
 					]
 				];
 
@@ -1124,11 +1209,16 @@ namespace DCItemWidgets
 		TSharedRef<SWidget> Look = SNew(SBorder)
 			.BorderImage_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? FocusFramedBrush() : SoftFramedBrush(); })
 			.BorderBackgroundColor_Lambda([CtxPtr, WeakItem]() { return IsSelected(CtxPtr, WeakItem.Get()) ? SelectedTileColor : TileColor; })
-			.Padding(FMargin(8.f, 3.f, 4.f, 3.f))
+			.Padding(FMargin(ItemIcon(Def.Id) ? 5.f : 8.f, 3.f, 4.f, 3.f))
 			.ToolTipText(Tooltip(Item))
 			.Cursor(bCanDrag ? EMouseCursor::GrabHand : EMouseCursor::Default)
 			[
 				SNew(SHorizontalBox)
+				// Small picture before the name (worn clothes, vest, backpack, things in a container's list).
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, ItemIcon(Def.Id) ? 4.f : 0.f, 0.f)
+				[
+					MakeItemIcon(Def.Id, 22.f, 20.f)
+				]
 				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)

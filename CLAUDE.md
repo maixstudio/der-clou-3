@@ -551,6 +551,18 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Frame 0,03 s). **Offen:** Durch die Geheimtür (Bücherregal zur Geheimkammer) kommt live niemand: Rosa öffnet sie,
     findet 3 s keinen Weg hinein („no path through the door“) und gibt auf. Der Schritt „durch Geheimtür“ zählt trotzdem
     als erledigt, „Ölgemälde aufheben“ scheitert dann. Die Planung hält den Weg für möglich.
+- **Professioneller Look, Schritt 4 von 6: Gegenstands-Icons aus Blender (Schritt 33, 2026-11-09).** 34 Bilder, eines je
+  Katalog-Gegenstand (nur die Schublade hat keins), in `Content/Slate/ItemIcons/<id>.png`, zur Laufzeit geladen.
+  - Blender: `build_items.py --icons` rendert orthografisch schräg von oben (`VIEW_ICON`, Ausnahmen in `ICON_VIEWS`:
+    Gemälde von vorn, Dietrich-Set steiler), transparent, AgX, warmes Führungslicht, kühles Gegenlicht, nach
+    `Saved/ItemIcons/raw`, Kontaktbogen `Saved/ItemPreviews/_sheet_icons.png`. Nicht zusammen mit `--preview`.
+  - `Scripts/Tools/prepare_item_icons.py` liest die Rastergrößen aus `DCItemTypes.cpp` (eine Quelle), schneidet auf die
+    sichtbaren Pixel, dreht nur deutlich längliche Dinge (`TURN_RATIO` 1,6 – Brecheisen ja, Mantel nicht) und setzt sie
+    mit 8 % Rand auf 64 px je Feld (ohne Raster 128 × 128). `--ids` gibt die Ids für `--items` aus.
+  - Code: `DCItemWidgets::ItemIcon(DefId)`, `MakeItemIcon(DefId, MaxBreite, MaxHöhe)` (`SScaleBox`, Seitenverhältnis bleibt).
+    Rasterkachel mit Bild auf neutralem Grund, Kurzname nur ab 2 × 2 Feldern; Kopfzeilen (`MakeHeader`) mit Bild
+    22 × 20, Hände 34 × 30, Zieh-Anzeige 44 × 44. Ohne Bild bleibt die alte Kachel.
+  - Geprüft mit Grid, Find, Containers, Signals, Inventory und Villa (alle bestanden, Screenshots angesehen).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -579,6 +591,8 @@ Neu (Schritt 29): der neue Look im Ganzen, also Schriften, Farben, Rahmen, Knöp
 (die Selbsttests zeigen nur Standbilder).
 Neu (Schritt 30): die Icons – passen sie, sind sie groß genug, fehlt irgendwo eins oder ist eins zu viel?
 Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf Karte und Profil.
+Neu (Schritt 33): die Gegenstands-Icons – erkennt man alles (Dietrich-Set ist klein und grau), Kurzname nur ab 2 × 2,
+Ziehen mit Bild mit der echten Maus.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
