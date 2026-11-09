@@ -805,6 +805,24 @@ ungefragt zurückkopieren.
 - `DerClou3.uproject` enthält lokal eine rechnerspezifische Engine-GUID – diese Änderung **nie**
   committen (im Repo steht `"5.8"`).
 - `.umap`/`.uasset` laufen über Git LFS (`lockable`); lokal ist `lfs.setlockablereadonly=false` gesetzt.
+- **Spielbare Demo für andere PCs** (Editor zu, seit 2026-11-09):
+  `powershell -ExecutionPolicy Bypass -File Scripts\Tools\package_demo.ps1` → `Dist\Lindenhof-Demo-<Datum>\`
+  (`Lindenhof.exe`, `Lies mich.txt` aus `Scripts\Tools\demo_readme.txt`) und dieselbe Fassung als `.zip`, Shipping, ~560 MB.
+  Log in `Saved\Packaging\package_<Config>.log`; Kochen beim ersten Mal ~30 min, danach schneller. `Dist/` ist nicht im Git.
+  - `-Config Development -SkipCook -NoZip` baut aus demselben Cook eine Fassung mit Log (`DerClou3\Saved\Logs` neben der
+    exe). Damit laufen die Selbsttests im gepackten Spiel: `Lindenhof.exe /Game/DerClou/Maps/L_Villa01 -DCSelfTest=Villa`.
+    Die Shipping-Fassung schreibt kein Log. Spielstände, Einstellungen und Screenshots liegen dort unter
+    `%LOCALAPPDATA%\DerClou3\Saved`.
+  - Gekocht werden nur die drei Maps (`MapsToCook` in DefaultGame.ini) und die Ordner aus `DirectoriesToAlwaysCook`.
+    Neue Maps und Assets, die per Pfad geladen werden, müssen dort eingetragen werden. `Content/Slate` kommt als Datei mit
+    in die .pak. Shader gibt es für DX12 (SM6) und DX11 (SM5). Das Fenster heißt „Lindenhof“ (`ProjectDisplayedTitle`).
+  - Beigelegt ist `Engine\Extras\Redist\en-us\vc_redist.x64.exe`. Die Raum- und Figurennamen in den Maps erzeugen beim
+    Kochen „FText initialized from FString“-Warnungen. Die sind harmlos, solange es keine Übersetzung gibt.
+  - Die Development-Fassung meldet beim Start ein Ensure „Failed to load class /Script/GameFeatures.GameFeatureData“
+    (der Eintrag in `AssetManagerSettings` ist nur für die MCP-Toolsets im Editor da). Das ist harmlos, in Shipping gibt
+    es keine Ensures. Abhilfe wäre `bIsEditorOnly=True`; das bleibt aus, solange die Toolsets nicht damit geprüft sind.
+  - Aus Git Bash Kartenpfade mit `MSYS_NO_PATHCONV=1` übergeben, sonst wird `/Game/...` zu `C:/Program Files/Git/Game/...`
+    und das Spiel stürzt beim Laden ab.
 
 ## Git
 

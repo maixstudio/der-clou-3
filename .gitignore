@@ -34,3 +34,7 @@ Thumbs.db
 
 # Python-Cache (Art-Pipeline)
 __pycache__/
+
+# Gepackte Demo (Scripts/Tools/package_demo.ps1)
+Dist/
+Build/Windows/FileOpenOrder/
