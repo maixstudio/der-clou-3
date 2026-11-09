@@ -4,11 +4,15 @@ Run headless (Blender 5.2):
     blender -b --factory-startup -P Art/Characters/build_rosa.py -- [--stage mesh|rig|anim|all] [--preview] [--export]
 
 Stages (each saves a .blend, the next one starts from it):
-    mesh  silhouettes -> voxel hull (superellipse cross sections) -> smooth mesh -> UVs -> projected colour texture
-    rig   UE-style skeleton (root, pelvis, spine_01..03, neck_01, head, clavicle/upperarm/lowerarm/hand, thigh/calf/foot/ball)
-          from landmarks of the silhouettes, automatic weights
-    anim  actions Rosa_Idle, Rosa_Walk, Rosa_Work, Rosa_Pickup (in place, 30 fps)
---preview renders stills into Saved/Characters/Rosa/, --export writes Art/Characters/Rosa/Export/SK_Rosa.fbx + texture.
+    mesh  silhouettes -> voxel hull (superellipse cross sections), head from the close-up with a face shaped after the
+          profile, hair relief -> smooth mesh; modelled hands, ears and loose curls joined in -> UVs -> projected colour
+          texture, hand details painted on top
+    rig   UE-style skeleton (root, pelvis, spine_01..03, neck_01, head, clavicle/upperarm/lowerarm/hand, five digits
+          with three bones each, thigh/calf/foot/ball) from landmarks of the silhouettes; bone heat on the body, distance
+          weights on the hands, ears and curls on the head
+    anim  actions Rosa_Idle, Rosa_Walk, Rosa_Jog, Rosa_Work, Rosa_Pickup (in place, 30 fps)
+--preview renders stills into Saved/Characters/Rosa/, --export writes Art/Characters/Rosa/Export/SK_Rosa.fbx + texture,
+--stage showcase renders an MP4 of all actions.
 
 Conventions as for the items: metres, origin between the feet on the floor, front = Blender -Y (Unreal +Y).
 """
@@ -36,8 +40,9 @@ BG_THRESHOLD = 0.09    # colour distance from the grey backdrop that counts as f
 HAND_HALF_DEPTH = 0.043
 TEX_SIZE = 4096
 TARGET_FACES = 24000   # triangles after decimation below the head
-HEAD_FACES = 9000      # triangles for the head (close-up detail)
+HEAD_FACES = 20000     # triangles for the head (close-up detail, hair relief)
 HEAD_UV_SCALE = 1.7    # head islands get this much more texture space
+HAND_UV_SCALE = 1.6
 HEAD_SMOOTH_FROM = 1.40  # metres; above this the silhouettes are opened by HEAD_OPEN_PX
 HEAD_OPEN_PX = 10
 JAW_SMOOTH_TO = 1.555    # between HEAD_SMOOTH_FROM and this (neck, jaw) curls are removed harder
@@ -279,6 +284,115 @@ class HeadView(View):
         log(f"view {self.name}: {self.scale * 1000:.3f} mm/px, hair top z {(self.bottom + 0.5 - self.top) * self.scale:.3f}")
 
 
+# Right ear traced in the close-up profile (full-image pixels, clockwise from the top of the helix), the bowl
+# (concha) centre, how far the ear sits from the face centre where it attaches and how much it tilts outwards.
+EAR_OUTLINE = [(1265, 371.7), (1250, 378), (1235, 390), (1224, 410), (1221.7, 425), (1223, 440), (1227, 455),
+               (1233, 467), (1241, 481), (1251.7, 493), (1268, 507), (1290, 517), (1303, 515), (1311.7, 510),
+               (1314, 495), (1313, 480), (1310, 465), (1306, 450), (1300, 432), (1293, 413), (1288, 395),
+               (1286.7, 380), (1278, 372)]
+EAR_CONCHA = (1296, 447)
+EAR_ATTACH_U = 0.064
+EAR_TILT_DEG = 30.0
+
+
+def catmull_rom(points, samples_per_segment=4):
+    pts = [Vector(p) for p in points]
+    n = len(pts)
+    out = []
+    for i in range(n):
+        p0, p1, p2, p3 = pts[i - 1], pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
+        for k in range(samples_per_segment):
+            t = k / samples_per_segment
+            out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t
+                              + (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t))
+    return out
+
+
+class EarModel:
+    """Outline of the ear in body coordinates (y, z) and the region around it where the hair has to give way."""
+
+    def __init__(self, side_view, face_cx):
+        def yz(col, row):
+            c = col - HEAD_SPLIT_COL
+            return Vector((side_view.sign * (c - side_view.centre) * side_view.scale,
+                           (side_view.bottom + 0.5 - row) * side_view.scale))
+
+        self.outline = catmull_rom([yz(*p) for p in EAR_OUTLINE], 2)
+        self.concha = yz(*EAR_CONCHA)
+        ys = [p.x for p in self.outline]
+        zs = [p.y for p in self.outline]
+        self.y_front, self.y_back = min(ys), max(ys)
+        self.centre = Vector(((min(ys) + max(ys)) / 2, (min(zs) + max(zs)) / 2))
+        self.half = Vector(((max(ys) - min(ys)) / 2, (max(zs) - min(zs)) / 2))
+        self.cx = face_cx
+        log(f"ear: y {self.y_front:.3f}..{self.y_back:.3f}, z {min(zs):.3f}..{max(zs):.3f}")
+
+    def clearance(self, ys, zs):
+        """(len(zs), len(ys)): 1 where the head must stay at skull width (behind the ear), 0 far away."""
+        dy = (ys[None, :] - self.centre.x) / (self.half.x + 0.006)
+        dz = (zs[:, None] - self.centre.y) / (self.half.y + 0.006)
+        r = np.sqrt(dy ** 2 + dz ** 2)
+        return np.clip((2.2 - r) / 1.2, 0.0, 1.0)
+
+
+def ear_object(side, ear):
+    """Closed ear: a cupped sheet over the traced outline (rim, ridge, bowl), tilted away from the head,
+    made solid with a solidify modifier and smoothed."""
+    import bmesh
+    s = SIDES[side]
+    rings = 6
+    bm = bmesh.new()
+    tilt = math.tan(math.radians(EAR_TILT_DEG))
+    grid = []
+    for k in range(rings + 1):
+        f = k / rings
+        row = []
+        for p in ear.outline:
+            q = ear.concha + (p - ear.concha) * f
+            out = max(0.0, q.x - ear.y_front) * tilt
+            out += 0.0025 * math.exp(-((f - 0.92) / 0.09) ** 2)      # helix rim
+            out += 0.0014 * math.exp(-((f - 0.62) / 0.10) ** 2)      # antihelix
+            out -= 0.0055 * math.exp(-(f / 0.42) ** 2)               # bowl
+            x = ear.cx + s * (EAR_ATTACH_U + max(out, -0.004))
+            row.append(bm.verts.new((x, q.x, q.y)))
+            if k == 0:
+                break
+        grid.append(row)
+    n = len(ear.outline)
+    centre = grid[0][0]
+    for i in range(n):
+        a, b = grid[1][i], grid[1][(i + 1) % n]
+        bm.faces.new((centre, a, b) if s < 0 else (centre, b, a))
+    for k in range(1, rings):
+        for i in range(n):
+            a, b = grid[k][i], grid[k][(i + 1) % n]
+            c, d = grid[k + 1][(i + 1) % n], grid[k + 1][i]
+            bm.faces.new((a, d, c, b) if s < 0 else (a, b, c, d))
+    me = bpy.data.meshes.new(f"Ear_{side}")
+    bm.to_mesh(me)
+    bm.free()
+    ob = link(bpy.data.objects.new(f"Ear_{side}", me))
+    me.update()
+    # Normals should point away from the head; flip if they don't.
+    nx = sum(p.normal.x for p in me.polygons) / max(1, len(me.polygons))
+    if nx * s < 0:
+        me.flip_normals()
+    sol = ob.modifiers.new("Solidify", "SOLIDIFY")
+    sol.thickness = 0.0042
+    sol.offset = -1.0
+    sol.use_rim = True
+    sub = ob.modifiers.new("Subsurf", "SUBSURF")
+    sub.levels = 1
+    sub.render_levels = 1
+    apply_modifiers(ob)
+    attr = ob.data.attributes.new("skin", "FLOAT", "POINT")
+    attr.data.foreach_set("value", np.zeros(len(ob.data.vertices), np.float32))
+    vg = ob.vertex_groups.new(name="rigid_head")
+    vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
+    log(f"ear {side}: {len(ob.data.polygons)} faces")
+    return ob
+
+
 class FaceModel:
     """Front surface of the face, y = f(x, z): midline from the close-up profile (brow, nose, lips, chin), a
     superellipse falling off to the sides, eye sockets. Used to carve and fill the hull in front of the ears."""
@@ -413,6 +527,7 @@ class Hull:
             self.F[top] = head_front.sample_mask(xs, zs[top])
             self.S[top] = head_side.sample_mask(ys, zs[top])
             self.face = FaceModel(head_front, head_side)
+            self.ear = EarModel(head_side, self.face.cx)
         self._arms()
 
     def _arms(self):
@@ -509,6 +624,12 @@ class Hull:
                     limit = np.where(inside_w, yf, y_side - 0.08 * temple)[:, :, None]
                     solid = inside_w[:, :, None] & (y >= yf[:, :, None]) & (y <= y_side[:, :, None] + 0.01)
                     V[a:b][zone] = (V[a:b][zone] & (y >= limit)) | solid
+                # Behind the ears the head stays at skull width so the modelled ears stand free of the hair.
+                clear = self.ear.clearance(ys, zs[a:b])                      # (z, y)
+                if clear.any():
+                    # Hair tucked behind the ear: slopes down to skull width instead of a steep wall.
+                    limit_u = EAR_ATTACH_U + (1.0 - clear[:, None, :]) * 0.04 + (clear[:, None, :] == 0) * 0.25
+                    V[a:b] &= np.abs(xs[None, :, None] - self.face.cx) <= limit_u
         log(f"voxels: {int(V.sum())} filled of {V.size} {V.shape}")
         return V
 
@@ -696,8 +817,7 @@ def projection_material(views, heads, hull, skin_rgb):
         return N.vmath("ADD", N.vmath("SCALE", a, scale=N.math("SUBTRACT", 1.0, t)), N.vmath("SCALE", b, scale=t))
 
     def project(name, v):
-        bled = bleed(v.px, v.geo_mask & raw_figure(v.px))
-        img = save_rgb(bled, os.path.join(WORK, f"proj_{name}.png"))
+        img = save_rgb(bled_px(v), os.path.join(WORK, f"proj_{name}.png"))
         h_coord = px_ if v.axis == "x" else py_
         u = N.math("MULTIPLY_ADD", h_coord, v.sign / (v.scale * v.w), v.centre / v.w)
         vv = N.math("MULTIPLY_ADD", pz_, 1.0 / (v.scale * v.h), 1.0 - (v.bottom + 0.5) / v.h)
@@ -744,6 +864,16 @@ def projection_material(views, heads, hull, skin_rgb):
     mott = N.math("MULTIPLY_ADD", noise.outputs["Fac"], 0.22, 0.89)
     skin = N.vmath("SCALE", N.combine(*lin), scale=mott)
     col = lerp_v(col, skin, attr.outputs["Fac"])
+    # Loose curls: dark brown with copper streaks.
+    curl = nt.nodes.new("ShaderNodeAttribute")
+    curl.attribute_name = "curl"
+    streak = nt.nodes.new("ShaderNodeTexNoise")
+    streak.inputs["Scale"].default_value = 90.0
+    streak.inputs["Detail"].default_value = 4.0
+    nt.links.new(geo.outputs["Position"], streak.inputs["Vector"])
+    copper = N.math("POWER", N.math("SUBTRACT", streak.outputs["Fac"], 0.25, clamp=True), 1.6)
+    hair_col = lerp_v(N.combine(0.030, 0.014, 0.008), N.combine(0.20, 0.075, 0.025), N.math("MULTIPLY", copper, 1.6))
+    col = lerp_v(col, hair_col, curl.outputs["Fac"])
     emit = nt.nodes.new("ShaderNodeEmission")
     nt.links.new(col, emit.inputs["Color"])
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -837,31 +967,45 @@ def stage_mesh():
     sm.vertex_group = "smooth"
     apply_modifiers(ob)
     ob.vertex_groups.remove(ob.vertex_groups["smooth"])
+    hair_relief(ob, views, heads, hull)
     n_faces = len(ob.data.polygons)
     decimate_zones(ob, [(lambda c: c.z > Z_HEAD - 0.01, HEAD_FACES), (lambda c: c.z <= Z_HEAD - 0.01, TARGET_FACES)])
     log(f"mesh: {n_faces} -> {len(ob.data.polygons)} faces ({time.time() - t0:.1f} s)")
-    # Hands with fingers, joined into the body (separate islands that reach into the sleeves).
-    skin = ob.data.attributes.new("skin", "FLOAT", "POINT")
-    skin.data.foreach_set("value", np.zeros(len(ob.data.vertices), np.float32))
+    # Hands with fingers, ears and loose curls, joined into the body as separate islands.
+    for name in ("skin", "curl"):
+        a = ob.data.attributes.new(name, "FLOAT", "POINT")
+        a.data.foreach_set("value", np.zeros(len(ob.data.vertices), np.float32))
     J = measure(hull)
-    hands = [hand_object(side, J[f"hand_layout_{side}"]) for side in SIDES]
+    parts = [hand_object(side, J[f"hand_layout_{side}"]) for side in SIDES]
+    parts += [ear_object(side, hull.ear) for side in SIDES]
+    parts.append(curl_object(ob, hull.face.cx))
+    for p in parts:
+        if "curl" not in p.data.attributes:
+            a = p.data.attributes.new("curl", "FLOAT", "POINT")
+            a.data.foreach_set("value", np.zeros(len(p.data.vertices), np.float32))
     for o in bpy.context.view_layer.objects:
-        o.select_set(o in hands or o == ob)
+        o.select_set(o in parts or o == ob)
     bpy.context.view_layer.objects.active = ob
     bpy.ops.object.join()
     ob.data.shade_smooth()
-    log(f"with hands: {len(ob.data.polygons)} faces")
-    # UVs; the head gets more texture space than its surface would earn.
+    log(f"with hands, ears and curls: {len(ob.data.polygons)} faces")
+    # UVs; head and hands get more texture space than their surface would earn.
     activate(ob)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.003)
     bm = bmesh.from_edit_mesh(ob.data)
     uv = bm.loops.layers.uv.active
+    skin_l = bm.verts.layers.float.get("skin")
     for f in bm.faces:
-        if f.calc_center_median().z > 1.40:
+        scale = 1.0
+        if skin_l is not None and min(v[skin_l] for v in f.verts) > 0.5:
+            scale = HAND_UV_SCALE
+        elif f.calc_center_median().z > 1.40:
+            scale = HEAD_UV_SCALE
+        if scale != 1.0:
             for loop in f.loops:
-                loop[uv].uv *= HEAD_UV_SCALE
+                loop[uv].uv *= scale
     bmesh.update_edit_mesh(ob.data)
     bpy.context.tool_settings.use_uv_select_sync = True
     bpy.ops.mesh.select_all(action="SELECT")
@@ -885,6 +1029,7 @@ def stage_mesh():
     t1 = time.time()
     bpy.ops.object.bake(type="EMIT")
     log(f"bake {time.time() - t1:.1f} s")
+    paint_hand_details(tex, ob, J)
     tex.filepath_raw = os.path.join(EXPORT, "T_Rosa_BC.png")
     tex.file_format = "PNG"
     tex.save()
@@ -919,7 +1064,7 @@ PHALANX = (0.46, 0.30, 0.24)
 THUMB = dict(base=(0.022, -0.026, -0.005), dir=(0.80, -0.48, -0.30), lengths=(0.034, 0.029, 0.024),
              radii=(0.0128, 0.0112, 0.0100, 0.0090))
 HAND_REF_LENGTH = 0.175     # wrist to middle fingertip in the table above
-HAND_FACES = 2600           # triangles per hand
+HAND_FACES = 5200           # triangles per hand
 DIGITS = [f[0] for f in FINGERS] + ["thumb"]
 
 
@@ -932,7 +1077,25 @@ def hand_layout(side, wrist, length):
     def at(a, b, c=0.0):
         return wrist + (A * a + B * b + C * c) * k
 
-    lay = {"joints": {}, "capsules": [], "blobs": [], "axes": (A, B, C)}
+    lay = {"joints": {}, "capsules": [], "blobs": [], "axes": (A, B, C), "wrist": wrist.copy(), "k": k,
+           "dorsal": {}, "radii": {}}
+    axes = (A, B, C)
+
+    def digit(name, p, radii, d, dorsal):
+        side_v = dorsal.cross(d).normalized()
+        for i in range(3):
+            lay["joints"][f"{name}_0{i + 1}_{side}"] = (p[i], p[i + 1])
+            lay["capsules"].append((p[i], p[i + 1], radii[i] * k, radii[i + 1] * k))
+        # Slightly thicker joints, a nail plate on the last segment.
+        for j in (1, 2):
+            r = radii[j] * k
+            lay["blobs"].append((p[j] + dorsal * r * 0.15, Vector((r * 0.8, r * 1.04, r * 0.98)), 2.0, (d, side_v, dorsal)))
+        r_n = (0.4 * radii[2] + 0.6 * radii[3]) * k
+        lay["blobs"].append((p[2] + (p[3] - p[2]) * 0.60 + dorsal * r_n * 0.80,
+                             Vector((0.0050 * k, 0.0043 * k, 0.0010 * k)), 2.6, (d, side_v, dorsal)))
+        lay["dorsal"][name] = dorsal
+        lay["radii"][name] = [r * k for r in radii]
+
     knuckles = []
     for name, b, ka, L, r0, r1, spread in FINGERS:
         sp = math.radians(spread)
@@ -941,9 +1104,7 @@ def hand_layout(side, wrist, length):
         for frac in PHALANX:
             p.append(p[-1] + d * L * frac * k)
         radii = [r0 + (r1 - r0) * t for t in (0.0, 0.46, 0.76, 1.0)]
-        for i in range(3):
-            lay["joints"][f"{name}_0{i + 1}_{side}"] = (p[i], p[i + 1])
-            lay["capsules"].append((p[i], p[i + 1], radii[i] * k, radii[i + 1] * k))
+        digit(name, p, radii, d, (C - C.dot(d) * d).normalized())
         knuckles.append((p[0], r0 * k))
         if name == "middle":
             lay["joints"][f"hand_{side}"] = (wrist.copy(), p[0])
@@ -952,15 +1113,15 @@ def hand_layout(side, wrist, length):
     p = [at(*t["base"])]
     for L in t["lengths"]:
         p.append(p[-1] + d * L * k)
-    for i in range(3):
-        lay["joints"][f"thumb_0{i + 1}_{side}"] = (p[i], p[i + 1])
-        lay["capsules"].append((p[i], p[i + 1], t["radii"][i] * k, t["radii"][i + 1] * k))
-    # Knuckle ridge, palm, ball of the thumb, wrist going into the sleeve.
+    up = (C * 0.75 - B * 0.65).normalized()             # the thumb nail faces up and forwards
+    digit("thumb", p, t["radii"], d, (up - up.dot(d) * d).normalized())
+    # Knuckle ridge, palm, ball of the thumb, pad on the little-finger side, wrist going into the sleeve.
     for (pa, ra), (pb, rb) in zip(knuckles, knuckles[1:]):
         lay["capsules"].append((pa, pb, ra * 1.2, rb * 1.2))
-    lay["blobs"].append((at(0.050, -0.001, -0.001), Vector((0.050, 0.040, 0.0125)) * k, 3.0))
-    lay["blobs"].append((at(0.036, -0.022, -0.006), Vector((0.030, 0.017, 0.012)) * k, 2.0))
-    lay["blobs"].append((at(-0.016, 0.0, 0.0), Vector((0.030, 0.026, 0.019)) * k, 2.2))
+    lay["blobs"].append((at(0.050, -0.001, -0.001), Vector((0.050, 0.040, 0.0125)) * k, 3.0, axes))
+    lay["blobs"].append((at(0.036, -0.022, -0.006), Vector((0.030, 0.017, 0.012)) * k, 2.0, axes))
+    lay["blobs"].append((at(0.047, 0.027, -0.006), Vector((0.034, 0.012, 0.010)) * k, 2.0, axes))
+    lay["blobs"].append((at(-0.016, 0.0, 0.0), Vector((0.030, 0.026, 0.019)) * k, 2.2, axes))
     return lay
 
 
@@ -969,20 +1130,29 @@ def hand_object(side, lay):
     import bmesh
     A, B, C = lay["axes"]
     bm = bmesh.new()
-    for centre, half, p in lay["blobs"]:
+    for centre, half, p, (e1, e2, e3) in lay["blobs"]:
         res = bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
         for v in res["verts"]:
             d = v.co.copy()
             t = (abs(d.x) ** p + abs(d.y) ** p + abs(d.z) ** p) ** (-1.0 / p)
-            v.co = centre + A * (d.x * t * half.x) + B * (d.y * t * half.y) + C * (d.z * t * half.z)
+            v.co = centre + e1 * (d.x * t * half.x) + e2 * (d.y * t * half.y) + e3 * (d.z * t * half.z)
     for p0, p1, r0, r1 in lay["capsules"]:
         axis = p1 - p0
-        q = Vector((0, 0, 1)).rotation_difference(axis.normalized())
+        a = axis.normalized()
+        q = Vector((0, 0, 1)).rotation_difference(a)
         M = Matrix.Translation((p0 + p1) / 2) @ q.to_matrix().to_4x4()
-        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=16, radius1=r0, radius2=r1,
-                              depth=axis.length, matrix=M)
+        made = bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=16, radius1=r0, radius2=r1,
+                                     depth=axis.length, matrix=M)["verts"]
         for c, r in ((p0, r0), (p1, r1)):
-            bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r, matrix=Matrix.Translation(c))
+            made += bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r, matrix=Matrix.Translation(c))["verts"]
+        # Fingers are a little flatter than round.
+        dor = (C - C.dot(a) * a)
+        if dor.length > 0.3:
+            dor.normalize()
+            for v in made:
+                if v.is_valid:            # create_cone reports helper verts it has already merged away
+                    rel = v.co - p0
+                    v.co = v.co - dor * (rel.dot(dor) * 0.10)
     me = bpy.data.meshes.new(f"Hand_{side}")
     bm.to_mesh(me)
     bm.free()
@@ -1004,6 +1174,371 @@ def hand_object(side, lay):
     vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
     log(f"hand {side}: {len(ob.data.polygons)} faces")
     return ob
+
+
+def bled_px(v):
+    if not hasattr(v, "_bled"):
+        v._bled = bleed(v.px, v.geo_mask & raw_figure(v.px))
+    return v._bled
+
+
+def sample_photos(views, heads, co, no):
+    """The projection shader in numpy, for points with normals (sRGB colours)."""
+    def look(v, h, z):
+        cols = np.clip(np.round(v.centre + v.sign * h / v.scale).astype(int), 0, v.w - 1)
+        rows = np.clip(np.round(v.bottom + 0.5 - z / v.scale - 0.5).astype(int), 0, v.h - 1)
+        return bled_px(v)[rows, cols]
+
+    x, y, z = co[:, 0], co[:, 1], co[:, 2]
+    nx, ny, nz = no[:, 0], no[:, 1], no[:, 2]
+    head = np.clip((z - Z_HEAD) / 0.015, 0, 1)[:, None]
+    c_front = look(views["front"], x, z) * (1 - head) + look(heads["front"], x, z) * head
+    c_back = look(views["back"], x, z)
+    side_head = look(heads["side"], y, z)
+    c_left = look(views["left"], y, z) * (1 - head) + side_head * head
+    c_right = look(views["right"], y, z) * (1 - head) + side_head * head
+    h = head[:, 0]
+    gate = (1 - h) + h * np.clip((ny + 0.65) / 0.3, 0, 1)
+    flat = nz * nz * 0.03 + 1e-4
+    w = np.stack([np.maximum(-ny, 0) ** 3 + flat, np.maximum(ny, 0) ** 3 + flat,
+                  np.maximum(nx, 0) ** 3 * gate, np.maximum(-nx, 0) ** 3 * gate], 1)
+    w /= w.sum(axis=1, keepdims=True)
+    return (c_front * w[:, :1] + c_back * w[:, 1:2] + c_left * w[:, 2:3] + c_right * w[:, 3:4])
+
+
+def hair_relief(ob, views, heads, hull):
+    """Strands in relief: push hair vertices in where the photos show dark gaps between strands and out on the
+    light strands (high-pass of the projected brightness), plus curly lumps on the bun."""
+    from mathutils import noise
+    me = ob.data
+    n = len(me.vertices)
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    no = np.empty(n * 3, np.float32)
+    me.vertex_normals.foreach_get("vector", no)
+    no = no.reshape(-1, 3)
+    face = hull.face
+    y_side = np.interp(co[:, 2], face.zt, face.b + face.D)
+    Wz = np.interp(co[:, 2], face.zt, face.W)
+    in_face = (face.in_zone(co[:, 2]) & (co[:, 1] < y_side + 0.004) & (np.abs(co[:, 0] - face.cx) < Wz + 0.004))
+    rgb = sample_photos(views, heads, co, no)
+    # Copper strands pass the general skin test; real skin is lighter and less saturated.
+    skin = is_skin(rgb) & (rgb[:, 1] > 0.62 * rgb[:, 0]) & (rgb[:, 0] > 0.45)
+    hair = (co[:, 2] > 1.475) & ~in_face & ~skin
+    weight = smoothstep(1.475, 1.495, co[:, 2]) * hair
+    lum = rgb @ np.array([0.3, 0.59, 0.11])
+    # Neighbour average via the edges.
+    ev = np.empty(len(me.edges) * 2, np.int32)
+    me.edges.foreach_get("vertices", ev)
+    ev = ev.reshape(-1, 2)
+    deg = np.bincount(ev.ravel(), minlength=n).astype(np.float32)
+    low = lum.copy()
+    for _ in range(10):
+        acc = np.zeros(n, np.float32)
+        np.add.at(acc, ev[:, 0], low[ev[:, 1]])
+        np.add.at(acc, ev[:, 1], low[ev[:, 0]])
+        low = 0.5 * low + 0.5 * acc / np.maximum(deg, 1)
+    d = np.clip((lum - low) * 0.035, -0.0028, 0.0028)
+    bun = smoothstep(0.05, 0.10, co[:, 1])
+    lumps = np.array([noise.noise(Vector(p) * 55.0) for p in co[hair]]) if hair.any() else np.zeros(0)
+    d_l = np.zeros(n, np.float32)
+    d_l[hair] = lumps
+    d = d + d_l * (0.0018 + 0.0035 * bun)
+    co += no * (d * weight)[:, None]
+    me.vertices.foreach_set("co", co.ravel())
+    me.update()
+    log(f"hair relief on {int(hair.sum())} of {n} vertices")
+
+
+# Loose curls: (u from the face centre, y, z) near the scalp, direction, length, tube radius, helix radius, turns,
+# droop. Framing the face at the temples, two wisps on the forehead, behind the ears and at the nape, loops on the bun.
+CURLS = (
+    (-0.069, -0.022, 1.600, (-0.15, -0.10, -1.0), 0.100, 0.0042, 0.0085, 2.2, 0.1),
+    (-0.073, -0.004, 1.578, (-0.25, 0.05, -1.0), 0.112, 0.0038, 0.0090, 2.5, 0.1),
+    (0.069, -0.024, 1.602, (0.15, -0.10, -1.0), 0.092, 0.0042, 0.0085, 2.1, 0.1),
+    (0.074, -0.006, 1.580, (0.25, 0.05, -1.0), 0.105, 0.0038, 0.0090, 2.4, 0.1),
+    (-0.030, -0.080, 1.655, (-0.6, -0.3, -0.5), 0.042, 0.0030, 0.0060, 1.1, 0.3),
+    (0.028, -0.082, 1.660, (0.55, -0.35, -0.45), 0.038, 0.0030, 0.0060, 1.0, 0.3),
+    (-0.060, 0.065, 1.530, (-0.15, 0.2, -1.0), 0.080, 0.0040, 0.0080, 1.9, 0.0),
+    (0.060, 0.065, 1.530, (0.15, 0.2, -1.0), 0.076, 0.0040, 0.0080, 1.8, 0.0),
+    (-0.025, 0.095, 1.515, (-0.05, 0.25, -1.0), 0.062, 0.0038, 0.0075, 1.5, 0.0),
+    (0.030, 0.095, 1.512, (0.05, 0.25, -1.0), 0.066, 0.0038, 0.0075, 1.6, 0.0),
+    (-0.055, 0.145, 1.625, (-0.8, 0.3, -0.5), 0.040, 0.0048, 0.0095, 0.9, 0.5),
+    (0.050, 0.150, 1.615, (0.8, 0.4, -0.5), 0.040, 0.0048, 0.0095, 0.9, 0.5),
+    (-0.020, 0.170, 1.590, (-0.3, 0.7, -0.7), 0.045, 0.0045, 0.0090, 1.1, 0.4),
+    (0.025, 0.160, 1.570, (0.4, 0.5, -0.8), 0.050, 0.0042, 0.0085, 1.3, 0.3),
+)
+
+
+def curl_object(body, face_cx):
+    """Corkscrew tubes rooted in the scalp (snapped to the head surface)."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    tree = BVHTree.FromObject(body, dg)
+    bm = bmesh.new()
+    ring = 7
+    for u, y, z, dvec, length, radius, helix_r, turns, droop in CURLS:
+        hit, normal, _, _ = tree.find_nearest(Vector((face_cx + u, y, z)))
+        if hit is None:
+            continue
+        root = hit - normal * 0.004
+        d = (Vector(dvec).normalized() * 0.8 + normal * 0.2).normalized()
+        e1 = d.orthogonal().normalized()
+        e2 = d.cross(e1)
+        steps = max(24, int(turns * 16))
+        centres = []
+        for i in range(steps + 1):
+            t = i / steps
+            base = root + d * length * t + Vector((0, 0, -1)) * droop * length * t * t
+            ang = 2 * math.pi * turns * t
+            centres.append(base + (e1 * math.cos(ang) + e2 * math.sin(ang)) * helix_r * (0.35 + 0.65 * t))
+        rings = []
+        ref = e1
+        for i, c in enumerate(centres):
+            tan = (centres[min(i + 1, steps)] - centres[max(i - 1, 0)]).normalized()
+            uvec = (ref - ref.dot(tan) * tan).normalized()
+            vvec = tan.cross(uvec)
+            ref = uvec
+            r = radius * (1.0 - 0.72 * i / steps)
+            rings.append([bm.verts.new(c + (uvec * math.cos(2 * math.pi * j / ring) + vvec * math.sin(2 * math.pi * j / ring)) * r)
+                          for j in range(ring)])
+        for a_, b_ in zip(rings, rings[1:]):
+            for j in range(ring):
+                bm.faces.new((a_[j], a_[(j + 1) % ring], b_[(j + 1) % ring], b_[j]))
+        tip = bm.verts.new(centres[-1] + (centres[-1] - centres[-2]).normalized() * radius * 0.5)
+        for j in range(ring):
+            bm.faces.new((rings[-1][j], rings[-1][(j + 1) % ring], tip))
+        start = bm.verts.new(centres[0])
+        for j in range(ring):
+            bm.faces.new((rings[0][(j + 1) % ring], rings[0][j], start))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    me = bpy.data.meshes.new("Curls")
+    bm.to_mesh(me)
+    bm.free()
+    ob = link(bpy.data.objects.new("Curls", me))
+    for name, value in (("skin", 0.0), ("curl", 1.0)):
+        a = me.attributes.new(name, "FLOAT", "POINT")
+        a.data.foreach_set("value", np.full(len(me.vertices), value, np.float32))
+    vg = ob.vertex_groups.new(name="rigid_head")
+    vg.add(list(range(len(me.vertices))), 1.0, "REPLACE")
+    log(f"curls: {len(CURLS)} strands, {len(me.polygons)} faces")
+    return ob
+
+
+def texels_of(ob, attr_name, size):
+    """Every texel covered by triangles whose vertices carry attr_name > 0.5: pixel (x, y) from the bottom, rest
+    position and normal (interpolated)."""
+    me = ob.data
+    me.calc_loop_triangles()
+    tris = me.loop_triangles
+    n = len(tris)
+    vidx = np.empty(n * 3, np.int32)
+    tris.foreach_get("vertices", vidx)
+    lidx = np.empty(n * 3, np.int32)
+    tris.foreach_get("loops", lidx)
+    vidx, lidx = vidx.reshape(-1, 3), lidx.reshape(-1, 3)
+    uv = np.empty(len(me.loops) * 2, np.float32)
+    me.uv_layers.active.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2) * size
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    no = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertex_normals.foreach_get("vector", no)
+    no = no.reshape(-1, 3)
+    val = np.empty(len(me.vertices), np.float32)
+    me.attributes[attr_name].data.foreach_get("value", val)
+    sel = np.nonzero(val[vidx].min(axis=1) > 0.5)[0]
+    xs, ys, ps, ns = [], [], [], []
+    for t in sel:
+        q = uv[lidx[t]]
+        x0, y0 = np.floor(q.min(axis=0)).astype(int)
+        x1, y1 = np.ceil(q.max(axis=0)).astype(int)
+        gx, gy = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+        gx, gy = gx.ravel(), gy.ravel()
+        (ax, ay), (bx, by), (cx, cy) = q
+        den = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(den) < 1e-12:
+            continue
+        w0 = ((by - cy) * (gx - cx) + (cx - bx) * (gy - cy)) / den
+        w1 = ((cy - ay) * (gx - cx) + (ax - cx) * (gy - cy)) / den
+        w2 = 1.0 - w0 - w1
+        inside = (w0 >= -1e-4) & (w1 >= -1e-4) & (w2 >= -1e-4)
+        if not inside.any():
+            continue
+        W = np.stack([w0[inside], w1[inside], w2[inside]], 1)
+        xs.append(np.floor(gx[inside]).astype(int))
+        ys.append(np.floor(gy[inside]).astype(int))
+        ps.append(W @ co[vidx[t]])
+        ns.append(W @ no[vidx[t]])
+    n_ = np.concatenate(ns)
+    return (np.concatenate(xs), np.concatenate(ys), np.concatenate(ps),
+            n_ / np.maximum(np.linalg.norm(n_, axis=1, keepdims=True), 1e-9))
+
+
+def smoothstep(e0, e1, v):
+    t = np.clip((v - e0) / (e1 - e0), 0.0, 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def seg_dist2d(px, py, pts):
+    """Distance of points (px, py) to a polyline [(x, y), ...]."""
+    d = np.full(px.shape, 1e9)
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        vx, vy = x1 - x0, y1 - y0
+        t = np.clip(((px - x0) * vx + (py - y0) * vy) / (vx * vx + vy * vy), 0, 1)
+        d = np.minimum(d, np.hypot(px - (x0 + t * vx), py - (y0 + t * vy)))
+    return d
+
+
+# Palm creases in hand coordinates (along the hand, across towards the little finger), metres for a 17.5 cm hand.
+PALM_LINES = (
+    [(0.074, 0.036), (0.078, 0.020), (0.080, 0.004), (0.083, -0.012)],                   # heart line
+    [(0.072, -0.031), (0.066, -0.012), (0.061, 0.008), (0.057, 0.024)],                  # head line
+    [(0.074, -0.030), (0.058, -0.024), (0.040, -0.020), (0.022, -0.016), (0.010, -0.010)],  # around the thumb ball
+    [(0.004, -0.022), (0.003, 0.0), (0.004, 0.022)],                                     # wrist
+)
+
+
+def paint_hand_details(tex, ob, J):
+    """Nails (with half-moon, cuticle and pale tip), wrinkles over the finger joints, creases on the palm side,
+    redder knuckles and finger pads. Painted straight into the baked texture."""
+    size = tex.size[0]
+    px = np.empty(size * size * 4, np.float32)
+    tex.pixels.foreach_get(px)
+    px = px.reshape(size, size, 4)
+    X, Y, P, Nn = texels_of(ob, "skin", size)
+    col = px[Y, X, :3].copy()
+    for side, s in SIDES.items():
+        lay = J[f"hand_layout_{side}"]
+        A, B, C = lay["axes"]
+        k = lay["k"]
+        m = (P[:, 0] - lay["wrist"].x) * s > -0.06
+        if not m.any():
+            continue
+        p, n = P[m], Nn[m]
+        c = col[m]
+        shade = np.ones(len(p))
+        tint = np.zeros((len(p), 3))
+        for d in DIGITS:
+            dor = np.array(lay["dorsal"][d])
+            joints = [lay["joints"][f"{d}_0{i}_{side}"] for i in (1, 2, 3)]
+            for i, (h, t_) in enumerate(joints):
+                h, t_ = np.array(h), np.array(t_)
+                a = t_ - h
+                L = np.linalg.norm(a)
+                a = a / L
+                rel = p - h
+                along = rel @ a
+                tt = along / L
+                radial = rel - along[:, None] * a
+                rlen = np.linalg.norm(radial, axis=1)
+                cosang = (radial @ dor) / np.maximum(rlen, 1e-9)
+                near = (tt > -0.25) & (tt < 1.25) & (rlen < lay["radii"][d][i] * 1.6)
+                if i == 2:
+                    # Nail plate: dorsal part of the last segment.
+                    nail = near * smoothstep(0.26, 0.32, tt) * (tt < 1.04) * smoothstep(0.50, 0.68, cosang)
+                    lunula = nail * (1 - smoothstep(0.32, 0.42, tt))
+                    tip = nail * smoothstep(0.86, 0.95, tt)
+                    cuticle = near * smoothstep(0.18, 0.24, tt) * (1 - smoothstep(0.26, 0.30, tt)) * smoothstep(0.5, 0.7, cosang)
+                    tint += nail[:, None] * np.array([0.07, 0.02, 0.03])
+                    shade *= 1 + 0.08 * nail + 0.08 * lunula + 0.12 * tip - 0.18 * cuticle
+                    pad = near * smoothstep(0.45, 0.9, tt) * smoothstep(-0.2, -0.6, cosang)
+                    tint += pad[:, None] * np.array([0.05, -0.005, -0.01])
+                # Creases at the start of the segment: thin lines over the joint on the back, one deep line in front.
+                if i > 0 or d == "thumb":
+                    dist = np.abs(along)
+                    back = near * smoothstep(0.1, 0.4, cosang) * np.exp(-(dist / 0.0028) ** 2)
+                    lines = 0.5 + 0.5 * np.cos(dist / 0.0009 * math.pi)
+                    front = near * smoothstep(-0.2, -0.5, cosang) * np.exp(-(dist / 0.0009) ** 2)
+                    shade *= 1 - 0.16 * back * lines - 0.28 * front
+                    tint += (back * 0.6)[:, None] * np.array([0.03, 0.0, -0.005])
+                if i == 0:
+                    knuckle = np.exp(-(np.linalg.norm(rel - dor * lay["radii"][d][0], axis=1) / 0.007) ** 2)
+                    tint += knuckle[:, None] * np.array([0.045, 0.0, -0.01])
+                    front = near * smoothstep(-0.2, -0.5, cosang) * np.exp(-((along + 0.002) / 0.0010) ** 2)
+                    shade *= 1 - 0.22 * front
+        # Palm creases (palm faces down in the rest pose).
+        wr = np.array(lay["wrist"])
+        la = ((p - wr) @ np.array(A)) / k
+        lb = ((p - wr) @ np.array(B)) / k
+        palm = smoothstep(0.3, 0.6, -(n @ np.array(C)))
+        for line in PALM_LINES:
+            dist = seg_dist2d(la, lb, line)
+            shade *= 1 - 0.26 * palm * np.exp(-(dist / 0.0010) ** 2)
+        tint += palm[:, None] * np.array([0.025, 0.0, -0.005])
+        c = np.clip(c * shade[:, None] + tint, 0.0, 1.0)
+        col[m] = c
+    px[Y, X, :3] = col
+    tex.pixels.foreach_set(px.ravel())
+    log(f"hand details painted on {len(X)} texels")
+
+
+def body_heat_weights(body, arm):
+    """Bone heat on a copy that holds only the body hull (hands, ears and curls make the solver fail for the
+    whole mesh), copied back by vertex index. Parents the body to the armature."""
+    import bmesh
+    dup = link(bpy.data.objects.new("BodyOnly", body.data.copy()))
+    orig = dup.data.attributes.new("orig", "INT", "POINT")
+    orig.data.foreach_set("value", np.arange(len(dup.data.vertices), dtype=np.int32))
+    skip = {body.vertex_groups[n].index for n in body.vertex_groups.keys()
+            if n.startswith("handmesh_") or n.startswith("rigid_")}
+    bm = bmesh.new()
+    bm.from_mesh(dup.data)
+    deform = bm.verts.layers.deform.active
+    gone = [v for v in bm.verts if deform is not None and any(g in skip and w > 0.5 for g, w in v[deform].items())]
+    bmesh.ops.delete(bm, geom=gone, context="VERTS")
+    if deform is not None:
+        for v in bm.verts:
+            v[deform].clear()
+    bm.to_mesh(dup.data)
+    bm.free()
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    dup.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    # Parent the real body (empty bone groups), then copy the weights over.
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    body.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type="ARMATURE_NAME")
+    ids = np.empty(len(dup.data.vertices), np.int32)
+    dup.data.attributes["orig"].data.foreach_get("value", ids)
+    names = {g.index: g.name for g in dup.vertex_groups}
+    per_group = {}
+    for v in dup.data.vertices:
+        for e in v.groups:
+            if e.weight > 0.0:
+                per_group.setdefault((names[e.group], round(e.weight, 3)), []).append(int(ids[v.index]))
+    for (name, w), idx in per_group.items():
+        g = body.vertex_groups.get(name) or body.vertex_groups.new(name=name)
+        g.add(idx, w, "REPLACE")
+    missing = sum(1 for v in dup.data.vertices if not v.groups)
+    log(f"bone heat on {len(dup.data.vertices)} body vertices ({missing} without weight)")
+    me = dup.data
+    bpy.data.objects.remove(dup)
+    bpy.data.meshes.remove(me)
+
+
+def rigid_weights(body, marker, bone):
+    """Vertices in the marker group (ears, curls) follow one bone only."""
+    g = body.vertex_groups.get(marker)
+    if g is None:
+        return
+    idx = [v.index for v in body.data.vertices if any(e.group == g.index and e.weight > 0.5 for e in v.groups)]
+    for other in body.vertex_groups:
+        if other.name not in (marker, bone):
+            other.remove(idx)
+    target = body.vertex_groups.get(bone) or body.vertex_groups.new(name=bone)
+    target.add(idx, 1.0, "REPLACE")
+    body.vertex_groups.remove(g)
+    log(f"{marker}: {len(idx)} vertices on {bone}")
 
 
 def hand_weights(body, arm):
@@ -1182,14 +1717,9 @@ def stage_rig():
         eb.use_deform = name != "root"
     bpy.ops.object.mode_set(mode="OBJECT")
     arm_data.display_type = "STICK"
-    # Automatic (bone heat) weights.
-    for o in bpy.context.view_layer.objects:
-        o.select_set(False)
-    body.select_set(True)
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    body_heat_weights(body, arm)
     hand_weights(body, arm)
+    rigid_weights(body, "rigid_head", "head")
     groups = {g.index: g.name for g in body.vertex_groups}
     unweighted = sum(1 for v in body.data.vertices if not any(g.weight > 0.001 for g in v.groups))
     log(f"weights: {len(groups)} groups, {unweighted} of {len(body.data.vertices)} vertices without weight")
@@ -1898,6 +2428,10 @@ def preview_mesh():
     contact_sheet(paths, os.path.join(WORK, "sheet_mesh.png"), len(paths))
     paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57), radius=0.17)
     contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), len(paths))
+    ear_views = {"side": (-1.0, 0.05, 0.1), "behind": (-0.75, 0.65, 0.15), "front": (-0.6, -0.8, 0.1),
+                 "above": (-0.6, 0.2, 0.8)}
+    paths = render_views("ear", ear_views, size=(320, 320), centre=(-0.07, 0.037, 1.537), radius=0.055)
+    contact_sheet(paths, os.path.join(WORK, "sheet_ear.png"), len(paths))
     hand_views = {"top": (0.15, -0.3, 1.0), "front": (0.1, -1.0, 0.25), "below": (0.2, -0.5, -1.0),
                   "end": (1.0, -0.4, 0.3)}
     paths = render_views("hand", hand_views, size=(360, 360), centre=(0.74, 0.02, 1.35), radius=0.13)

@@ -576,9 +576,19 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     (`FaceModel`): Mittellinie aus dem Profil (Stirn, Nase, Lippen, Kinn), seitlich Superellipse bis zur Ebene vor den
     Ohren, Augenhöhlen; die Haare neben den Wangen werden bis dahin zurückgeschnitten, zur Schläfe hin weich mehr erlaubt.
     Messpunkte als Konstanten `HEAD_FRONT`/`HEAD_SIDE`/`BODY_EYE_ROW` (Pixel in den Bildern).
-  - Hände modelliert (`hand_layout`, `hand_object`): Handfläche, Ballen, 4 Finger à 3 Glieder, Daumen, auf die gemessene
-    Handlänge skaliert, je ~2 600 Dreiecke, als eigene Inseln in den Ärmel gesteckt. Farbe = Hautton der Wangen
-    (Attribut `skin`), Gewichte nach Abstand zu Hand-/Fingerknochen (`hand_weights`, Bone Heat taugt dort nicht).
+  - Hände modelliert (`hand_layout`, `hand_object`): Handfläche, Ballen, 4 Finger à 3 Glieder (leicht flach, Gelenkwülste,
+    Nagelplatten), Daumen, auf die gemessene Handlänge skaliert, je ~5 000 Dreiecke, als eigene Inseln in den Ärmel
+    gesteckt. Farbe = Hautton der Wangen (Attribut `skin`), danach malt `paint_hand_details` Nägel (Halbmond, Nagelhaut,
+    heller Rand), Falten über den Gelenken, Beugefalten, Handlinien (`PALM_LINES`), rötliche Knöchel und Kuppen direkt in
+    die Textur (`texels_of` rastert die UV-Dreiecke). Gewichte nach Abstand zu Hand-/Fingerknochen (`hand_weights`).
+  - Ohren (`EarModel`, `ear_object`): Umriss im Profil nachgezogen (`EAR_OUTLINE`, Muschel `EAR_CONCHA`), gewölbte Schale
+    mit Rand, Gegenleiste und Mulde, 30° vom Kopf geneigt, Solidify + Subsurf. Hinter dem Ohr läuft das Haar flach auf
+    Schädelbreite aus (`clearance`), damit es frei steht.
+  - Haare: `hair_relief` drückt die Haarfläche nach der Helligkeit der Fotos ein und aus (Hochpass, ±2,8 mm) und gibt
+    dem Dutt lockige Beulen; 14 lose Korkenzieherlocken (`CURLS`, `curl_object`) an Schläfen, Stirn, Nacken und Dutt,
+    Farbe dunkelbraun mit Kupfer (Attribut `curl`). Ohren und Locken hängen fest am Kopfknochen (`rigid_weights`).
+  - Bone Heat scheitert am ganzen Netz, sobald Ohren und Locken dabei sind; `body_heat_weights` gewichtet deshalb eine
+    Kopie nur mit dem Körper und kopiert über den Vertex-Index zurück.
   - Farbe: die Fotos werden je nach Flächennormale auf die Form projiziert und in `T_Rosa_BC.png` (4096², Kopf mit
     1,7-fachem UV-Platz) gebacken. Gesicht nur vom Frontfoto, Wangen/Ohren/Haar auch vom Profil, Arme nur vorn/hinten.
   - Skelett mit UE-Mannequin-Namen, 53 Knochen (root, pelvis, spine_01–03, neck_01, head, clavicle/upperarm/lowerarm/
@@ -590,8 +600,8 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Ballen), Arme bei Arbeiten/Aufheben ebenfalls IK (`Poser.two_bone`, `arm_ik`).
   - Export `Art/Characters/Rosa/Export/SK_Rosa.fbx` (Armature heißt „Armature“, damit Unreal `root` als Wurzel nimmt,
     `FBX_SCALE_ALL`, keine Leaf Bones, alle Aktionen als Takes) + `T_Rosa_BC.png`. Gegenprobe `check_fbx()` liest sie wieder ein.
-  - Grenzen: Haare sind eine geschlossene Schale (keine einzelnen Strähnen), Ohren nur aufgemalt, Hinterkopf aus dem
-    kleinen Ganzkörperfoto (unschärfer als das Gesicht).
+  - ~65 000 Dreiecke (Körper 24k, Kopf 20k, Hände 10k, Ohren 4,6k, Locken 3k). Grenzen: Hinterkopf noch aus dem kleinen
+    Ganzkörperfoto (Rückansicht + Draufsicht des Kopfes beim User angefragt), um das Ohr etwas Hautfarbe auf dem Haar.
   - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
 - **Professioneller Look, Schritt 5 von 6: Zeitleiste wie im Mockup (Schritt 35, 2026-11-09).** Nur `UDCTimelinePanel::RebuildTracks`
   und eine Zeichenhilfe, keine Spielregeln:
