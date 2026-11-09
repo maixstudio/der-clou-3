@@ -31,11 +31,13 @@ os.makedirs(WORK, exist_ok=True)
 os.makedirs(EXPORT, exist_ok=True)
 
 HEIGHT = 1.70          # hair top to sole, metres
-VOXEL = 0.004          # hull resolution
+VOXEL = 0.003          # hull resolution
 BG_THRESHOLD = 0.09    # colour distance from the grey backdrop that counts as figure
 HAND_HALF_DEPTH = 0.043
-TEX_SIZE = 2048
-TARGET_FACES = 22000   # triangles after decimation
+TEX_SIZE = 4096
+TARGET_FACES = 24000   # triangles after decimation below the head
+HEAD_FACES = 9000      # triangles for the head (close-up detail)
+HEAD_UV_SCALE = 1.7    # head islands get this much more texture space
 HEAD_SMOOTH_FROM = 1.40  # metres; above this the silhouettes are opened by HEAD_OPEN_PX
 HEAD_OPEN_PX = 10
 JAW_SMOOTH_TO = 1.555    # between HEAD_SMOOTH_FROM and this (neck, jaw) curls are removed harder
@@ -174,17 +176,33 @@ class View:
         rows = np.nonzero(self.mask.any(axis=1))[0]
         self.top, self.bottom = int(rows[0]), int(rows[-1])
         self.scale = HEIGHT / (self.bottom - self.top + 1)  # metres per pixel
-        # Shape mask: loose curls would become thin blades in the hull, so open (erode, then dilate) the head
-        # region strongly and the rest a little.
+        self.shape_mask(HEAD_OPEN_PX, JAW_OPEN_PX)
+        # Horizontal centre: middle of the figure at hip height.
+        cols = []
+        for frac in np.linspace(0.50, 0.58, 9):
+            r = int(round(self.bottom - frac * HEIGHT / self.scale))
+            c = np.nonzero(self.mask[r])[0]
+            cols.append((c[0] + c[-1]) / 2)
+        self.centre = float(np.mean(cols))
+        log(f"view {name}: rows {self.top}-{self.bottom}, {self.scale * 1000:.3f} mm/px, centre col {self.centre:.1f}")
+
+    def row_of(self, z):
+        return self.bottom + 0.5 - z / self.scale
+
+    def shape_mask(self, head_open, jaw_open):
+        """Shape mask: loose curls would become thin blades in the hull, so open (erode, then dilate) the head
+        region strongly, neck and jaw even more, and the rest a little."""
         self.geo_mask = self.mask.copy()
-        head_row = int(self.bottom - HEAD_SMOOTH_FROM / self.scale)
-        jaw_row = int(self.bottom - JAW_SMOOTH_TO / self.scale)
-        top = self.mask[:head_row + 40]
-        self.geo_mask[:jaw_row] = opened(top, HEAD_OPEN_PX)[:jaw_row]
-        self.geo_mask[jaw_row:head_row] = opened(top, JAW_OPEN_PX)[jaw_row:head_row]
-        self.geo_mask[head_row:] = opened(self.mask[head_row - 40:], 2)[40:]
-        # Curls hanging beside the face are separate runs in a row; they would become thin blades. Keep only the
-        # widest run per row above the shoulders.
+        head_row = int(min(self.h - 1, max(1, self.row_of(HEAD_SMOOTH_FROM))))
+        jaw_row = int(min(head_row, max(0, self.row_of(JAW_SMOOTH_TO))))
+        pad = min(40, self.h - head_row)
+        top = self.mask[:head_row + pad]
+        self.geo_mask[:jaw_row] = opened(top, head_open)[:jaw_row]
+        self.geo_mask[jaw_row:head_row] = opened(top, jaw_open)[jaw_row:head_row]
+        if head_row < self.h:
+            self.geo_mask[head_row:] = opened(self.mask[max(0, head_row - 40):], 2)[min(40, head_row):]
+        # Curls hanging beside the face are separate runs in a row; keep only the widest run per row above the
+        # shoulders.
         for r in range(0, head_row):
             row = self.geo_mask[r]
             if not row.any():
@@ -195,20 +213,6 @@ class View:
                 a, b = max(spans, key=lambda s: s[1] - s[0])
                 row[:] = False
                 row[a:b] = True
-        # Horizontal centre: middle of the figure at hip height.
-        cols = []
-        for frac in np.linspace(0.50, 0.58, 9):
-            r = int(round(self.bottom - frac * HEIGHT / self.scale))
-            c = np.nonzero(self.mask[r])[0]
-            cols.append((c[0] + c[-1]) / 2)
-        self.centre = float(np.mean(cols))
-        log(f"view {name}: rows {self.top}-{self.bottom}, {self.scale * 1000:.3f} mm/px, centre col {self.centre:.1f}")
-
-    def pixel(self, h_coord, z):
-        """World horizontal coordinate (x or y) and height -> image (row, col), float."""
-        col = self.centre + self.sign * h_coord / self.scale
-        row = self.bottom + 0.5 - z / self.scale
-        return row, col
 
     def sample_mask(self, hs, zs):
         """Shape mask on a (len(zs), len(hs)) grid, nearest pixel."""
@@ -220,6 +224,129 @@ class View:
         rows = np.clip(np.round(self.bottom + 0.5 - zs / self.scale - 0.5).astype(int), 0, self.h - 1)
         cols = np.clip(np.round(self.centre + self.sign * hs / self.scale).astype(int), 0, self.w - 1)
         return self.px[rows[:, None], cols[None, :]]
+
+
+# ---------------------------------------------------------------------------------------------
+# Head close-up (front and right profile side by side, ~0.38 mm per pixel). It replaces the full-body photos
+# from Z_HEAD up. Placed on the body by matching eye and chin height of the full-body front photo.
+# ---------------------------------------------------------------------------------------------
+
+HEAD_FILE = "rosa_head.png"
+HEAD_SPLIT_COL = 800          # front view left of it, profile right of it
+Z_HEAD = 1.45                 # below: full-body photos, above: close-up (turtleneck)
+BODY_EYE_ROW, BODY_EYE_COLS, BODY_CHIN_ROW = 93.6, (750.0, 786.0), 153.0   # in rosa_front.webp
+HEAD_FRONT = dict(eye_row=389.0, eye_cols=(387.5, 544.0), chin_row=656.0, hair_row=210.0, mouth_row=561.0,
+                  mouth_half=65.0, alae_half=42.5)
+HEAD_SIDE = dict(eye_row=380.0, chin_row=658.0, sellion_row=387.5, subnasale_row=500.0, crease_row=600.0)
+
+
+class HeadView(View):
+    def __init__(self, kind, body_front, body_left):
+        img = load_rgb(os.path.join(REF, HEAD_FILE))
+        self.name = f"head_{kind}"
+        z_eye = (body_front.bottom + 0.5 - BODY_EYE_ROW) * body_front.scale
+        z_chin = (body_front.bottom + 0.5 - BODY_CHIN_ROW) * body_front.scale
+        if kind == "front":
+            self.px = img[:, :HEAD_SPLIT_COL].copy()
+            self.axis, self.sign = "x", +1
+            L = HEAD_FRONT
+        else:
+            self.px = img[:, HEAD_SPLIT_COL:].copy()
+            self.axis, self.sign = "y", -1          # seen from -X: face to the image right
+            L = HEAD_SIDE
+        self.h, self.w = self.px.shape[:2]
+        self.mask = figure_mask(self.px)
+        self.scale = (z_eye - z_chin) / (L["chin_row"] - L["eye_row"])
+        self.bottom = L["eye_row"] + z_eye / self.scale - 0.5
+        if kind == "front":
+            face_x = (0.5 * sum(BODY_EYE_COLS) - body_front.centre) * body_front.scale
+            self.centre = 0.5 * sum(L["eye_cols"]) - face_x / self.scale
+        else:
+            # Line up the face profile (chin to forehead) with the full-body profile: median offset of the front edge.
+            self.centre = 0.0
+            offsets = []
+            for z in np.arange(z_chin + 0.012, z_eye + 0.04, 0.002):
+                cb = np.nonzero(body_left.mask[int(round(body_left.row_of(z)))])[0]
+                ch = np.nonzero(self.mask[int(round(self.row_of(z)))])[0]
+                if len(cb) and len(ch):
+                    y_body = (cb[0] - body_left.centre) * body_left.scale * body_left.sign
+                    offsets.append(ch[-1] + y_body / self.scale)
+            self.centre = float(np.median(offsets))
+        # Curls are finer here; open with the same physical radii as the full-body photos.
+        self.shape_mask(int(round(HEAD_OPEN_PX * body_front.scale / self.scale)),
+                        int(round(JAW_OPEN_PX * body_front.scale / self.scale)))
+        self.top = int(np.nonzero(self.mask.any(axis=1))[0][0])
+        log(f"view {self.name}: {self.scale * 1000:.3f} mm/px, hair top z {(self.bottom + 0.5 - self.top) * self.scale:.3f}")
+
+
+class FaceModel:
+    """Front surface of the face, y = f(x, z): midline from the close-up profile (brow, nose, lips, chin), a
+    superellipse falling off to the sides, eye sockets. Used to carve and fill the hull in front of the ears."""
+
+    def __init__(self, front, side):
+        self.front, self.side = front, side
+        zf = lambda row: (front.bottom + 0.5 - row) * front.scale
+        zs_ = lambda row: (side.bottom + 0.5 - row) * side.scale
+        F, S = HEAD_FRONT, HEAD_SIDE
+        self.z_eye, self.z_chin, self.z_hair = zf(F["eye_row"]), zf(F["chin_row"]), zf(F["hair_row"])
+        self.z_mouth = zf(F["mouth_row"])
+        self.z_root, self.z_base, self.z_crease = zs_(S["sellion_row"]), zs_(S["subnasale_row"]), zs_(S["crease_row"])
+        self.cx = (0.5 * sum(F["eye_cols"]) - front.centre) * front.scale
+        self.eye_u = 0.5 * (F["eye_cols"][1] - F["eye_cols"][0]) * front.scale
+        self.mouth_half = F["mouth_half"] * front.scale
+        self.alae_half = F["alae_half"] * front.scale
+        # Midline profile from the unopened profile mask (front edge = last figure pixel, face to the right).
+        self.zt = np.arange(self.z_chin - 0.004, self.z_hair + 0.004, 0.0005)
+        prof = []
+        for z in self.zt:
+            r = int(round(side.row_of(z)))
+            cols = np.nonzero(side.mask[r])[0]
+            prof.append((cols[-1] + 0.5 - side.centre) * side.scale * side.sign if len(cols) else 0.0)
+        p = np.convolve(np.array(prof), np.ones(5) / 5, mode="same")
+        p[:2], p[-2:] = prof[:2], prof[-2:]
+        self.p = p
+
+        def at(z):
+            return float(np.interp(z, self.zt, p))
+
+        b = p.copy()
+        nose = (self.zt >= self.z_base) & (self.zt <= self.z_root)
+        b[nose] = np.interp(self.zt[nose], [self.z_base, self.z_root], [at(self.z_base), at(self.z_root)])
+        lips = (self.zt >= self.z_crease) & (self.zt < self.z_base)
+        b[lips] = np.interp(self.zt[lips], [self.z_crease, self.z_base], [at(self.z_crease), at(self.z_base)])
+        self.b = b
+        self.d_nose = np.where(nose, np.maximum(b - p, 0.0), 0.0)
+        self.d_lips = np.where(lips, np.maximum(b - p, 0.0), 0.0)
+        # Half width and depth of the face (front edge to the side plane in front of the ears).
+        zk = [self.z_chin - 0.004, self.z_chin, self.z_chin + 0.01, self.z_crease, self.z_mouth, self.z_base,
+              self.z_eye, self.z_eye + 0.02, self.z_hair + 0.004]
+        self.W = np.interp(self.zt, zk, [0.026, 0.030, 0.045, 0.055, 0.061, 0.067, 0.069, 0.068, 0.065])
+        self.D = np.interp(self.zt, zk, [0.060, 0.065, 0.075, 0.085, 0.090, 0.098, 0.100, 0.100, 0.095])
+        log(f"face: eyes z {self.z_eye:.3f} u {self.eye_u:.4f}, nose root/base z {self.z_root:.3f}/{self.z_base:.3f}, "
+            f"nose tip y {p[nose].min() if nose.any() else 0:.4f}, chin z {self.z_chin:.3f}, hairline z {self.z_hair:.3f}")
+
+    def in_zone(self, z):
+        return (z >= self.zt[0]) & (z <= self.zt[-1])
+
+    def surface(self, xs, zs):
+        """(len(zs), len(xs)) arrays: front surface y, side plane y, half width W."""
+        u = (xs - self.cx)[None, :]
+        z = zs[:, None]
+        b = np.interp(zs, self.zt, self.b)[:, None]
+        W = np.interp(zs, self.zt, self.W)[:, None]
+        D = np.interp(zs, self.zt, self.D)[:, None]
+        q = 2.4
+        t = np.clip(np.abs(u) / W, 0.0, 1.0)
+        y = b + D * (1.0 - (1.0 - t ** q) ** (1.0 / q))
+        # Nose: narrow at the root, alae at the base.
+        dn = np.interp(zs, self.zt, self.d_nose)[:, None]
+        wn = 0.009 + (self.alae_half - 0.009) * np.clip((self.z_root - z) / max(self.z_root - self.z_base, 1e-3), 0, 1)
+        y -= dn * np.clip(1.0 - (u / wn) ** 2, 0.0, 1.0) ** 1.3
+        dl = np.interp(zs, self.zt, self.d_lips)[:, None]
+        y -= dl * np.clip(1.0 - (u / self.mouth_half) ** 2, 0.0, 1.0) ** 0.6
+        for e in (-1.0, 1.0):
+            y += 0.013 * np.exp(-((u - e * self.eye_u) / 0.013) ** 2 - ((z - self.z_eye) / 0.009) ** 2)
+        return y, b + D, W
 
 
 def runs(m, coords):
@@ -264,19 +391,28 @@ def row_runs(row, coords):
 
 
 class Hull:
-    def __init__(self, front, side):
+    def __init__(self, front, side, head_front=None, head_side=None):
         self.front, self.side = front, side
         self.xs = np.arange(-0.90, 0.90, VOXEL) + VOXEL / 2
         self.zs = np.arange(0.0, HEIGHT + 2 * VOXEL, VOXEL) + VOXEL / 2
-        side_cols = np.nonzero(side.mask.any(axis=0))[0]
-        y_a = (side_cols[0] - side.centre) * side.scale * side.sign
-        y_b = (side_cols[-1] - side.centre) * side.scale * side.sign
-        y_lo, y_hi = min(y_a, y_b) - 0.03, max(y_a, y_b) + 0.03
+        y_ext = []
+        for v in (side, head_side):
+            if v is None:
+                continue
+            cols = np.nonzero(v.mask.any(axis=0))[0]
+            y_ext += [(cols[0] - v.centre) * v.scale * v.sign, (cols[-1] - v.centre) * v.scale * v.sign]
+        y_lo, y_hi = min(y_ext) - 0.03, max(y_ext) + 0.03
         self.ys = np.arange(y_lo, y_hi, VOXEL) + VOXEL / 2
         xs, ys, zs = self.xs, self.ys, self.zs
         self.F = front.sample_mask(xs, zs)            # (Z, X)
         self.S = side.sample_mask(ys, zs)             # (Z, Y)
         self.skin = is_skin(front.sample_rgb(xs, zs)) & self.F
+        self.face = None
+        if head_front is not None:
+            top = zs >= Z_HEAD
+            self.F[top] = head_front.sample_mask(xs, zs[top])
+            self.S[top] = head_side.sample_mask(ys, zs[top])
+            self.face = FaceModel(head_front, head_side)
         self._arms()
 
     def _arms(self):
@@ -316,6 +452,9 @@ class Hull:
         skin_cnt = (self.skin & self.A).sum(axis=0)
         cnt = self.A.sum(axis=0)
         self.hand_col = (cnt > 0) & (skin_cnt > 0.5 * np.maximum(cnt, 1)) & (np.abs(xs) > 0.45)
+        # The sleeve ends at the wrist; the hands are modelled separately (hand_object).
+        self.A_full = self.A.copy()
+        self.A[:, self.hand_col] = False
         z_arm = 0.5 * (z_arm_lo + z_arm_hi)
         iz = int(np.argmin(np.abs(zs - z_arm)))
         best = max(row_runs(self.S[iz], self.ys), key=lambda r: r[1] - r[0])
@@ -355,6 +494,21 @@ class Hull:
             ay = ((ys[None, None, :] - self.arm_y) / np.maximum(hy_arm[a:b, :, None], 1e-4)) ** 2
             arm = self.A[a:b, :, None] & (az + ay <= 1.0)
             V[a:b] = body | arm
+            if self.face is not None:
+                zone = self.face.in_zone(zs[a:b])
+                if zone.any():
+                    zz = zs[a:b][zone]
+                    yf, y_side, W = self.face.surface(xs, zz)
+                    inside_w = np.abs(xs[None, :] - self.face.cx) <= W           # (z, x)
+                    y = ys[None, None, :]
+                    # In front of the ears the face surface decides; beside the face nothing reaches past the
+                    # side plane (hair would otherwise bulge in front of the cheeks). Towards the temples hair
+                    # beside the face may come forward again, gradually, so there is no ledge.
+                    f = self.face
+                    temple = np.clip((zz[:, None] - f.z_mouth) / (f.z_eye + 0.02 - f.z_mouth), 0.0, 1.0)
+                    limit = np.where(inside_w, yf, y_side - 0.08 * temple)[:, :, None]
+                    solid = inside_w[:, :, None] & (y >= yf[:, :, None]) & (y <= y_side[:, :, None] + 0.01)
+                    V[a:b][zone] = (V[a:b][zone] & (y >= limit)) | solid
         log(f"voxels: {int(V.sum())} filled of {V.size} {V.shape}")
         return V
 
@@ -525,8 +679,10 @@ class Nodes:
 # ---------------------------------------------------------------------------------------------
 
 
-def projection_material(views, hull):
-    """Emission material that paints every surface point with the reference photo looking at it most directly."""
+def projection_material(views, heads, hull, skin_rgb):
+    """Emission material that paints every surface point with the reference photo looking at it most directly.
+    From Z_HEAD up the close-up replaces the full-body front and side photos. Vertices with the attribute
+    "skin" (the modelled hands) get a plain skin colour instead."""
     mat = bpy.data.materials.new("RosaProjection")
     mat.use_nodes = True
     nt = mat.node_tree
@@ -535,44 +691,59 @@ def projection_material(views, hull):
     geo = nt.nodes.new("ShaderNodeNewGeometry")
     px_, py_, pz_ = N.separate(geo.outputs["Position"])
     nx, ny, nz = N.separate(geo.outputs["Normal"])
-    colours, weights = [], []
-    x_s = 0.5 * (hull.xs_r - hull.xs_l)
-    arm_gate = N.math("MULTIPLY",
-                      N.math("DIVIDE", N.math("SUBTRACT", N.math("ABSOLUTE", px_), x_s), 0.03, clamp=True),
-                      N.math("DIVIDE", N.math("SUBTRACT", pz_, hull.z_cut), 0.02, clamp=True))
-    side_gate = N.math("SUBTRACT", 1.0, arm_gate)
-    # On the head the profile photos would paint a second eye onto the cheek (the hull is wider than the face),
-    # so they only colour the back half there; the face comes from the front photo alone.
-    head_gate = N.math("DIVIDE", N.math("SUBTRACT", pz_, 1.44), 0.03, clamp=True)
-    back_half = N.math("DIVIDE", N.math("ADD", ny, 0.45), 0.35, clamp=True)
-    side_gate = N.math("MULTIPLY", side_gate,
-                       N.math("ADD", N.math("SUBTRACT", 1.0, head_gate), N.math("MULTIPLY", head_gate, back_half)))
-    # Surfaces facing up or down (shoulders, hair top, soles) get front and back photo half and half.
-    flat = N.math("ADD", N.math("MULTIPLY", N.math("MULTIPLY", nz, nz), 0.03), 0.0001)
-    for name, v in views.items():
+
+    def lerp_v(a, b, t):
+        return N.vmath("ADD", N.vmath("SCALE", a, scale=N.math("SUBTRACT", 1.0, t)), N.vmath("SCALE", b, scale=t))
+
+    def project(name, v):
         bled = bleed(v.px, v.geo_mask & raw_figure(v.px))
         img = save_rgb(bled, os.path.join(WORK, f"proj_{name}.png"))
         h_coord = px_ if v.axis == "x" else py_
         u = N.math("MULTIPLY_ADD", h_coord, v.sign / (v.scale * v.w), v.centre / v.w)
         vv = N.math("MULTIPLY_ADD", pz_, 1.0 / (v.scale * v.h), 1.0 - (v.bottom + 0.5) / v.h)
-        colours.append(N.image(img, N.combine(u, vv, 0.0)))
-        if name == "front":
-            w = N.math("ADD", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", ny, -1.0), 0.0), 3.0), flat)
-        elif name == "back":
-            w = N.math("ADD", N.math("POWER", N.math("MAXIMUM", ny, 0.0), 3.0), flat)
-        elif name == "left":
-            w = N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", nx, 0.0), 3.0), side_gate)
-        else:
-            w = N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", nx, -1.0), 0.0), 3.0), side_gate)
-        weights.append(w)
-    total = weights[0]
-    for w in weights[1:]:
-        total = N.math("ADD", total, w)
-    acc = None
-    for c, w in zip(colours, weights):
-        term = N.vmath("SCALE", c, scale=w)
+        return N.image(img, N.combine(u, vv, 0.0))
+
+    c = {name: project(name, v) for name, v in views.items()}
+    hc = {name: project(f"head_{name}", v) for name, v in heads.items()}
+    head = N.math("DIVIDE", N.math("SUBTRACT", pz_, Z_HEAD), 0.015, clamp=True)
+    c["front"] = lerp_v(c["front"], hc["front"], head)
+    c["left"] = lerp_v(c["left"], hc["side"], head)
+    c["right"] = lerp_v(c["right"], hc["side"], head)
+    x_s = 0.5 * (hull.xs_r - hull.xs_l)
+    arm_gate = N.math("MULTIPLY",
+                      N.math("DIVIDE", N.math("SUBTRACT", N.math("ABSOLUTE", px_), x_s), 0.03, clamp=True),
+                      N.math("DIVIDE", N.math("SUBTRACT", pz_, hull.z_cut), 0.02, clamp=True))
+    side_gate = N.math("SUBTRACT", 1.0, arm_gate)
+    # The face itself (normals pointing forward) only from the front photo; cheeks, ears and hair also from the
+    # profile, whose midline the face shape is built from.
+    side_ok = N.math("DIVIDE", N.math("ADD", ny, 0.65), 0.3, clamp=True)
+    side_gate = N.math("MULTIPLY", side_gate,
+                       N.math("ADD", N.math("SUBTRACT", 1.0, head), N.math("MULTIPLY", head, side_ok)))
+    # Surfaces facing up or down (shoulders, hair top, soles) get front and back photo half and half.
+    flat = N.math("ADD", N.math("MULTIPLY", N.math("MULTIPLY", nz, nz), 0.03), 0.0001)
+    weights = {
+        "front": N.math("ADD", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", ny, -1.0), 0.0), 3.0), flat),
+        "back": N.math("ADD", N.math("POWER", N.math("MAXIMUM", ny, 0.0), 3.0), flat),
+        "left": N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", nx, 0.0), 3.0), side_gate),
+        "right": N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", nx, -1.0), 0.0), 3.0),
+                        side_gate),
+    }
+    total, acc = None, None
+    for name, w in weights.items():
+        total = w if total is None else N.math("ADD", total, w)
+        term = N.vmath("SCALE", c[name], scale=w)
         acc = term if acc is None else N.vmath("ADD", acc, term)
     col = N.vmath("SCALE", acc, scale=N.math("DIVIDE", 1.0, total))
+    # Hands: skin colour with a little mottling.
+    attr = nt.nodes.new("ShaderNodeAttribute")
+    attr.attribute_name = "skin"
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 260.0
+    nt.links.new(geo.outputs["Position"], noise.inputs["Vector"])
+    lin = tuple(((v + 0.055) / 1.055) ** 2.4 for v in skin_rgb)
+    mott = N.math("MULTIPLY_ADD", noise.outputs["Fac"], 0.22, 0.89)
+    skin = N.vmath("SCALE", N.combine(*lin), scale=mott)
+    col = lerp_v(col, skin, attr.outputs["Fac"])
     emit = nt.nodes.new("ShaderNodeEmission")
     nt.links.new(col, emit.inputs["Color"])
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -596,38 +767,108 @@ def final_material(tex):
     return mat
 
 
+def decimate_zones(ob, zones):
+    """Decimate parts of the mesh to their own triangle budgets: zones = [(predicate(centre), triangles)]."""
+    import bmesh
+    activate(ob)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.tool_settings.mesh_select_mode = (False, False, True)
+    for pred, target in zones:
+        bpy.ops.mesh.select_all(action="DESELECT")
+        bm = bmesh.from_edit_mesh(ob.data)
+        tris = 0
+        for f in bm.faces:
+            if pred(f.calc_center_median()):
+                f.select_set(True)
+                tris += len(f.verts) - 2
+        bm.select_flush_mode()
+        bmesh.update_edit_mesh(ob.data)
+        if tris:
+            bpy.ops.mesh.decimate(ratio=min(1.0, target / tris))
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def skin_colour(head_front):
+    """Average sRGB skin colour of the cheeks and chin in the close-up (the hands in the full-body photo are
+    lit brighter than the face)."""
+    F = HEAD_FRONT
+    r0, r1 = int(F["eye_row"] + 40), int(F["chin_row"] - 15)
+    c0, c1 = int(F["eye_cols"][0] - 40), int(F["eye_cols"][1] + 40)
+    box = head_front.px[r0:r1, c0:c1]
+    m = is_skin(box)
+    return tuple(float(v) for v in box[m].mean(axis=0) * 0.97)
+
+
 def stage_mesh():
+    import bmesh
     t0 = time.time()
     clean_scene()
     views = {n: View(n) for n in VIEWS}
-    hull = Hull(views["front"], views["left"])
+    heads = {"front": HeadView("front", views["front"], views["left"]),
+             "side": HeadView("side", views["front"], views["left"])}
+    hull = Hull(views["front"], views["left"], heads["front"], heads["side"])
     V = hull.voxels()
     me = voxel_surface(V, hull.lattice_origin())
     ob = link(bpy.data.objects.new("Rosa", me))
     activate(ob)
     rem = ob.modifiers.new("Remesh", "REMESH")
     rem.mode = "VOXEL"
-    rem.voxel_size = 0.005
+    rem.voxel_size = VOXEL * 1.15
     rem.adaptivity = 0.0
+    apply_modifiers(ob)
+    # Smooth everything, the face only lightly so nose, lips and eye sockets survive.
+    face = hull.face
+    vg = ob.vertex_groups.new(name="smooth")
+    co = np.empty(len(ob.data.vertices) * 3, np.float32)
+    ob.data.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+
+    def ramp(v, a, b):
+        return np.clip((v - a) / (b - a), 0.0, 1.0)
+
+    core = (ramp(co[:, 2], face.z_chin, face.z_chin + 0.01) * (1 - ramp(co[:, 2], face.z_hair - 0.025, face.z_hair - 0.005))
+            * (1 - ramp(np.abs(co[:, 0] - face.cx), 0.045, 0.06)) * (1 - ramp(co[:, 1], -0.03, 0.0)))
+    weight = 1.0 - 0.8 * core
+    for w in np.unique(np.round(weight, 2)):
+        vg.add(np.nonzero(np.round(weight, 2) == w)[0].tolist(), float(w), "REPLACE")
     sm = ob.modifiers.new("Smooth", "SMOOTH")
     sm.factor = 0.6
-    sm.iterations = 14
+    sm.iterations = 12
+    sm.vertex_group = "smooth"
     apply_modifiers(ob)
+    ob.vertex_groups.remove(ob.vertex_groups["smooth"])
     n_faces = len(ob.data.polygons)
-    dec = ob.modifiers.new("Decimate", "DECIMATE")
-    dec.decimate_type = "COLLAPSE"
-    dec.ratio = min(1.0, TARGET_FACES / max(2 * n_faces, 1))
-    apply_modifiers(ob)
-    ob.data.shade_smooth()
+    decimate_zones(ob, [(lambda c: c.z > Z_HEAD - 0.01, HEAD_FACES), (lambda c: c.z <= Z_HEAD - 0.01, TARGET_FACES)])
     log(f"mesh: {n_faces} -> {len(ob.data.polygons)} faces ({time.time() - t0:.1f} s)")
-    # UVs
+    # Hands with fingers, joined into the body (separate islands that reach into the sleeves).
+    skin = ob.data.attributes.new("skin", "FLOAT", "POINT")
+    skin.data.foreach_set("value", np.zeros(len(ob.data.vertices), np.float32))
+    J = measure(hull)
+    hands = [hand_object(side, J[f"hand_layout_{side}"]) for side in SIDES]
+    for o in bpy.context.view_layer.objects:
+        o.select_set(o in hands or o == ob)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.join()
+    ob.data.shade_smooth()
+    log(f"with hands: {len(ob.data.polygons)} faces")
+    # UVs; the head gets more texture space than its surface would earn.
     activate(ob)
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
     bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.003)
+    bm = bmesh.from_edit_mesh(ob.data)
+    uv = bm.loops.layers.uv.active
+    for f in bm.faces:
+        if f.calc_center_median().z > 1.40:
+            for loop in f.loops:
+                loop[uv].uv *= HEAD_UV_SCALE
+    bmesh.update_edit_mesh(ob.data)
+    bpy.context.tool_settings.use_uv_select_sync = True
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.pack_islands(rotate=True, margin=0.002)
     bpy.ops.object.mode_set(mode="OBJECT")
     # Bake the projected colours.
-    proj = projection_material(views, hull)
+    proj = projection_material(views, heads, hull, skin_colour(heads["front"]))
     ob.data.materials.clear()
     ob.data.materials.append(proj)
     tex = bpy.data.images.new("T_Rosa_BC", TEX_SIZE, TEX_SIZE, alpha=False)
@@ -664,6 +905,146 @@ def stage_mesh():
 # ---------------------------------------------------------------------------------------------
 
 SIDES = {"l": +1, "r": -1}   # character's left is Blender +X (she faces -Y)
+
+# Hands are modelled (the photos show them edge-on): T-pose, palm down, thumb forward (-Y) on both hands.
+# Per finger: offset across the palm (+ towards the little finger), knuckle distance from the wrist, length,
+# radius at the base and at the tip, spread in degrees (+ towards the little finger). Metres for a 17.5 cm hand.
+FINGERS = (
+    ("index", -0.026, 0.093, 0.070, 0.0094, 0.0076, -4.0),
+    ("middle", -0.008, 0.097, 0.077, 0.0098, 0.0078, -0.5),
+    ("ring", 0.010, 0.094, 0.072, 0.0092, 0.0074, 3.5),
+    ("pinky", 0.026, 0.086, 0.057, 0.0082, 0.0066, 8.0),
+)
+PHALANX = (0.46, 0.30, 0.24)
+THUMB = dict(base=(0.022, -0.026, -0.005), dir=(0.80, -0.48, -0.30), lengths=(0.034, 0.029, 0.024),
+             radii=(0.0128, 0.0112, 0.0100, 0.0090))
+HAND_REF_LENGTH = 0.175     # wrist to middle fingertip in the table above
+HAND_FACES = 2600           # triangles per hand
+DIGITS = [f[0] for f in FINGERS] + ["thumb"]
+
+
+def hand_layout(side, wrist, length):
+    """Bones and shapes of one hand, scaled to `length` (wrist to middle fingertip)."""
+    s = SIDES[side]
+    k = length / HAND_REF_LENGTH
+    A, B, C = Vector((s, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+
+    def at(a, b, c=0.0):
+        return wrist + (A * a + B * b + C * c) * k
+
+    lay = {"joints": {}, "capsules": [], "blobs": [], "axes": (A, B, C)}
+    knuckles = []
+    for name, b, ka, L, r0, r1, spread in FINGERS:
+        sp = math.radians(spread)
+        d = (A * math.cos(sp) + B * math.sin(sp) + C * -0.04).normalized()
+        p = [at(ka, b)]
+        for frac in PHALANX:
+            p.append(p[-1] + d * L * frac * k)
+        radii = [r0 + (r1 - r0) * t for t in (0.0, 0.46, 0.76, 1.0)]
+        for i in range(3):
+            lay["joints"][f"{name}_0{i + 1}_{side}"] = (p[i], p[i + 1])
+            lay["capsules"].append((p[i], p[i + 1], radii[i] * k, radii[i + 1] * k))
+        knuckles.append((p[0], r0 * k))
+        if name == "middle":
+            lay["joints"][f"hand_{side}"] = (wrist.copy(), p[0])
+    t = THUMB
+    d = (A * t["dir"][0] + B * t["dir"][1] + C * t["dir"][2]).normalized()
+    p = [at(*t["base"])]
+    for L in t["lengths"]:
+        p.append(p[-1] + d * L * k)
+    for i in range(3):
+        lay["joints"][f"thumb_0{i + 1}_{side}"] = (p[i], p[i + 1])
+        lay["capsules"].append((p[i], p[i + 1], t["radii"][i] * k, t["radii"][i + 1] * k))
+    # Knuckle ridge, palm, ball of the thumb, wrist going into the sleeve.
+    for (pa, ra), (pb, rb) in zip(knuckles, knuckles[1:]):
+        lay["capsules"].append((pa, pb, ra * 1.2, rb * 1.2))
+    lay["blobs"].append((at(0.050, -0.001, -0.001), Vector((0.050, 0.040, 0.0125)) * k, 3.0))
+    lay["blobs"].append((at(0.036, -0.022, -0.006), Vector((0.030, 0.017, 0.012)) * k, 2.0))
+    lay["blobs"].append((at(-0.016, 0.0, 0.0), Vector((0.030, 0.026, 0.019)) * k, 2.2))
+    return lay
+
+
+def hand_object(side, lay):
+    """Closed, smooth hand mesh: primitives fused by a fine voxel remesh."""
+    import bmesh
+    A, B, C = lay["axes"]
+    bm = bmesh.new()
+    for centre, half, p in lay["blobs"]:
+        res = bmesh.ops.create_icosphere(bm, subdivisions=4, radius=1.0)
+        for v in res["verts"]:
+            d = v.co.copy()
+            t = (abs(d.x) ** p + abs(d.y) ** p + abs(d.z) ** p) ** (-1.0 / p)
+            v.co = centre + A * (d.x * t * half.x) + B * (d.y * t * half.y) + C * (d.z * t * half.z)
+    for p0, p1, r0, r1 in lay["capsules"]:
+        axis = p1 - p0
+        q = Vector((0, 0, 1)).rotation_difference(axis.normalized())
+        M = Matrix.Translation((p0 + p1) / 2) @ q.to_matrix().to_4x4()
+        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=16, radius1=r0, radius2=r1,
+                              depth=axis.length, matrix=M)
+        for c, r in ((p0, r0), (p1, r1)):
+            bmesh.ops.create_icosphere(bm, subdivisions=2, radius=r, matrix=Matrix.Translation(c))
+    me = bpy.data.meshes.new(f"Hand_{side}")
+    bm.to_mesh(me)
+    bm.free()
+    ob = link(bpy.data.objects.new(f"Hand_{side}", me))
+    rem = ob.modifiers.new("Remesh", "REMESH")
+    rem.mode = "VOXEL"
+    rem.voxel_size = 0.0011
+    sm = ob.modifiers.new("Smooth", "SMOOTH")
+    sm.factor = 0.5
+    sm.iterations = 4
+    apply_modifiers(ob)
+    dec = ob.modifiers.new("Decimate", "DECIMATE")
+    dec.decimate_type = "COLLAPSE"
+    dec.ratio = min(1.0, HAND_FACES / max(2 * len(ob.data.polygons), 1))
+    apply_modifiers(ob)
+    attr = ob.data.attributes.new("skin", "FLOAT", "POINT")
+    attr.data.foreach_set("value", np.ones(len(ob.data.vertices), np.float32))
+    vg = ob.vertex_groups.new(name=f"handmesh_{side}")
+    vg.add(list(range(len(ob.data.vertices))), 1.0, "REPLACE")
+    log(f"hand {side}: {len(ob.data.polygons)} faces")
+    return ob
+
+
+def hand_weights(body, arm):
+    """Skin the modelled hands by distance to the hand, finger and forearm bones (bone heat does badly on the
+    separate hand islands). A bone counts less for points behind its start, so the palm follows the hand."""
+    bones = arm.data.bones
+    for side in SIDES:
+        marker = body.vertex_groups.get(f"handmesh_{side}")
+        if marker is None:
+            continue
+        mi = marker.index
+        idx = [v.index for v in body.data.vertices if any(g.group == mi and g.weight > 0.5 for g in v.groups)]
+        names = [f"lowerarm_{side}", f"hand_{side}"] + [f"{d}_0{i}_{side}" for d in DIGITS for i in (1, 2, 3)]
+        heads = np.array([bones[n].head_local for n in names])
+        tails = np.array([bones[n].tail_local for n in names])
+        pts = np.array([body.data.vertices[i].co for i in idx])
+        seg = tails - heads
+        L2 = (seg ** 2).sum(axis=1)
+        t_raw = ((pts[:, None, :] - heads[None]) * seg[None]).sum(axis=2) / L2[None]
+        t = np.clip(t_raw, 0.0, 1.0)
+        closest = heads[None] + t[:, :, None] * seg[None]
+        d = np.linalg.norm(pts[:, None, :] - closest, axis=2)
+        behind = np.maximum(0.0, -t_raw) * np.sqrt(L2)[None]
+        behind[:, :2] = 0.0                       # forearm and hand: no penalty
+        d = d + 1.5 * behind
+        w = 1.0 / (d + 0.002) ** 5
+        top = np.argsort(-w, axis=1)[:, :2]
+        for gi, g in enumerate(body.vertex_groups):
+            if g.name in names or g.name.startswith("handmesh_"):
+                continue
+            g.remove(idx)
+        groups = {n: body.vertex_groups.get(n) or body.vertex_groups.new(name=n) for n in names}
+        for row, vi in enumerate(idx):
+            ws = w[row, top[row]]
+            ws = ws / ws.sum()
+            for n in names:
+                groups[n].remove([vi])
+            for j, wt in zip(top[row], ws):
+                groups[names[j]].add([vi], float(wt), "REPLACE")
+        body.vertex_groups.remove(marker)
+        log(f"hand weights {side}: {len(idx)} vertices")
 
 
 def measure(hull):
@@ -716,8 +1097,11 @@ def measure(hull):
 
         def arm_z(x):
             ix = int(np.argmin(np.abs(xs - x)))
-            rows = hull.A[:, ix]
-            return float(hull.arm_mid[rows, ix].mean()) if rows.any() else (hull.z_arm_lo + hull.z_arm_hi) / 2
+            rows = hull.A_full[:, ix]
+            if not rows.any():
+                return (hull.z_arm_lo + hull.z_arm_hi) / 2
+            zr = zs[rows]
+            return float(0.5 * (zr.min() + zr.max()))
 
         sh_z = arm_z(x_s + s * 0.04) - 0.01
         el_x = sh_x + 0.56 * (wrist_x - sh_x)
@@ -725,7 +1109,9 @@ def measure(hull):
         J[f"upperarm_{side}"] = Vector((sh_x, hull.arm_y, sh_z))
         J[f"lowerarm_{side}"] = Vector((el_x, hull.arm_y + 0.008, arm_z(el_x)))
         J[f"hand_{side}"] = Vector((wrist_x, hull.arm_y, arm_z(wrist_x)))
-        J[f"hand_end_{side}"] = Vector((end_x - s * 0.01, hull.arm_y, arm_z(end_x - s * 0.02)))
+        lay = hand_layout(side, J[f"hand_{side}"], abs(end_x - wrist_x))
+        J[f"hand_layout_{side}"] = lay
+        J[f"hand_end_{side}"] = lay["joints"][f"hand_{side}"][1]
         hip_x = leg_centre(z_crotch - 0.08, s) * 0.9
         ankle_x = leg_centre(0.16, s)
         z_knee = z_ankle + 0.485 * (z_hip - z_ankle)
@@ -735,7 +1121,8 @@ def measure(hull):
         J[f"ball_{side}"] = Vector((ankle_x * 1.04, toe + 0.075, 0.03))
         J[f"toe_{side}"] = Vector((ankle_x * 1.05, toe + 0.015, 0.03))
     for name, p in J.items():
-        log(f"joint {name:12s} {p.x:+.3f} {p.y:+.3f} {p.z:+.3f}")
+        if isinstance(p, Vector):
+            log(f"joint {name:12s} {p.x:+.3f} {p.y:+.3f} {p.z:+.3f}")
     return J
 
 
@@ -757,6 +1144,15 @@ def bone_table(J):
             (f"upperarm_{side}", f"clavicle_{side}", J[f"upperarm_{side}"], J[f"lowerarm_{side}"], up, True),
             (f"lowerarm_{side}", f"upperarm_{side}", J[f"lowerarm_{side}"], J[f"hand_{side}"], up, True),
             (f"hand_{side}", f"lowerarm_{side}", J[f"hand_{side}"], J[f"hand_end_{side}"], up, True),
+        ]
+        joints = J[f"hand_layout_{side}"]["joints"]
+        for d in DIGITS:
+            for i in (1, 2, 3):
+                name = f"{d}_0{i}_{side}"
+                parent = f"hand_{side}" if i == 1 else f"{d}_0{i - 1}_{side}"
+                head, tail = joints[name]
+                t.append((name, parent, head, tail, up, i > 1))
+        t += [
             (f"thigh_{side}", "pelvis", J[f"thigh_{side}"], J[f"calf_{side}"], fwd, False),
             (f"calf_{side}", f"thigh_{side}", J[f"calf_{side}"], J[f"foot_{side}"], fwd, True),
             (f"foot_{side}", f"calf_{side}", J[f"foot_{side}"], J[f"ball_{side}"], up, True),
@@ -793,6 +1189,7 @@ def stage_rig():
     arm.select_set(True)
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    hand_weights(body, arm)
     groups = {g.index: g.name for g in body.vertex_groups}
     unweighted = sum(1 for v in body.data.vertices if not any(g.weight > 0.001 for g in v.groups))
     log(f"weights: {len(groups)} groups, {unweighted} of {len(body.data.vertices)} vertices without weight")
@@ -831,6 +1228,14 @@ class Poser:
 
         self.order = sorted(self.parent, key=depth)
         self.last = {}
+        # Finger joints bend towards the palm (palm down in the rest pose); the thumb across it.
+        self.flex = {}
+        palm = Vector((0, 0, -1))
+        across = Vector((0, 0.7, -0.7)).normalized()
+        for n in self.parent:
+            if any(n.startswith(d + "_0") for d in DIGITS):
+                d = (self.tail[n] - self.head[n]).normalized()
+                self.flex[n] = d.cross(across if n.startswith("thumb") else palm).normalized()
         for pb in arm.pose.bones:
             pb.rotation_mode = "QUATERNION"
         ank = self.head["foot_l"]
@@ -919,6 +1324,17 @@ class Poser:
         pb = self.arm.pose.bones["pelvis"]
         pb.location = self.rest["pelvis"].inverted() @ pelvis_offset
         return full
+
+    def fingers(self, D, side, curl):
+        """curl: digit -> (base, middle, tip) degrees, or one tuple for all four fingers (thumb via 'thumb')."""
+        hand = self.resolve(D)[f"hand_{side}"]
+        for d in DIGITS:
+            angles = curl.get(d, curl.get("all", (0, 0, 0))) if isinstance(curl, dict) else curl
+            acc = hand
+            for i in (1, 2, 3):
+                n = f"{d}_0{i}_{side}"
+                acc = acc @ Quaternion(self.flex[n], math.radians(angles[i - 1]))
+                D[n] = acc
 
     def foot(self, side, shift, lift, yaw, pitch, toe_bend=0.0):
         """Ankle target and foot/ball rotation for a foot moved by `shift` (xy), raised by `lift` and rolled by
@@ -1062,6 +1478,8 @@ def act_locomotion(P, arm, name, frames, speed, duty, lift, bob, lean, swing, el
                           -12.0 if jog else 0.0)
         upper_body(P, D, Dp, spine_pitch=lean * 0.6, spine_yaw=-1.6 * Dp_yaw, head_pitch=3.0 if jog else 1.0,
                    head_yaw=0.0, arms=arms)
+        for side in SIDES:
+            P.fingers(D, side, LOOSE_FIST if jog else RELAXED)
         P.apply(D, off)
         P.key(f)
 
@@ -1083,11 +1501,26 @@ def act_idle(P, arm, frames=90):
                    head_yaw=5.0 * math.sin(2 * math.pi * ph + 1.0), arms=arms)
         for side, s in SIDES.items():
             D[f"clavicle_{side}"] = D["spine_03"] @ rot((0, 1, 0), -s * 1.2 * breath)
+            P.fingers(D, side, mix_hand(RELAXED, LOOSE_FIST, 0.08 + 0.06 * math.sin(2 * math.pi * ph + s)))
         P.apply(D, off)
         P.key(f)
 
 
 REST_ARMS = {side: (ARM_DOWN, -5.0, 12.0, 0.0) for side in SIDES}
+
+# Finger poses: digit -> (base, middle, tip) joint angles in degrees.
+RELAXED = {"index": (8, 14, 8), "middle": (11, 17, 9), "ring": (14, 20, 10), "pinky": (17, 22, 12), "thumb": (6, 10, 8)}
+LOOSE_FIST = {"index": (45, 65, 35), "middle": (50, 70, 38), "ring": (55, 72, 38), "pinky": (58, 72, 36),
+              "thumb": (18, 30, 25)}
+GRIP = {"index": (22, 28, 16), "middle": (38, 52, 28), "ring": (50, 64, 34), "pinky": (55, 68, 36),
+        "thumb": (16, 26, 20)}
+OPEN = {"index": (2, 3, 2), "middle": (2, 3, 2), "ring": (3, 4, 2), "pinky": (4, 5, 3), "thumb": (0, 3, 2)}
+GRAB = {"index": (40, 55, 35), "middle": (45, 60, 38), "ring": (48, 62, 38), "pinky": (50, 62, 36),
+        "thumb": (22, 30, 28)}
+
+
+def mix_hand(a, b, t):
+    return {d: tuple(x + (y - x) * t for x, y in zip(a[d], b[d])) for d in a}
 
 
 def act_work(P, arm, frames=60):
@@ -1107,9 +1540,15 @@ def act_work(P, arm, frames=60):
         for side, s in SIDES.items():
             k = 1.0 if s > 0 else 1.7
             jig = Vector((0.006 * math.sin(2 * math.pi * 3 * ph + k), 0.0, 0.008 * math.sin(2 * math.pi * 4 * ph + 2 * k)))
-            target = Vector((s * 0.075 - 0.01, -0.40 if s > 0 else -0.42, 0.97 if s > 0 else 0.93)) + jig
+            target = Vector((s * 0.10 - 0.005, -0.40 if s > 0 else -0.42, 0.98 if s > 0 else 0.93)) + jig
             P.arm_ik(D, off, side, target, Vector((s * 0.8, 0.35, -0.6)).normalized(),
                      wrist_bend=10 + 6 * math.sin(2 * math.pi * 4 * ph + k))
+            # Fingers work the pick: index and thumb twitch, the rest holds.
+            tw = math.sin(2 * math.pi * 5 * ph + 2 * k)
+            pose = dict(GRIP)
+            pose["index"] = tuple(a + 8 * tw for a in GRIP["index"])
+            pose["thumb"] = tuple(a - 5 * tw for a in GRIP["thumb"])
+            P.fingers(D, side, pose)
         P.apply(D, off)
         P.key(f)
 
@@ -1141,6 +1580,10 @@ def act_pickup(P, arm, frames=48):
             fk_pole = (fk_elbow - 0.5 * (shoulder + fk_wrist)).normalized()
             P.arm_ik(D, off, side, fk_wrist.lerp(target, amount), fk_pole.lerp(pole.normalized(), amount).normalized(),
                      wrist_bend=20 * amount)
+        # Right hand opens on the way down, closes on the object at the bottom and keeps it.
+        grab = smooth((t - 0.5) / 0.25)
+        P.fingers(D, "r", mix_hand(mix_hand(RELAXED, OPEN, smooth(t / 0.4)), GRAB, grab))
+        P.fingers(D, "l", mix_hand(RELAXED, GRIP, 0.5 * c))
         P.apply(D, off)
         P.key(f)
 
@@ -1194,6 +1637,19 @@ def preview_anim():
         frames = [int(round(a + (b - a) * i / 6)) for i in range(6)]
         paths += render_views(f"anim_{name}", {"tq": (0.7, -1.0, 0.3)}, size=(300, 440), frames=frames)
     contact_sheet(paths, os.path.join(WORK, "sheet_anim_tq.png"), 6)
+    # Close-ups of the hands: idle, jog, work, grabbing.
+    scene = bpy.context.scene
+    paths = []
+    for name, frame, side, view in (("Rosa_Idle", 20, "r", (-0.3, -1.0, 0.3)), ("Rosa_Jog", 5, "l", (0.6, -1.0, 0.4)),
+                                    ("Rosa_Work", 15, "r", (-0.2, -1.0, 0.6)), ("Rosa_Work", 15, "l", (0.6, -0.6, 0.9)),
+                                    ("Rosa_Pickup", 26, "r", (-0.8, -0.8, 0.5))):
+        set_action(arm, name)
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        pb = arm.pose.bones[f"hand_{side}"]
+        c = arm.matrix_world @ ((pb.head + pb.tail) / 2)
+        paths += render_views(f"fingers_{name}_{side}", {"v": view}, size=(320, 320), centre=tuple(c), radius=0.11)
+    contact_sheet(paths, os.path.join(WORK, "sheet_fingers.png"), len(paths))
 
 
 SHOWCASE = (("Rosa_Idle", 1, "Stehen"), ("Rosa_Walk", 3, "Gehen 1,4 m/s"), ("Rosa_Jog", 4, "Laufen 2,5 m/s"),
@@ -1442,6 +1898,10 @@ def preview_mesh():
     contact_sheet(paths, os.path.join(WORK, "sheet_mesh.png"), len(paths))
     paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57), radius=0.17)
     contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), len(paths))
+    hand_views = {"top": (0.15, -0.3, 1.0), "front": (0.1, -1.0, 0.25), "below": (0.2, -0.5, -1.0),
+                  "end": (1.0, -0.4, 0.3)}
+    paths = render_views("hand", hand_views, size=(360, 360), centre=(0.74, 0.02, 1.35), radius=0.13)
+    contact_sheet(paths, os.path.join(WORK, "sheet_hand.png"), len(paths))
 
 
 # ---------------------------------------------------------------------------------------------
