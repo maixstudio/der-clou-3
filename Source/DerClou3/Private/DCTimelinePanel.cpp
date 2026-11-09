@@ -1216,9 +1216,8 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			SNew(SBox).VAlign(VAlign_Center).Visibility(EVisibility::HitTestInvisible)
 			[
 				SNew(STextBlock)
-				.Text(bSelectedRow ? FText::Format(LOCTEXT("SelectedName", "> {0}"), Crew.Name) : Crew.Name)
+				.Text(Upper(bSelectedRow ? FText::Format(LOCTEXT("SelectedName", "> {0}"), Crew.Name) : Crew.Name))
 				.Font(HeadFont(bSelectedRow ? 17 : 16))
-				.TransformPolicy(ETextTransformPolicy::ToUpper)
 				.ColorAndOpacity(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.75f))
 			]
 		];

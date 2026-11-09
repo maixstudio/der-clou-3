@@ -217,8 +217,7 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 								]
 								+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 								[
-									SNew(STextBlock).Text(Member->GetCrewName()).Font(HeadFont(20))
-									.TransformPolicy(ETextTransformPolicy::ToUpper)
+									SNew(STextBlock).Text(Upper(Member->GetCrewName())).Font(HeadFont(20))
 									.ColorAndOpacity_Lambda([IsSelected]() -> FSlateColor { return IsSelected() ? FLinearColor::White : TextColor; })
 								]
 							]

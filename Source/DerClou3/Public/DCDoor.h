@@ -53,6 +53,8 @@ public:
 
 	bool IsOpen() const { return bOpen; }
 	bool IsLocked() const { return bLocked; }
+	/** Goes up whenever any door really opens, closes or gets unlocked (for caching ways that depend on doors). */
+	static uint32 GetStateVersion() { return StateVersion; }
 	/** Opens the door so that the panel swings away from the opener. False if it is locked. */
 	bool OpenAwayFrom(const FVector& OpenerLocation);
 	void Close();
@@ -234,6 +236,8 @@ private:
 	double GetSwingSide() const { return -SwingSign; }
 	/** +1 or -1 along the door's local X axis: the side From is on. */
 	double GetSideOf(const FVector& From) const;
+
+	static uint32 StateVersion;
 
 	/** 0 = closed, 1 = open; animated towards bOpen. */
 	float OpenAmount = 0.f;

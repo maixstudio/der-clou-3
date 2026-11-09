@@ -221,6 +221,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartVillaSelfTest();
 	}
+	else if (SelfTest == TEXT("Replay"))
+	{
+		StartReplaySelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);

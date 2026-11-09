@@ -114,8 +114,8 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 				[
-					SNew(STextBlock).Text(FText::FromString(TitleName)).Font(DCItemWidgets::HeadFont(15)).ColorAndOpacity(DCItemWidgets::TextColor)
-					.TransformPolicy(ETextTransformPolicy::ToUpper).Justification(ETextJustify::Center)
+					SNew(STextBlock).Text(DCItemWidgets::Upper(FText::FromString(TitleName))).Font(DCItemWidgets::HeadFont(15)).ColorAndOpacity(DCItemWidgets::TextColor)
+					.Justification(ETextJustify::Center)
 				]
 				// "plant: Rosa" smaller underneath.
 				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
@@ -173,8 +173,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 							[
-								SNew(STextBlock).Text(Option.Label).Font(DCItemWidgets::HeadFont(16))
-								.TransformPolicy(ETextTransformPolicy::ToUpper)
+								SNew(STextBlock).Text(DCItemWidgets::Upper(Option.Label)).Font(DCItemWidgets::HeadFont(16))
 								.ColorAndOpacity(Option.bEnabled ? DCItemWidgets::TextColor : DCItemWidgets::MutedColor)
 							]
 						]

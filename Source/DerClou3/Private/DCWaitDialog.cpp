@@ -348,7 +348,7 @@ void UDCWaitDialog::RebuildOptions()
 	{
 		Options->AddSlot().AutoHeight().Padding(0.f, 8.f, 0.f, 3.f)
 		[
-			SNew(STextBlock).Text(Text).Font(HeadFont(16)).ColorAndOpacity(Color).TransformPolicy(ETextTransformPolicy::ToUpper)
+			SNew(STextBlock).Text(Upper(Text)).Font(HeadFont(16)).ColorAndOpacity(Color)
 		];
 	};
 

@@ -524,6 +524,33 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Umschalter „Jetzt | Nach dem Plan“, darunter die Zusammenfassung (sonst wurde „PROFIL – ROSA“ gekürzt).
   - Erst mit Platzhalterbildern, dann mit den echten Bildern geprüft (Villa, Signals, PlanHelp bestanden, Screenshots
     `crew_profile.png`, `villa_plan.png`, `planhelp_bar.png`).
+- **Editor-Hänger beim Abspielen behoben (Schritt 32, User-Bug 2026-11-09):** Villa, Vic knackt Pforte und Haustür,
+  Rosa wartet davor. Sobald Vic die Haustür aufsperrte, stand das Spiel (Task-Manager nötig). Davor gab es schon Ruckler
+  von 19 s und 10 s an der Gartenpforte.
+  - Ursache: `UNavigationSystemV1::FindPathToLocationSynchronously` hält jeden Weg bis zur nächsten Garbage Collection
+    am Leben, und jeder Weg ist beim NavMesh als „aktiv, bei Änderung neu berechnen“ angemeldet. Die wartende Rosa fragte
+    jeden Frame ~70 Wege ab (`DoorOnWay` → `WayThroughDoors`). Nach 25 s waren es ~100 000 Wege. Jede Türänderung baut
+    NavMesh-Kacheln neu, und `ARecastNavMesh::InvalidateAffectedPaths` will dann alle betroffenen Wege neu planen
+    (`RepathRequests.AddUnique`, quadratisch) – minutenlang.
+  - Jetzt: `DCNav::FindPath` (DCHeistState.h) gibt nur Punkte zurück, das Wegobjekt ist danach weg. **Nie mehr
+    `FindPathToLocationSynchronously` verwenden.** Wartende Figuren prüfen den Weg nur bei einer Türänderung
+    (`ADCDoor::GetStateVersion`) oder alle 0,5 s neu. Aufsperren allein baut das NavMesh nicht mehr um.
+  - Wachhund (`DCWatchdog`): Läuft eine Spielwelt und kommt 5 s lang kein neuer Frame, schreibt ein eigener Thread die
+    Aufrufkette des Game-Threads ins Log und nach `Saved/Logs/DerClou3-Haenger.txt` (auch nach 20 s und 60 s). Die Datei
+    gibt es auch dann, wenn der Editor abgeschossen wird. Engine-Funktionen ohne PDB lassen sich mit `dumpbin /exports`
+    + Modul-Basisadresse grob zuordnen. Abschalten mit `-DCNoWatchdog`.
+  - Selbsttest `-DCSelfTest=Replay [-DCSave=auto_villa]` (Map L_Villa01): lädt einen Spielstand, spielt ihn ab und meldet
+    langsame Frames (> 0,5 s). Damit lässt sich ein User-Plan nachspielen. `WayThroughDoors` loggt Aufrufe über 50 ms.
+  - Dabei gefunden: Rosa durchsuchte das Wohnzimmersofa aus dem Keller darunter und kam danach nicht mehr weiter. Grund:
+    `ProjectPointToNavigation` wählt den von oben gesehen nächsten Punkt (`findNearestPoly2D`); mit ±3 m Höhe gewann der
+    Kellerboden unter der Sofamitte. Jetzt `DCNav::ProjectOnStorey` (2,4 m nach unten, 0,4 m nach oben) für Ziele,
+    Stehplätze und Wegprüfung. Die Stehplatzsuche am Möbel probiert mehr Richtungen und einen zweiten Abstand.
+  - Ebenfalls: Slate-Ensure „LineModel.Text->Len() == InNewText.Len()“ bei Großschrift mit „ß“ („Straße“). Jetzt
+    `DCItemWidgets::Upper` statt `TransformPolicy(ToUpper)`.
+  - Der User-Plan läuft jetzt im Replay bis auf Rosas letzten Schritt durch (44,0 s gespielt, 43,7 s geplant, längster
+    Frame 0,03 s). **Offen:** Durch die Geheimtür (Bücherregal zur Geheimkammer) kommt live niemand: Rosa öffnet sie,
+    findet 3 s keinen Weg hinein („no path through the door“) und gibt auf. Der Schritt „durch Geheimtür“ zählt trotzdem
+    als erledigt, „Ölgemälde aufheben“ scheitert dann. Die Planung hält den Weg für möglich.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -555,7 +582,7 @@ Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf K
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
-  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm).
+  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
@@ -566,6 +593,9 @@ Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf K
   `UDCHeistStateSubsystem` es in PIE beim Start neu. `-game` baut ohnehin neu, weil die Maps kein passendes NavMesh gespeichert
   haben. Editor-Prüfungen ohne Klicken: `UnrealEditor.exe DerClou3.uproject -ExecCmds="py <absoluter Pfad>.py"` mit
   `unreal.register_slate_post_tick_callback` (`-ExecutePythonScript` beendet den Editor gleich nach dem PIE-Start).
+- Wege nur über `DCNav::FindPath`, Projektionen von Zielen über `DCNav::ProjectOnStorey` (siehe Schritt 32): Wegobjekte
+  der Engine bleiben sonst bis zur GC aktiv und frieren bei jeder Türänderung das Spiel ein, und die Projektion der Engine
+  wählt den nächsten Punkt nur von oben gesehen (auch ein Stockwerk tiefer).
 - Slate-Buttons mit `IsFocusable(false)`, sonst kommen Tastatureingaben danach nicht mehr im Spiel an.
 - Unity-Build: neue .cpp-Dateien mischen die Gruppen neu – Konstanten in anonymen Namespaces müssen
   projektweit eindeutig heißen (z. B. `SimItemReach`, `RunnerLootStepSeconds`).

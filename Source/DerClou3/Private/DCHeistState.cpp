@@ -12,16 +12,60 @@
 #include "DCPlanMarker.h"
 #include "DCPlanRunner.h"
 #include "DCRoomVolume.h"
+#include "DCWatchdog.h"
 #include "DerClou3.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "NavFilters/NavigationQueryFilter.h"
 #include "NavigationData.h"
-#include "NavigationPath.h"
 #include "NavigationSystem.h"
 
 #define LOCTEXT_NAMESPACE "DCHeistState"
+
+bool DCNav::FindPath(UWorld* World, const FVector& From, const FVector& To, TArray<FVector>* OutPoints, double* OutLength)
+{
+	UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	const ANavigationData* NavData = Navigation ? Navigation->GetDefaultNavDataInstance() : nullptr;
+	if (!NavData)
+	{
+		return false;
+	}
+	const FPathFindingQuery Query(nullptr, *NavData, From, To, UNavigationQueryFilter::GetQueryFilter(*NavData, nullptr, nullptr));
+	const FPathFindingResult Result = Navigation->FindPathSync(Query, EPathFindingMode::Regular);
+	const FNavigationPath* Path = Result.Path.Get();
+	if (!Result.IsSuccessful() || !Path || !Path->IsValid() || Path->IsPartial())
+	{
+		return false;
+	}
+	if (OutPoints)
+	{
+		OutPoints->Reset(Path->GetPathPoints().Num());
+		for (const FNavPathPoint& Point : Path->GetPathPoints())
+		{
+			OutPoints->Add(Point.Location);
+		}
+	}
+	if (OutLength)
+	{
+		*OutLength = Path->GetLength();
+	}
+	// Result.Path ends here: the nav data only keeps a weak pointer to it and drops that on its next tick.
+	return true;
+}
+
+bool DCNav::ProjectOnStorey(const UWorld* World, const FVector& Location, double Radius, FVector& Out)
+{
+	const UNavigationSystemV1* Navigation = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	FNavLocation Found;
+	if (!Navigation || !Navigation->ProjectPointToNavigation(Location - FVector(0.0, 0.0, 100.0), Found, FVector(Radius, Radius, 140.0)))
+	{
+		return false;
+	}
+	Out = Found.Location;
+	return true;
+}
 
 namespace
 {
@@ -83,6 +127,16 @@ namespace
 	 */
 	bool WayThroughDoors(UWorld* World, const FVector& From, const FVector& To, TArray<FVector>& OutPoints)
 	{
+		const double SearchStart = FPlatformTime::Seconds();
+		int32 NavQueries = 0;
+		ON_SCOPE_EXIT
+		{
+			const double Milliseconds = (FPlatformTime::Seconds() - SearchStart) * 1000.0;
+			if (Milliseconds > 50.0)
+			{
+				UE_LOG(LogDerClou, Log, TEXT("Way through doors: %d nav queries, %.0f ms (%s -> %s)"), NavQueries, Milliseconds, *From.ToCompactString(), *To.ToCompactString());
+			}
+		};
 		struct FNode
 		{
 			FVector Location;
@@ -124,12 +178,17 @@ namespace
 				Points = { Nodes[A].Location, Nodes[B].Location };
 				Length = 0.0;
 			}
-			else if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, Nodes[A].Location, Nodes[B].Location))
+			else
 			{
-				if (Path->IsValid() && !Path->IsPartial() && Path->PathPoints.Num() >= 2)
+				++NavQueries;
+				double Found = 0.0;
+				if (DCNav::FindPath(World, Nodes[A].Location, Nodes[B].Location, &Points, &Found) && Points.Num() >= 2)
 				{
-					Points = Path->PathPoints;
-					Length = Path->GetPathLength();
+					Length = Found;
+				}
+				else
+				{
+					Points.Reset();
 				}
 			}
 			if (A > B)
@@ -215,17 +274,15 @@ namespace
 			return 0.f;
 		}
 		double Length = Straight * DetourFactor;
-		bool bFound = false;
-		if (const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, To))
+		TArray<FVector> Points;
+		double Found = 0.0;
+		const bool bFound = DCNav::FindPath(World, From, To, &Points, &Found);
+		if (bFound)
 		{
-			if (Path->IsValid() && !Path->IsPartial())
+			Length = Found;
+			if (OutPath && Points.Num() >= 2)
 			{
-				bFound = true;
-				Length = Path->GetPathLength();
-				if (OutPath && Path->PathPoints.Num() >= 2)
-				{
-					*OutPath = Path->PathPoints;
-				}
+				*OutPath = MoveTemp(Points);
 			}
 		}
 		// Behind a closed door: the way through the door (the plan then waits until it is open).
@@ -547,6 +604,10 @@ UDCHeistStateSubsystem* UDCHeistStateSubsystem::Get(const UObject* WorldContext)
 void UDCHeistStateSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
+	if (InWorld.IsGameWorld())
+	{
+		DCWatchdog::SetArmed(true);
+	}
 	if (UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(&InWorld))
 	{
 		PlanChangedHandle = Plans->OnPlanChanged.AddUObject(this, &UDCHeistStateSubsystem::OnPlanChanged);
@@ -588,6 +649,10 @@ void UDCHeistStateSubsystem::OnNavigationRebuilt(ANavigationData* NavData)
 
 void UDCHeistStateSubsystem::Deinitialize()
 {
+	if (GetWorld() && GetWorld()->IsGameWorld())
+	{
+		DCWatchdog::SetArmed(false);
+	}
 	if (UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(GetWorld()))
 	{
 		Plans->OnPlanChanged.Remove(PlanChangedHandle);
@@ -2101,18 +2166,17 @@ bool UDCHeistStateSubsystem::CanReach(const FVector& From, const FVector& To) co
 	{
 		return true;
 	}
-	FNavLocation Goal;
-	if (!Navigation->ProjectPointToNavigation(To, Goal, FVector(200.0, 200.0, 300.0)))
+	FVector Goal;
+	if (!DCNav::ProjectOnStorey(World, To, 200.0, Goal))
 	{
 		return false;
 	}
-	const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, Goal.Location);
-	if (Path && Path->IsValid() && !Path->IsPartial())
+	if (DCNav::FindPath(World, From, Goal))
 	{
 		return true;
 	}
 	TArray<FVector> Through;
-	return WayThroughDoors(World, From, Goal.Location, Through);
+	return WayThroughDoors(World, From, Goal, Through);
 }
 
 bool UDCHeistStateSubsystem::IsNavigationReady(const UObject* WorldContext)
@@ -2147,23 +2211,22 @@ TArray<ADCDoor*> UDCHeistStateSubsystem::FindDoorsOnWay(const FVector& From, con
 	{
 		return Closed;
 	}
-	// Furniture stands off the nav mesh: aim at the nearest walkable spot.
-	FNavLocation Goal;
-	if (!Navigation->ProjectPointToNavigation(To, Goal, FVector(200.0, 200.0, 300.0)))
+	// Furniture stands off the nav mesh: aim at the nearest walkable spot on its own storey.
+	FVector Goal;
+	if (!DCNav::ProjectOnStorey(World, To, 200.0, Goal))
 	{
 		UE_LOG(LogDerClou, Log, TEXT("No nav mesh near %s"), *To.ToCompactString());
 		return Closed;
 	}
 	// The way as it is now is free: nothing in the way.
-	const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, Goal.Location);
-	if (Path && Path->IsValid() && !Path->IsPartial())
+	if (DCNav::FindPath(World, From, Goal))
 	{
 		return Closed;
 	}
 	TArray<FVector> Through;
-	if (!WayThroughDoors(World, From, Goal.Location, Through))
+	if (!WayThroughDoors(World, From, Goal, Through))
 	{
-		UE_LOG(LogDerClou, Log, TEXT("No way from %s to %s, not even through doors"), *From.ToCompactString(), *Goal.Location.ToCompactString());
+		UE_LOG(LogDerClou, Log, TEXT("No way from %s to %s, not even through doors"), *From.ToCompactString(), *Goal.ToCompactString());
 		return Closed;
 	}
 	// The nav mesh does not let one through yet: every door on the way still counts as shut

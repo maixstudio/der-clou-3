@@ -219,6 +219,25 @@ struct FDCSchedule
 	bool GetDoorAt(FName Door, float Time, FDCSimDoor& Out, const FDCDoorChange** By = nullptr) const;
 };
 
+namespace DCNav
+{
+	/**
+	 * A complete way on the nav mesh as it is now (false: none, or only part of the way). Use this instead of
+	 * UNavigationSystemV1::FindPathToLocationSynchronously: that one keeps every path alive until the next garbage
+	 * collection, and whenever a door opens the engine invalidates and re-plans each of those paths. With the
+	 * thousands of queries the planning makes, that froze the game for minutes (2026-11-09). Here the path
+	 * object is gone as soon as the points are copied.
+	 */
+	DERCLOU3_API bool FindPath(UWorld* World, const FVector& From, const FVector& To, TArray<FVector>* OutPoints = nullptr, double* OutLength = nullptr);
+
+	/**
+	 * The walkable spot nearest to Location (seen from above, within Radius) on Location's own storey: looks
+	 * 2.4 m down and 0.4 m up. The engine picks the nearest spot in 2D only, so a box reaching a storey down
+	 * chose the cellar floor right under the living-room sofa (2026-11-09).
+	 */
+	DERCLOU3_API bool ProjectOnStorey(const UWorld* World, const FVector& Location, double Radius, FVector& Out);
+}
+
 /**
  * The state manager of the heist. Knows every door, container and crew member by name, and
  * plays the whole plan through in advance: each step walks, may have to wait for a state

@@ -112,6 +112,15 @@ private:
 	int32 PassTries = 0;
 	/** All doors on the way are open but the nav mesh does not know yet: how long already. */
 	float DoorSettleTime = 0.f;
+	/**
+	 * Waiting at a shut door: the last answer of DoorOnWay. It holds until a door changes (ADCDoor::GetStateVersion)
+	 * or a moment has passed - asking every frame meant dozens of nav queries per frame per waiting crew member.
+	 */
+	bool bDoorWaitKnown = false;
+	uint32 DoorWaitVersion = 0;
+	float DoorWaitRecheckIn = 0.f;
+	FText DoorWaitKnownText;
+	TWeakObjectPtr<ADCDoor> DoorWaitKnownAt;
 
 	enum class ELootPhase : uint8
 	{

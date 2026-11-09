@@ -253,13 +253,26 @@ namespace DCItemWidgets
 		return SNew(STextBlock).Text(Text).Font(Font(Size)).ColorAndOpacity(MutedColor).AutoWrapText(true);
 	}
 
+	FText Upper(const FText& Text)
+	{
+		return Text.ToUpper();
+	}
+
+	TAttribute<FText> Upper(const TAttribute<FText>& Text)
+	{
+		if (!Text.IsBound())
+		{
+			return Text.Get().ToUpper();
+		}
+		return TAttribute<FText>::CreateLambda([Text]() { return Text.Get().ToUpper(); });
+	}
+
 	TSharedRef<SWidget> MakeTitle(const TAttribute<FText>& Text, int32 Size, const FLinearColor& Color)
 	{
 		return SNew(STextBlock)
-			.Text(Text)
+			.Text(Upper(Text))
 			.Font(HeadFont(Size))
 			.ColorAndOpacity(Color)
-			.TransformPolicy(ETextTransformPolicy::ToUpper)
 			.OverflowPolicy(ETextOverflowPolicy::Ellipsis);
 	}
 
@@ -279,10 +292,9 @@ namespace DCItemWidgets
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(Text)
+				.Text(Upper(Text))
 				.Font(HeadFont(14))
 				.ColorAndOpacity(TextColor)
-				.TransformPolicy(ETextTransformPolicy::ToUpper)
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(8.f, 1.f, 0.f, 0.f)
 			[

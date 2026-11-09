@@ -112,6 +112,8 @@ gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neu
 - `CoordinationFramedBrush()`, `ProblemFramedBrush()` – Cyan bzw. Rot, 1 px.
 - `RoundBrush()` – nur Füllung (Farbstreifen, Abzeichen, Plätze). `Brush()` bleibt das eckige Weiß.
 - `MakeTitle`, `MakeSectionTitle`, `MakeRule` – Titel in Großbuchstaben, Abschnitt mit Messinglinie, Trennlinie.
+- Großbuchstaben immer mit `Upper(Text)` (auch als Attribut), **nie** mit `.TransformPolicy(ETextTransformPolicy::ToUpper)`:
+  „ß“ wird zu „SS“, dann stimmt die Textlänge in Slate nicht mehr (Ensure in `TextLayout.cpp`, Absturzbericht, Ruckler).
 - `MakeSegments` – Umschalter aus Segmenten („Jetzt | Nach dem Plan“), das aktive in Bernstein.
 
 **Knöpfe**

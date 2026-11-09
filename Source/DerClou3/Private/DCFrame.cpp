@@ -145,17 +145,16 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				[
 					SNew(STextBlock)
 					.Font(HeadFont(22))
-					.TransformPolicy(ETextTransformPolicy::ToUpper)
 					.ColorAndOpacity_Lambda([WeakThis]() -> FSlateColor { return ModeTextColor(FrameMode(WeakThis.Get())); })
 					.Text_Lambda([WeakThis]()
 					{
 						switch (FrameMode(WeakThis.Get()))
 						{
-						case EDCPlanMode::Playing: return LOCTEXT("ModePlaying", "Plan läuft");
-						case EDCPlanMode::Direct: return LOCTEXT("ModeDirect", "Ausprobieren");
+						case EDCPlanMode::Playing: return Upper(LOCTEXT("ModePlaying", "Plan läuft"));
+						case EDCPlanMode::Direct: return Upper(LOCTEXT("ModeDirect", "Ausprobieren"));
 						case EDCPlanMode::Planning: break;
 						}
-						return LOCTEXT("ModePlanning", "Planung");
+						return Upper(LOCTEXT("ModePlanning", "Planung"));
 					})
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(14.f, 0.f)
@@ -216,19 +215,18 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
 			[
-				SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor).TransformPolicy(ETextTransformPolicy::ToUpper)
-				.Text(LOCTEXT("FloorLabel", "Ebene"))
+				SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor)
+				.Text(Upper(LOCTEXT("FloorLabel", "Ebene")))
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
 			[
 				SNew(STextBlock)
 				.Font(HeadFont(18))
 				.ColorAndOpacity(TextColor)
-				.TransformPolicy(ETextTransformPolicy::ToUpper)
 				.Text_Lambda([WeakThis]()
 				{
 					const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
-					return UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0);
+					return Upper(UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0));
 				})
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)

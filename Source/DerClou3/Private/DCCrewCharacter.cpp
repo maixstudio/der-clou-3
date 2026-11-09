@@ -5,6 +5,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "DCHeistState.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
@@ -38,6 +39,18 @@ namespace
 	constexpr float PickUpSeconds = 0.6f;
 	/** Gap between the crew member and an item they walk up to. */
 	constexpr double ItemReach = 40.0;
+
+	/** The walkable spot near Location on its own storey (see DCNav::ProjectOnStorey - never the floor below). */
+	bool CrewProjectOnStorey(const UNavigationSystemV1* Navigation, const FVector& Location, double Radius, FNavLocation& Out)
+	{
+		FVector Found;
+		if (!Navigation || !DCNav::ProjectOnStorey(Navigation->GetWorld(), Location, Radius, Found))
+		{
+			return false;
+		}
+		Out = FNavLocation(Found);
+		return true;
+	}
 	/** One footstep noise per this many seconds while walking; lock-picking clicks likewise. */
 	constexpr float StepSeconds = 0.55f;
 	constexpr float ClickSeconds = 1.2f;
@@ -289,7 +302,7 @@ bool ADCCrewCharacter::StartMove(const FVector& Location, FVector* OutGoal)
 		return false;
 	}
 	FNavLocation Projected;
-	if (!Navigation->ProjectPointToNavigation(Location, Projected, FVector(60.0, 60.0, 300.0)))
+	if (!CrewProjectOnStorey(Navigation, Location, 60.0, Projected))
 	{
 		return false;
 	}
@@ -613,27 +626,43 @@ void ADCCrewCharacter::WalkToPickup(ADCItemPickup* Pickup, bool bSearch)
 	const double Reach = Pickup->GetFootprintRadius() + ItemReach;
 	FVector Spot = ItemLocation + Away * Reach;
 	// Someone else already works there or is on the way (two at the safe): a free place beside them.
+	// Furniture against a wall or next to other furniture: further round it, then a little further out.
 	const UNavigationSystemV1* Nav = FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
-	for (const double Turn : { 0.0, 40.0, -40.0, 80.0, -80.0, 120.0, -120.0 })
+	bool bFound = false;
+	for (const double Extra : { 0.0, 40.0 })
 	{
-		FVector Candidate = ItemLocation + Away.RotateAngleAxis(Turn, FVector::UpVector) * Reach;
-		FNavLocation OnNav;
-		if (Nav && !Nav->ProjectPointToNavigation(Candidate, OnNav, FVector(30.0, 30.0, 200.0)))
+		for (const double Turn : { 0.0, 40.0, -40.0, 80.0, -80.0, 120.0, -120.0, 160.0, -160.0 })
 		{
-			continue;
+			FVector Candidate = ItemLocation + Away.RotateAngleAxis(Turn, FVector::UpVector) * (Reach + Extra);
+			FNavLocation OnNav;
+			if (Nav && !CrewProjectOnStorey(Nav, Candidate, 30.0, OnNav))
+			{
+				continue;
+			}
+			Candidate = Nav ? OnNav.Location : Candidate;
+			bool bTaken = false;
+			for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It && !bTaken; ++It)
+			{
+				const bool bHeadingThere = It->Phase == ETaskPhase::ToItem || It->Phase == ETaskPhase::ToDoor;
+				bTaken = *It != this && (FVector::Dist2D(It->GetActorLocation(), Candidate) < 75.0 || (bHeadingThere && FVector::Dist2D(It->DoorGoal, Candidate) < 75.0));
+			}
+			if (!bTaken)
+			{
+				Spot = Candidate;
+				bFound = true;
+				break;
+			}
 		}
-		Candidate = Nav ? OnNav.Location : Candidate;
-		bool bTaken = false;
-		for (TActorIterator<ADCCrewCharacter> It(GetWorld()); It && !bTaken; ++It)
+		if (bFound)
 		{
-			const bool bHeadingThere = It->Phase == ETaskPhase::ToItem || It->Phase == ETaskPhase::ToDoor;
-			bTaken = *It != this && (FVector::Dist2D(It->GetActorLocation(), Candidate) < 75.0 || (bHeadingThere && FVector::Dist2D(It->DoorGoal, Candidate) < 75.0));
-		}
-		if (!bTaken)
-		{
-			Spot = Candidate;
 			break;
 		}
+	}
+	// Still nothing free: the nearest walkable spot round the item on its own storey.
+	FNavLocation Near;
+	if (!bFound && CrewProjectOnStorey(Nav, ItemLocation, Reach + 60.0, Near))
+	{
+		Spot = Near.Location;
 	}
 	UE_LOG(LogDerClou, Verbose, TEXT("%s: to %s, item at %s, spot %s"), *GetName(), *Pickup->GetName(), *ItemLocation.ToCompactString(), *Spot.ToCompactString());
 	if (StartMove(Spot, &DoorGoal))

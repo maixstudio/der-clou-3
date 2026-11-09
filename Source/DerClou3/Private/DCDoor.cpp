@@ -76,6 +76,8 @@ namespace
 	}
 }
 
+uint32 ADCDoor::StateVersion = 0;
+
 ADCDoor::ADCDoor()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -341,6 +343,7 @@ bool ADCDoor::OpenAwayFrom(const FVector& OpenerLocation)
 		// Swing to the side the opener is not on.
 		SwingSign = SwingSignFor(OpenerLocation);
 		bOpen = true;
+		++StateVersion;
 		UpdateState();
 	}
 	return true;
@@ -351,6 +354,7 @@ void ADCDoor::Close()
 	if (bOpen)
 	{
 		bOpen = false;
+		++StateVersion;
 		UpdateState();
 	}
 }
@@ -360,7 +364,10 @@ void ADCDoor::Unlock()
 	if (bLocked)
 	{
 		bLocked = false;
-		UpdateState();
+		++StateVersion;
+		// Only the look: a door that stays shut blocks the way just as before, so the nav mesh is left alone
+		// (every rebuild makes the engine check all paths that cross it).
+		RefreshLook();
 	}
 }
 

@@ -23,6 +23,8 @@ namespace
 	constexpr float RunnerNavSettleSeconds = 1.5f;
 	/** Opening the same door on the way more often than this: something is in the way. */
 	constexpr int32 RunnerMaxPassTries = 3;
+	/** Waiting at a shut door: look at the way again this often (at once when a door changes). */
+	constexpr float RunnerDoorRecheckSeconds = 0.5f;
 
 	void Collect(UDCItem* Item, TArray<UDCItem*>& Out)
 	{
@@ -59,6 +61,7 @@ void UDCPlanRunnerComponent::Start(const TArray<FDCPlanTask>& InTasks)
 	LastPassDoor.Reset();
 	PassTries = 0;
 	DoorSettleTime = 0.f;
+	bDoorWaitKnown = false;
 	bRunning = !Tasks.IsEmpty();
 }
 
@@ -124,7 +127,24 @@ void UDCPlanRunnerComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 			ADCDoor* OpenOnWay = nullptr;
 			ADCDoor* WaitAtDoor = nullptr;
 			bool bSettling = false;
-			bool bDoorWait = DoorOnWay(DoorWait, OpenOnWay, WaitAtDoor, bSettling);
+			bool bDoorWait = false;
+			DoorWaitRecheckIn -= DeltaTime;
+			if (bDoorWaitKnown && DoorWaitVersion == ADCDoor::GetStateVersion() && DoorWaitRecheckIn > 0.f)
+			{
+				// Still waiting at the same shut door: nothing changed since the last look.
+				bDoorWait = true;
+				DoorWait = DoorWaitKnownText;
+				WaitAtDoor = DoorWaitKnownAt.Get();
+			}
+			else
+			{
+				bDoorWait = DoorOnWay(DoorWait, OpenOnWay, WaitAtDoor, bSettling);
+				bDoorWaitKnown = bDoorWait && !bSettling;
+				DoorWaitVersion = ADCDoor::GetStateVersion();
+				DoorWaitRecheckIn = RunnerDoorRecheckSeconds;
+				DoorWaitKnownText = DoorWait;
+				DoorWaitKnownAt = WaitAtDoor;
+			}
 			if (bDoorWait && bSettling)
 			{
 				// Every door on the way is open: give the nav mesh a moment, then walk anyway.
@@ -788,6 +808,7 @@ void UDCPlanRunnerComponent::FinishTask(EDCTaskStatus Status)
 	LastPassDoor.Reset();
 	PassTries = 0;
 	DoorSettleTime = 0.f;
+	bDoorWaitKnown = false;
 	// Someone waits for this step: say so ("Zeichen an Rosa").
 	if (Status == EDCTaskStatus::Done && Crew && Tasks.IsValidIndex(Index))
 	{

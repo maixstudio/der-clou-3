@@ -228,9 +228,8 @@ void ADCPlayerController::StartVillaSelfTest()
 		// Complete, and really ending at the goal's height (a cellar goal must not snap to the floor above).
 		const auto Reachable = [World](const FVector& From, const FVector& To)
 		{
-			const UNavigationPath* Path = UNavigationSystemV1::FindPathToLocationSynchronously(World, From, To);
-			return Path && Path->IsValid() && !Path->IsPartial() && !Path->PathPoints.IsEmpty()
-				&& FMath::Abs(Path->PathPoints.Last().Z - To.Z) < 60.0;
+			TArray<FVector> Points;
+			return DCNav::FindPath(World, From, To, &Points) && !Points.IsEmpty() && FMath::Abs(Points.Last().Z - To.Z) < 60.0;
 		};
 		Expect(Reachable(VillaPoint(29.9, 16.75, 0.0), VillaPoint(29.9, 23.0, -290.0)), TEXT("the cellar stair can be walked (landing -> cellar corridor)"));
 		Expect(Reachable(VillaPoint(48.0, 23.9, 0.0), VillaPoint(44.9, 29.2, -290.0)), TEXT("the outside stair can be walked (garden path -> cellar door)"));

@@ -152,10 +152,9 @@ TSharedRef<SWidget> UDCNoiseHud::RebuildWidget()
 						.Text_Lambda([GetNoise]()
 						{
 							const UDCNoiseSubsystem* Noise = GetNoise();
-							return Noise ? FText::Format(LOCTEXT("Alarm", "ALARM – {0}"), Noise->GetAlarmText()) : FText::GetEmpty();
+							return Noise ? Upper(FText::Format(LOCTEXT("Alarm", "ALARM – {0}"), Noise->GetAlarmText())) : FText::GetEmpty();
 						})
 						.Font(HeadFont(22))
-						.TransformPolicy(ETextTransformPolicy::ToUpper)
 						.ColorAndOpacity(FLinearColor::White)
 					]
 				]

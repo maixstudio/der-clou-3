@@ -43,6 +43,12 @@ namespace DCItemWidgets
 	DERCLOU3_API FSlateFontInfo Font(int32 Size, bool bBold = false);
 	/** Titles and big labels: Barlow Condensed Bold, meant for capitals (see MakeTitle). */
 	DERCLOU3_API FSlateFontInfo HeadFont(int32 Size, bool bBold = true);
+	/**
+	 * Text in capitals ("Straße" -> "STRASSE"). Use this instead of ETextTransformPolicy::ToUpper: Slate's own
+	 * transform must not change the length, and "ß" becomes two letters (ensure in TextLayout.cpp, a frame hitch).
+	 */
+	DERCLOU3_API FText Upper(const FText& Text);
+	DERCLOU3_API TAttribute<FText> Upper(const TAttribute<FText>& Text);
 	/** Plain white box: tint it with BorderBackgroundColor / the draw colour. */
 	DERCLOU3_API const FSlateBrush* Brush();
 	DERCLOU3_API const FProgressBarStyle& BarStyle();
