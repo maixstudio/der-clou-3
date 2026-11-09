@@ -126,11 +126,11 @@ namespace
 				.Look(P::Box, FVector(100, 55, 190), FLinearColor(0.45f, 0.3f, 0.18f)).Note(LOCTEXT("WardrobeDesc", "Groß genug, um sich darin zu verstecken.")),
 			FDef(TEXT("sofa"), LOCTEXT("Sofa", "Sofa"), Furniture, 60.f, None, S::Huge, 300).Holds({ 3, 1 }, S::Small)
 				.Look(P::Box, FVector(200, 85, 80), FLinearColor(0.25f, 0.32f, 0.45f)).Note(LOCTEXT("SofaDesc", "Zwischen den Polstern lässt sich Kleines verstecken.")),
-			FDef(TEXT("armchair"), LOCTEXT("Armchair", "Sessel"), Furniture, 18.f, None, S::Large, 150)
+			FDef(TEXT("armchair"), LOCTEXT("Armchair", "Sessel"), Furniture, 18.f, None, S::Large, 150).Holds({ 2, 1 }, S::Small)
 				.Look(P::Box, FVector(80, 80, 90), FLinearColor(0.55f, 0.15f, 0.12f)).Note(LOCTEXT("ArmchairDesc", "Bequem, aber sperrig.")),
-			FDef(TEXT("dining_table"), LOCTEXT("DiningTable", "Esstisch"), Furniture, 35.f, None, S::Huge, 250)
+			FDef(TEXT("dining_table"), LOCTEXT("DiningTable", "Esstisch"), Furniture, 35.f, None, S::Huge, 250).Holds({ 2, 1 }, S::Small)
 				.Look(P::Box, FVector(160, 90, 75), FLinearColor(0.5f, 0.34f, 0.18f)).Note(LOCTEXT("DiningTableDesc", "Eiche, für sechs Personen.")),
-			FDef(TEXT("chair"), LOCTEXT("Chair", "Stuhl"), Furniture, 6.f, None, S::Large, 40)
+			FDef(TEXT("chair"), LOCTEXT("Chair", "Stuhl"), Furniture, 6.f, None, S::Large, 40).Holds({ 1, 1 }, S::Small)
 				.Look(P::Box, FVector(45, 45, 90), FLinearColor(0.45f, 0.3f, 0.16f)).Note(LOCTEXT("ChairDesc", "Ein einfacher Holzstuhl.")),
 			// The house (L_House01): no models yet – they show as coloured boxes until the Blender chat makes them.
 			FDef(TEXT("dresser"), LOCTEXT("Dresser", "Kommode"), Furniture, 40.f, None, S::Huge, 250).Holds({ 6, 2 }, S::Medium).Openable()

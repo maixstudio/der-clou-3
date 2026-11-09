@@ -281,7 +281,13 @@ void UDCContainerPanel::OpenFind(ADCCrewCharacter* InCrew, ADCItemPickup* InPick
 			Takeable.Add(Item);
 		}
 	}
-	Takeable.Sort([](const UDCItem& A, const UDCItem& B) { return A.GetDef().Value > B.GetDef().Value; });
+	// Most value per cell first: if not everything fits, the small precious things go along.
+	const auto Worth = [](const UDCItem& Item)
+	{
+		const FIntPoint Size = Item.GetDef().GridSize;
+		return static_cast<float>(Item.GetDef().Value) / static_cast<float>(FMath::Max(1, Size.X * Size.Y));
+	};
+	Takeable.Sort([&Worth](const UDCItem& A, const UDCItem& B) { return Worth(A) > Worth(B); });
 	for (UDCItem* Item : Takeable)
 	{
 		Found.Add(Item);
@@ -304,14 +310,27 @@ void UDCContainerPanel::AddHandling(float Seconds)
 	++HandlingCount;
 }
 
-void UDCContainerPanel::TakeAllValuable()
+bool UDCContainerPanel::DecideAlone()
+{
+	for (const TWeakObjectPtr<UDCItem>& Weak : Found)
+	{
+		const UDCItem* Item = Weak.Get();
+		if (Item && (Item->GetDef().Value <= 0 || Item->GetDef().Size >= EDCItemSize::Large))
+		{
+			return false;
+		}
+	}
+	return TakeAllValuable();
+}
+
+bool UDCContainerPanel::TakeAllValuable()
 {
 	ADCCrewCharacter* Member = Crew.Get();
 	ADCItemPickup* Container = Pickup.Get();
 	UDCItem* Box = Container ? Container->GetItem() : nullptr;
 	if (!Member || !Box)
 	{
-		return;
+		return false;
 	}
 	TArray<const UDCItem*> NoRoom;
 	for (const TWeakObjectPtr<UDCItem>& Weak : Found)
@@ -336,6 +355,7 @@ void UDCContainerPanel::TakeAllValuable()
 	{
 		ShowMessage(FText::Format(LOCTEXT("NoRoomLeft", "Kein Platz mehr für: {0}"), JoinItemNames(NoRoom)));
 	}
+	return NoRoom.IsEmpty();
 }
 
 void UDCContainerPanel::ContinueFind()

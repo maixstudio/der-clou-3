@@ -187,14 +187,19 @@ Jede Figur hat zwei getrennte Bereiche.
 
 ## Reihenfolge (jeder Schritt im Spiel sichtbar und getestet, dann Commit)
 
-1. **Kamera folgt** (klein): Folgen mit Totzone, Lösen beim Schieben, F / Karte, Hinweis oben.
+1. **Gebaut 2026-11-09 (Schritt 38).** **Kamera folgt** (klein): Folgen mit Totzone, Lösen beim Schieben, F / Karte, Hinweis oben.
    Selbsttests Villa und Signals prüfen den Wechsel.
-2. **Fußspuren und Schilder:** Fußabdruck aus Blender, ISM je Figur, Schilder-Overlay mit Hover und Klick,
+2. **Gebaut 2026-11-09 (Schritt 38).** **Fußspuren und Schilder:** Fußabdruck aus Blender, ISM je Figur, Schilder-Overlay mit Hover und Klick,
    neue Icons, Tür- und Vorschau-Schilder im gleichen Stil, alte Marker raus. Neuer Selbsttest
    `-DCSelfTest=Trail` (Villa: Vic knackt und durchsucht, Rosa wartet; Screenshots aus der Spielkamera).
-3. **Durchsuchen für alles, „Öffnen mit …“:** Öffnen-Methoden als Daten, zweiter Ring im Radialmenü,
-   Versteck für jedes Möbelstück, Türen mit demselben Menü. Live: Wertvolles von selbst einpacken,
-   Pause nur bei Platzmangel oder Besonderem (Schalter für „immer anhalten“).
+3. **Gebaut 2026-11-09 (Schritt 39), mit zwei Abweichungen.** **Durchsuchen für alles, „Öffnen mit …“:**
+   Öffnen-Methoden als Daten, zweiter Ring im Radialmenü, Versteck für jedes Möbelstück, Türen mit demselben
+   Menü. Live: Wertvolles von selbst einpacken, Pause nur bei Platzmangel oder Besonderem (Schalter für
+   „immer anhalten“).
+   - Abweichung 1: Die Methoden werden aus den bisherigen Katalogfeldern abgeleitet (Knacken, Aufbrechen, Glas)
+     statt aus einer eigenen Liste. Eine Liste kommt, wenn neue Werkzeuge dazukommen (Schlüssel, Bohrer).
+   - Abweichung 2: Das Tür-Menü bleibt wie es ist, bis Frage 4 (Türen aufhebeln) entschieden ist – mit nur
+     „knacken“ wäre ein zweiter Ring leer.
 4. **Gepäck (Regeln):** neues `UDCInventoryComponent` (Kleidung + Gepäck), Prüfungen ohne Hände,
    großes Stück in den Armen, Simulation und geplantes Inventar angepasst.
 5. **Gepäck (Oberfläche):** Profil rechts (Kleidung-Kacheln, Zeugen-Satz, Gepäckliste mit Balken,

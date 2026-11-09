@@ -199,6 +199,10 @@ Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
 - Türen, die der Plan ändert, und die Zeitvorschau („Rosa: wartet auf Vic“) nutzen dasselbe Schild in dunkel mit Rand.
 - Neue optische Actors: nie Teil des NavMesh (`IsComponentRelevantForNavigation` = false), keine Kollision, kein Schatten.
 
+**Radialmenü mit zweitem Ring** – braucht eine Aktion eine Wahl (womit öffnen?), öffnet der Eintrag einen zweiten Ring an
+derselben Stelle (`UDCRadialMenu::OpenSub`): Titel „Schublade öffnen mit …“, ein Eintrag je Weg mit Icon, Dauer und Chance,
+Unmögliches ausgegraut mit Grund, immer „zurück“. Nie mehr als zwei Ringe tief.
+
 **Kamera** – folgt der gewählten Figur (Planung: ihrem Plan-Stand, mit ruhiger Mitte; Abspielen: der Figur). Selbst
 schieben löst das; oben rechts erscheint „Kamera frei · F folgt“.
 

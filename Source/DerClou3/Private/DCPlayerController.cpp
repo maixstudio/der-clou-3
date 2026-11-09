@@ -241,6 +241,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartTrailSelfTest();
 	}
+	else if (SelfTest == TEXT("Search"))
+	{
+		StartSearchSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -522,66 +526,9 @@ void ADCPlayerController::OpenDoorMenu(ADCDoor* Door)
 	RadialMenu->Open(Title, MoveTemp(Options));
 }
 
-void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
+namespace
 {
-	UDCItem* Root = Pickup ? Pickup->GetItem() : nullptr;
-	if (!RadialMenu || !Root || !Selected)
-	{
-		return;
-	}
-	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
-	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
-	const FDCSimPickup* Planned = bPlanning ? const_cast<FDCWorldSnapshot&>(Heist->GetPlannedState()).FindPickup(Pickup->GetFName()) : nullptr;
-	// Planning: tools and hands as they will be after the crew member's plan so far (a crowbar picked up earlier counts).
-	const UDCInventoryComponent* Carried = bPlanning ? Heist->GetPlannedInventory(Selected->GetFName()) : nullptr;
-	const bool bGoneInPlan = Planned && Planned->bGone;
-	// Say who takes it, and in which step: otherwise "gone" looks like a mistake.
-	FText GoneReason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
-	if (bGoneInPlan)
-	{
-		for (const FDCCrewPlan& Plan : UDCPlanSubsystem::Get(this)->GetPlans())
-		{
-			for (int32 Index = 0; Index < Plan.Tasks.Num(); ++Index)
-			{
-				const FDCPlanTask& Task = Plan.Tasks[Index];
-				const bool bTakes = Task.Type == EDCPlanTaskType::PickUp
-					|| (Task.Type == EDCPlanTaskType::Item && Task.ItemPath.IsEmpty() && Task.Action == static_cast<uint8>(EDCItemAction::Take));
-				if (bTakes && Task.Target == Pickup->GetFName())
-				{
-					const ADCCrewCharacter* Taker = Heist->FindCrew(Plan.Crew);
-					GoneReason = FText::Format(LOCTEXT("GoneInPlanBy", "schon im Plan: {0} nimmt es in Schritt {1}"),
-						Taker ? Taker->GetCrewName() : FText::FromName(Plan.Crew), FText::AsNumber(Index + 1));
-				}
-			}
-		}
-	}
-	// Locked, smashed, ... as it will be after the plan so far (planning) or as it is now (direct).
-	const auto StateOf = [Planned](const UDCItem* Item, bool& bLocked, bool& bDestroyed)
-	{
-		bLocked = Item->IsLocked();
-		bDestroyed = Item->IsDestroyed();
-		if (Planned)
-		{
-			const int32 Index = FDCWorldSnapshot::FindItem(*Planned, UDCHeistStateSubsystem::PathOf(Item));
-			if (Index != INDEX_NONE)
-			{
-				bLocked = Planned->Items[Index].bLocked;
-				bDestroyed = Planned->Items[Index].bDestroyed;
-			}
-		}
-	};
-	const auto Check = [this, bPlanning, Carried, bGoneInPlan, GoneReason](const UDCItem* Item, EDCItemAction Action)
-	{
-		if (bGoneInPlan)
-		{
-			FDCTaskCheck Gone;
-			Gone.bPossible = false;
-			Gone.Reason = GoneReason;
-			return Gone;
-		}
-		return bPlanning ? Selected->PlanCheckItem(Item->GetDef(), Action, Carried) : Selected->CheckItemAction(Item, Action);
-	};
-	const auto ItemTask = [Pickup](const UDCItem* Item, EDCItemAction Action)
+	FDCPlanTask PickupItemTask(const ADCItemPickup* Pickup, const UDCItem* Item, EDCItemAction Action)
 	{
 		FDCPlanTask Task;
 		Task.Type = EDCPlanTaskType::Item;
@@ -589,102 +536,225 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 		Task.ItemPath = UDCHeistStateSubsystem::PathOf(Item);
 		Task.Action = static_cast<uint8>(Action);
 		return Task;
-	};
+	}
 
-	TArray<FDCRadialOption> Options;
-	// Locks and glass: the thing itself and its built-in parts (the desk's drawer).
-	TArray<UDCItem*> WithLocks = { Root };
-	for (UDCItem* Part : Root->GetContents())
-	{
-		if (Part->IsAttached())
-		{
-			WithLocks.Add(Part);
-		}
-	}
-	for (UDCItem* Item : WithLocks)
-	{
-		const FDCItemDef& Def = Item->GetDef();
-		bool bLocked = false;
-		bool bDestroyed = false;
-		StateOf(Item, bLocked, bDestroyed);
-		const auto Label = [Item, Root](const FText& Verb)
-		{
-			return Item == Root ? Verb : FText::Format(LOCTEXT("PartAction", "{0} {1}"), Item->GetDisplayName(), Verb);
-		};
-		if (bLocked && Def.HasLock())
-		{
-			Options.Add(MakeTaskOption(Label(LOCTEXT("PickVerb", "knacken")), Check(Item, EDCItemAction::PickLock), ItemTask(Item, EDCItemAction::PickLock)));
-			// The usual pair in one click: pick the lock, then search the whole thing.
-			if (Root->IsContainer() || !Root->GetContents().IsEmpty())
-			{
-				const FDCTaskCheck PickCheck = Check(Item, EDCItemAction::PickLock);
-				FDCPlanTask Search;
-				Search.Type = EDCPlanTaskType::Loot;
-				Search.Target = Pickup->GetFName();
-				FDCRadialOption Both = MakeTaskOption(Label(LOCTEXT("PickSearchVerb", "knacken und durchsuchen")), PickCheck, ItemTask(Item, EDCItemAction::PickLock));
-				Both.Detail = PickCheck.bPossible ? FText::Format(LOCTEXT("PickSearchDetail", "{0} · dann durchsuchen"), PickCheck.DescribeShort()) : PickCheck.DescribeShort();
-				Both.Tooltip = FText::Format(LOCTEXT("PickSearchTip", "Zwei Schritte: knacken, danach durchsuchen.\n{0}"), PickCheck.Describe());
-				TWeakObjectPtr<ADCPlayerController> WeakThis = this;
-				const TArray<FDCPlanTask> Pair = { ItemTask(Item, EDCItemAction::PickLock), Search };
-				const bool bPossible = PickCheck.bPossible;
-				const FText Reason = PickCheck.Reason;
-				Both.OnSelected = [WeakThis, Pair, bPossible, Reason]()
-				{
-					if (!WeakThis.IsValid())
-					{
-						return;
-					}
-					if (!bPossible)
-					{
-						WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Reason), true);
-						return;
-					}
-					WeakThis->IssueTasks(Pair);
-				};
-				Options.Add(Both);
-			}
-			if (Def.bForceable)
-			{
-				Options.Add(MakeTaskOption(Label(LOCTEXT("ForceVerb", "aufbrechen")), Check(Item, EDCItemAction::Force), ItemTask(Item, EDCItemAction::Force)));
-			}
-		}
-		if (Def.bBreakable && !bDestroyed)
-		{
-			Options.Add(MakeTaskOption(Label(LOCTEXT("SmashVerb", "einschlagen")), Check(Item, EDCItemAction::Smash), ItemTask(Item, EDCItemAction::Smash)));
-		}
-	}
-	// Search: open what opens; what is found is decided during the heist.
-	if (Root->IsContainer() || !Root->GetContents().IsEmpty())
+	FDCPlanTask PickupLootTask(const ADCItemPickup* Pickup)
 	{
 		FDCPlanTask Task;
 		Task.Type = EDCPlanTaskType::Loot;
 		Task.Target = Pickup->GetFName();
-		FDCTaskCheck LootCheck;
-		LootCheck.bPossible = !bGoneInPlan;
-		LootCheck.Reason = GoneReason;
-		FDCRadialOption Option = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, Task);
-		Option.Detail = bGoneInPlan ? LootCheck.Reason : LOCTEXT("LootDetail", "Inhalt unbekannt · Funde live wählen");
-		if (!bGoneInPlan)
-		{
-			Option.Tooltip = LOCTEXT("LootTip", "Der Inhalt ist noch unbekannt. Beim Einbruch hält das Spiel bei jedem Fund an, dann wird entschieden, was mitkommt.");
-		}
-		Options.Add(Option);
+		return Task;
 	}
-	if (Root->GetDef().bMovable)
+
+	/** The thing itself and its built-in parts (the desk's drawer): what can have a lock or glass. */
+	TArray<UDCItem*> PickupLockTargets(UDCItem* Root)
+	{
+		TArray<UDCItem*> Targets = { Root };
+		for (UDCItem* Part : Root->GetContents())
+		{
+			if (Part->IsAttached())
+			{
+				Targets.Add(Part);
+			}
+		}
+		return Targets;
+	}
+
+	/** Searching as the plan estimates it: 0.3 s, 0.8 s per thing to open, and the cells of the grids (DCHeistState). */
+	float EstimatePickupSearch(UDCItem* Root)
+	{
+		int32 Cells = 0;
+		int32 Opens = 0;
+		for (const UDCItem* Target : PickupLockTargets(Root))
+		{
+			Cells += Target->GetDef().GetCellCount();
+			Opens += Target->GetDef().bOpenable && !Target->IsOpen() ? 1 : 0;
+		}
+		return 0.3f + 0.8f * Opens + DCItems::SearchSeconds(Cells);
+	}
+}
+
+FText ADCPlayerController::GoneInPlanReason(const ADCItemPickup* Pickup) const
+{
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Pickup || !Heist || GetMode() != EDCPlanMode::Planning)
+	{
+		return FText::GetEmpty();
+	}
+	const FDCSimPickup* Planned = const_cast<FDCWorldSnapshot&>(Heist->GetPlannedState()).FindPickup(Pickup->GetFName());
+	if (!Planned || !Planned->bGone)
+	{
+		return FText::GetEmpty();
+	}
+	// Say who takes it, and in which step: otherwise "gone" looks like a mistake.
+	FText Reason = LOCTEXT("GoneInPlan", "ist dann schon weg (im Plan mitgenommen)");
+	for (const FDCCrewPlan& Plan : UDCPlanSubsystem::Get(this)->GetPlans())
+	{
+		for (int32 Index = 0; Index < Plan.Tasks.Num(); ++Index)
+		{
+			const FDCPlanTask& Task = Plan.Tasks[Index];
+			const bool bTakes = Task.Type == EDCPlanTaskType::PickUp
+				|| (Task.Type == EDCPlanTaskType::Item && Task.ItemPath.IsEmpty() && Task.Action == static_cast<uint8>(EDCItemAction::Take));
+			if (bTakes && Task.Target == Pickup->GetFName())
+			{
+				const ADCCrewCharacter* Taker = Heist->FindCrew(Plan.Crew);
+				Reason = FText::Format(LOCTEXT("GoneInPlanBy", "schon im Plan: {0} nimmt es in Schritt {1}"),
+					Taker ? Taker->GetCrewName() : FText::FromName(Plan.Crew), FText::AsNumber(Index + 1));
+			}
+		}
+	}
+	return Reason;
+}
+
+void ADCPlayerController::GetPlannedItemState(const ADCItemPickup* Pickup, const UDCItem* Item, bool& bOutLocked, bool& bOutDestroyed) const
+{
+	bOutLocked = Item->IsLocked();
+	bOutDestroyed = Item->IsDestroyed();
+	const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+	if (!Heist || !Pickup || GetMode() != EDCPlanMode::Planning)
+	{
+		return;
+	}
+	// Locked, smashed, ... as it will be after the plan so far.
+	const FDCSimPickup* Planned = const_cast<FDCWorldSnapshot&>(Heist->GetPlannedState()).FindPickup(Pickup->GetFName());
+	const int32 Index = Planned ? FDCWorldSnapshot::FindItem(*Planned, UDCHeistStateSubsystem::PathOf(Item)) : INDEX_NONE;
+	if (Index != INDEX_NONE)
+	{
+		bOutLocked = Planned->Items[Index].bLocked;
+		bOutDestroyed = Planned->Items[Index].bDestroyed;
+	}
+}
+
+FDCTaskCheck ADCPlayerController::CheckPickupAction(const ADCItemPickup* Pickup, const UDCItem* Item, EDCItemAction Action) const
+{
+	const FText Gone = GoneInPlanReason(Pickup);
+	if (!Gone.IsEmpty())
+	{
+		FDCTaskCheck Check;
+		Check.bPossible = false;
+		Check.Reason = Gone;
+		return Check;
+	}
+	// Planning: tools and hands as they will be after the crew member's plan so far (a crowbar picked up earlier counts).
+	if (GetMode() == EDCPlanMode::Planning)
+	{
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		return Selected->PlanCheckItem(Item->GetDef(), Action, Heist ? Heist->GetPlannedInventory(Selected->GetFName()) : nullptr);
+	}
+	return Selected->CheckItemAction(Item, Action);
+}
+
+void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup, bool bSameSpot)
+{
+	UDCItem* Root = Pickup ? Pickup->GetItem() : nullptr;
+	if (!RadialMenu || !Root || !Selected)
+	{
+		return;
+	}
+	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
+	const FDCItemDef& RootDef = Root->GetDef();
+	const FText Gone = GoneInPlanReason(Pickup);
+	TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+	TWeakObjectPtr<ADCItemPickup> WeakPickup = Pickup;
+
+	// What is locked as the plan leaves it: the thing itself, or a built-in part (the desk's drawer).
+	bool bRootLocked = false;
+	bool bRootDestroyed = false;
+	GetPlannedItemState(Pickup, Root, bRootLocked, bRootDestroyed);
+	const UDCItem* LockedPart = nullptr;
+	bool bSomethingLocked = false;
+	for (UDCItem* Target : PickupLockTargets(Root))
+	{
+		bool bLocked = false;
+		bool bDestroyed = false;
+		GetPlannedItemState(Pickup, Target, bLocked, bDestroyed);
+		const FDCItemDef& Def = Target->GetDef();
+		if (bLocked && (Def.HasLock() || (Def.bBreakable && !bDestroyed)))
+		{
+			bSomethingLocked = true;
+			LockedPart = Target != Root && !LockedPart ? Target : LockedPart;
+		}
+	}
+
+	TArray<FDCRadialOption> Options;
+	// "Nach Wertvollem durchsuchen": every piece of furniture and every box, empty or not (the menu does not
+	// give away where something is). Small loose things are just taken along.
+	const bool bOfferSearch = RootDef.IsContainer() || !Root->GetContents().IsEmpty() || RootDef.Size >= EDCItemSize::Large || !RootDef.bMovable;
+	if (bOfferSearch && bPlanning)
+	{
+		if (!Gone.IsEmpty())
+		{
+			FDCTaskCheck GoneCheck;
+			GoneCheck.bPossible = false;
+			GoneCheck.Reason = Gone;
+			Options.Add(MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), GoneCheck, PickupLootTask(Pickup)));
+		}
+		else if (bRootLocked || LockedPart)
+		{
+			// Locked: first how it gets opened, then the search (two steps, one click).
+			FDCRadialOption& Search = Options.AddDefaulted_GetRef();
+			Search.Label = LOCTEXT("Loot", "Durchsuchen");
+			Search.Icon = TEXT("search");
+			Search.Detail = FText::Format(LOCTEXT("LootLockedDetail", "{0} versperrt – öffnen mit …"), (bRootLocked ? Root : LockedPart)->GetDisplayName());
+			Search.Tooltip = LOCTEXT("LootLockedTip", "Erst wählen, womit es aufgeht – danach wird nach Wertvollem durchsucht (zwei Schritte mit einem Klick).");
+			Search.OnSelected = [WeakThis, WeakPickup]()
+			{
+				if (WeakThis.IsValid() && WeakPickup.IsValid())
+				{
+					WeakThis->OpenOpenWithMenu(WeakPickup.Get(), true);
+				}
+			};
+		}
+		else
+		{
+			FDCTaskCheck LootCheck;
+			FDCRadialOption Search = MakeTaskOption(LOCTEXT("Loot", "Durchsuchen"), LootCheck, PickupLootTask(Pickup));
+			if (Search.Tone == EDCOptionTone::Normal)
+			{
+				Search.Detail = FText::Format(LOCTEXT("LootDetail", "ca. {0} s · Inhalt unbekannt"), FText::AsNumber(FMath::Max(1, FMath::RoundToInt(EstimatePickupSearch(Root)))));
+			}
+			Search.Tooltip = LOCTEXT("LootTip", "Nach Wertvollem durchsuchen. Was drin ist, weiß noch niemand: beim Einbruch packt die Figur Wertvolles selbst ein und fragt nur, wenn nicht alles passt oder etwas anderes dabei ist.");
+			Options.Add(Search);
+		}
+	}
+	// Open with ...: which tool or way, in a second ring.
+	if (bSomethingLocked)
+	{
+		FDCRadialOption& Open = Options.AddDefaulted_GetRef();
+		Open.Label = LOCTEXT("OpenWith", "Öffnen mit …");
+		Open.Icon = TEXT("lock-pick");
+		Open.bEnabled = Gone.IsEmpty();
+		Open.Detail = Gone.IsEmpty() ? LOCTEXT("OpenWithDetail", "Dietrich, Brecheisen, Glas …") : Gone;
+		Open.Tooltip = LOCTEXT("OpenWithTip", "Nur aufmachen – zum Beispiel, damit jemand anderes danach durchsucht.");
+		Open.OnSelected = [WeakThis, WeakPickup, Gone]()
+		{
+			if (!WeakThis.IsValid() || !WeakPickup.IsValid())
+			{
+				return;
+			}
+			if (!Gone.IsEmpty())
+			{
+				WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Gone), true);
+				return;
+			}
+			WeakThis->OpenOpenWithMenu(WeakPickup.Get(), false);
+		};
+	}
+	if (RootDef.bMovable)
 	{
 		FDCPlanTask Task;
 		Task.Type = EDCPlanTaskType::PickUp;
 		Task.Target = Pickup->GetFName();
+		const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this);
+		const UDCInventoryComponent* Carried = bPlanning && Heist ? Heist->GetPlannedInventory(Selected->GetFName()) : nullptr;
 		FDCTaskCheck Take;
-		const FText Reason = bGoneInPlan ? GoneReason
-			: (Carried ? Carried : Selected->GetInventory())->CheckAdd(Root);
+		const FText Reason = !Gone.IsEmpty() ? Gone : (Carried ? Carried : Selected->GetInventory())->CheckAdd(Root);
 		Take.bPossible = Reason.IsEmpty();
 		Take.Reason = Reason;
-		Options.Add(MakeTaskOption(LOCTEXT("PickUp", "Aufheben"), Take, Task));
+		Options.Add(MakeTaskOption(LOCTEXT("PickUp", "Mitnehmen"), Take, Task));
 	}
 	if (!bPlanning && (Root->IsContainer() || !Root->GetContents().IsEmpty()))
 	{
-		TWeakObjectPtr<ADCItemPickup> WeakPickup = Pickup;
 		TWeakObjectPtr<ADCCrewCharacter> WeakCrew = Selected.Get();
 		FDCRadialOption& Search = Options.AddDefaulted_GetRef();
 		Search.Label = LOCTEXT("Search", "Durchsuchen");
@@ -701,19 +771,155 @@ void ADCPlayerController::OpenPickupMenu(ADCItemPickup* Pickup)
 	}
 	// Info is always the last entry, for every interactable.
 	TWeakObjectPtr<UDCInfoPanel> WeakPanel = InfoPanel.Get();
-	TWeakObjectPtr<ADCItemPickup> WeakInfo = Pickup;
 	FDCRadialOption& Info = Options.AddDefaulted_GetRef();
 	Info.Label = LOCTEXT("Info", "Info");
 	Info.Icon = TEXT("info");
-	Info.OnSelected = [WeakPanel, WeakInfo]()
+	Info.OnSelected = [WeakPanel, WeakPickup]()
 	{
-		if (WeakPanel.IsValid() && WeakInfo.IsValid())
+		if (WeakPanel.IsValid() && WeakPickup.IsValid())
 		{
-			WeakPanel->ShowFor(WeakInfo.Get());
+			WeakPanel->ShowFor(WeakPickup.Get());
 		}
 	};
 	const FText Title = FText::Format(bPlanning ? LOCTEXT("PlanTitle", "{0}\nplant: {1}") : LOCTEXT("DirectTitle", "{0}\n{1}"), Pickup->GetInteractableName(), Selected->GetCrewName());
-	RadialMenu->Open(Title, MoveTemp(Options));
+	if (bSameSpot)
+	{
+		RadialMenu->OpenSub(Title, MoveTemp(Options));
+	}
+	else
+	{
+		RadialMenu->Open(Title, MoveTemp(Options));
+	}
+}
+
+void ADCPlayerController::OpenOpenWithMenu(ADCItemPickup* Pickup, bool bThenSearch)
+{
+	UDCItem* Root = Pickup ? Pickup->GetItem() : nullptr;
+	if (!RadialMenu || !Root || !Selected)
+	{
+		return;
+	}
+	// What needs opening, as the plan leaves it: locked things (and their glass).
+	TArray<UDCItem*> Locked;
+	TArray<bool> Destroyed;
+	for (UDCItem* Target : PickupLockTargets(Root))
+	{
+		bool bLocked = false;
+		bool bDestroyed = false;
+		GetPlannedItemState(Pickup, Target, bLocked, bDestroyed);
+		const FDCItemDef& Def = Target->GetDef();
+		if (bLocked && (Def.HasLock() || (Def.bBreakable && !bDestroyed)))
+		{
+			Locked.Add(Target);
+			Destroyed.Add(bDestroyed);
+		}
+	}
+	if (Locked.IsEmpty())
+	{
+		OpenPickupMenu(Pickup, true);
+		return;
+	}
+	const bool bRootLocked = Locked.Contains(Root);
+	TWeakObjectPtr<ADCPlayerController> WeakThis = this;
+	TWeakObjectPtr<ADCItemPickup> WeakPickup = Pickup;
+	TArray<FDCRadialOption> Options;
+	for (int32 Index = 0; Index < Locked.Num(); ++Index)
+	{
+		UDCItem* Target = Locked[Index];
+		const FDCItemDef& Def = Target->GetDef();
+		// With several locks (a locked cabinet with a locked drawer) each entry says which one.
+		const auto Named = [&Locked, Target](const FText& Text)
+		{
+			return Locked.Num() > 1 ? FText::Format(LOCTEXT("OpenWithPart", "{0}: {1}"), Target->GetDisplayName(), Text) : Text;
+		};
+		const auto Add = [this, &Options, WeakThis, Pickup, Target, bThenSearch](EDCItemAction Action, const FText& Label, FName Icon, const FText& Impossible)
+		{
+			FDCTaskCheck Check;
+			if (Impossible.IsEmpty())
+			{
+				Check = CheckPickupAction(Pickup, Target, Action);
+			}
+			else
+			{
+				Check.bPossible = false;
+				Check.Reason = Impossible;
+			}
+			TArray<FDCPlanTask> Tasks = { PickupItemTask(Pickup, Target, Action) };
+			if (bThenSearch)
+			{
+				Tasks.Add(PickupLootTask(Pickup));
+			}
+			FDCRadialOption Option = MakeTaskOption(Label, Check, Tasks[0]);
+			Option.Icon = Icon;
+			if (bThenSearch && Check.bPossible && Option.Tone == EDCOptionTone::Normal)
+			{
+				Option.Detail = FText::Format(LOCTEXT("ThenSearchDetail", "{0} · dann durchsuchen"), Check.DescribeShort());
+				Option.Tooltip = FText::Format(LOCTEXT("ThenSearchTip", "Zwei Schritte: öffnen, danach nach Wertvollem durchsuchen.\n{0}"), Check.Describe());
+			}
+			const bool bPossible = Check.bPossible;
+			const FText Reason = Check.Reason;
+			Option.OnSelected = [WeakThis, Tasks, bPossible, Reason]()
+			{
+				if (!WeakThis.IsValid())
+				{
+					return;
+				}
+				if (!bPossible)
+				{
+					WeakThis->ShowToast(FText::Format(LOCTEXT("NotPossible", "Geht nicht: {0}"), Reason), true);
+					UE_LOG(LogDerClou, Display, TEXT("Not possible: %s"), *Reason.ToString());
+					return;
+				}
+				WeakThis->IssueTasks(Tasks);
+			};
+			Options.Add(Option);
+		};
+		if (Def.HasLock())
+		{
+			const FDCItemDef* Tool = DCItems::Find(Def.LockTool);
+			Add(EDCItemAction::PickLock, Named(FText::Format(LOCTEXT("PickWith", "mit {0} knacken"), Tool ? Tool->Name : LOCTEXT("SomeTool", "Werkzeug"))),
+				Def.LockSkill == EDCSkill::Safes ? FName(TEXT("vault")) : FName(TEXT("lock-pick")), FText::GetEmpty());
+			const FDCItemDef* Crowbar = DCItems::Find(DCItems::CrowbarId);
+			Add(EDCItemAction::Force, Named(FText::Format(LOCTEXT("ForceWith", "mit {0} aufbrechen"), Crowbar ? Crowbar->Name : LOCTEXT("CrowbarName", "Brecheisen"))),
+				TEXT("crowbar"), Def.bForceable ? FText::GetEmpty() : FText::Format(LOCTEXT("NotForceable", "{0} lässt sich nicht aufbrechen"), Target->GetDisplayName()));
+		}
+		if (Def.bBreakable && !Destroyed[Index])
+		{
+			Add(EDCItemAction::Smash, Named(LOCTEXT("SmashGlass", "Glas einschlagen")), TEXT("glass-break"), FText::GetEmpty());
+		}
+	}
+	// Only a drawer is locked: the rest can be searched without it.
+	if (bThenSearch && !bRootLocked)
+	{
+		TArray<FString> Names;
+		for (const UDCItem* Target : Locked)
+		{
+			Names.Add(Target->GetDisplayName().ToString());
+		}
+		FDCTaskCheck LootCheck;
+		FDCRadialOption Without = MakeTaskOption(FText::Format(LOCTEXT("SearchWithout", "ohne {0} durchsuchen"), FText::FromString(FString::Join(Names, TEXT(", ")))),
+			LootCheck, PickupLootTask(Pickup));
+		if (Without.Tone == EDCOptionTone::Normal)
+		{
+			Without.Detail = LOCTEXT("SearchWithoutDetail", "nur was ohne Werkzeug aufgeht");
+		}
+		Options.Add(Without);
+	}
+	// Back to the first ring.
+	FDCRadialOption& Back = Options.AddDefaulted_GetRef();
+	Back.Label = LOCTEXT("MenuBack", "zurück");
+	Back.Icon = TEXT("undo-2");
+	Back.OnSelected = [WeakThis, WeakPickup]()
+	{
+		if (WeakThis.IsValid() && WeakPickup.IsValid())
+		{
+			WeakThis->OpenPickupMenu(WeakPickup.Get(), true);
+		}
+	};
+	const UDCItem* Main = bRootLocked ? Root : Locked[0];
+	const FText Title = FText::Format(bThenSearch ? LOCTEXT("OpenWithSearchTitle", "{0} öffnen mit …\ndann durchsuchen · {1}") : LOCTEXT("OpenWithTitle", "{0} öffnen mit …\nplant: {1}"),
+		Main->GetDisplayName(), Selected->GetCrewName());
+	RadialMenu->OpenSub(Title, MoveTemp(Options));
 }
 
 FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FDCTaskCheck& Check, const FDCPlanTask& Task)
@@ -776,7 +982,8 @@ void ADCPlayerController::Select(ADCCrewCharacter* Crew)
 		Selected->SetSelected(true);
 		ContainerReachedHandle = Selected->OnContainerReached.AddUObject(this, &ADCPlayerController::OnContainerReached);
 	}
-	if (ContainerPanel)
+	// A find that waits for the player keeps its window (the find closes it itself).
+	if (ContainerPanel && !ContainerPanel->IsFindMode())
 	{
 		ContainerPanel->Close();
 	}
@@ -1092,7 +1299,11 @@ void ADCPlayerController::StartNextFind()
 		}
 		FindCrew = Crew;
 		UGameplayStatics::SetGamePaused(this, true);
-		Select(Crew);
+		const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
+		if (Plans->bAutoDecideFinds)
+		{
+			Select(Crew);
+		}
 		TWeakObjectPtr<ADCPlayerController> WeakThis = this;
 		ContainerPanel->OpenFind(Crew, Pickup, [WeakThis]()
 		{
@@ -1101,6 +1312,23 @@ void ADCPlayerController::StartNextFind()
 				WeakThis->FinishFind();
 			}
 		});
+		UE_LOG(LogDerClou, Display, TEXT("%s found in %s: %s"), *Crew->GetCrewName().ToString(), *Pickup->GetName(), *ContainerPanel->DescribeFound().ToString());
+		// Self-tests without a player: everything of value, on at once.
+		if (Plans->bAutoDecideFinds)
+		{
+			ContainerPanel->TakeAllValuable();
+			ContainerPanel->ContinueFind();
+			return;
+		}
+		// "Nach Wertvollem durchsuchen": the crew member packs what is worth something (most per room first). The game only
+		// stops when not everything fits or something else turns up (papers, tools, a big piece) - or always, if so set.
+		if (!Plans->bPauseOnEveryFind && ContainerPanel->DecideAlone())
+		{
+			UE_LOG(LogDerClou, Display, TEXT("%s decided alone"), *Crew->GetCrewName().ToString());
+			ContainerPanel->ContinueFind();
+			return;
+		}
+		Select(Crew);
 		if (InventoryPanel)
 		{
 			InventoryPanel->Show();
@@ -1113,12 +1341,6 @@ void ADCPlayerController::StartNextFind()
 			};
 		}
 		ShowToast(FText::Format(LOCTEXT("FindToast", "{0} hat in {1} etwas gefunden – das Spiel wartet auf dich"), Crew->GetCrewName(), Pickup->GetInteractableName()));
-		UE_LOG(LogDerClou, Display, TEXT("%s found in %s: %s"), *Crew->GetCrewName().ToString(), *Pickup->GetName(), *ContainerPanel->DescribeFound().ToString());
-		if (UDCPlanSubsystem::Get(this)->bAutoDecideFinds)
-		{
-			ContainerPanel->TakeAllValuable();
-			ContainerPanel->ContinueFind();
-		}
 		return;
 	}
 }
@@ -3403,6 +3625,8 @@ void ADCPlayerController::StartFindSelfTest()
 	{
 		UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
 		Plans->bAutoDecideFinds = false;
+		// This test is about the pause: everything found stops the game (otherwise valuables are packed alone).
+		Plans->bPauseOnEveryFind = true;
 		Plans->SetMode(EDCPlanMode::Planning);
 		Plans->ClearAll();
 		ADCCrewCharacter* Rosa = CrewNamed(TEXT("Rosa"));
@@ -3412,11 +3636,11 @@ void ADCPlayerController::StartFindSelfTest()
 		{
 			return true;
 		}
-		// One entry in the menu adds both steps: pick the lock, then search.
+		// "Durchsuchen" on the locked safe asks how to open it; one choice adds both steps: pick the lock, then search.
 		Select(Rosa);
 		OpenPickupMenu(Safe);
-		const bool bChosen = RadialMenu && RadialMenu->ChooseOption(TEXT("knacken und durchsuchen"));
-		Expect(bChosen, TEXT("the safe menu offers \u201eknacken und durchsuchen\u201c"));
+		const bool bChosen = RadialMenu && RadialMenu->ChooseOption(TEXT("Durchsuchen")) && RadialMenu->ChooseOption(TEXT("knacken"));
+		Expect(bChosen, TEXT("the safe menu: \u201eDurchsuchen\u201c, then \u201emit Stethoskop knacken\u201c"));
 		const TArray<FDCPlanTask>& Steps = Plans->GetTasks(Rosa->GetFName());
 		Expect(Steps.Num() == 2 && Steps[0].Type == EDCPlanTaskType::Item && Steps[0].Action == static_cast<uint8>(EDCItemAction::PickLock)
 			&& Steps[1].Type == EDCPlanTaskType::Loot, TEXT("... which plans two steps: pick the lock, then search"));
@@ -3574,7 +3798,7 @@ void ADCPlayerController::StartPlanViewSelfTest()
 		return true;
 	});
 	SelfTestSteps.Add(Choose(TEXT("sofa"), TEXT("Durchsuchen")));
-	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Aufheben")));
+	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Mitnehmen")));
 	SelfTestSteps.Add(Wait(0.5f));
 	SelfTestSteps.Add([this, Expect]()
 	{
@@ -3591,7 +3815,7 @@ void ADCPlayerController::StartPlanViewSelfTest()
 	SelfTestSteps.Add(Shot(TEXT("plan_view.png")));
 	SelfTestSteps.Add(Wait(0.3f));
 	// Picking it up again: the message says it is already in the plan, and where.
-	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Aufheben")));
+	SelfTestSteps.Add(Choose(TEXT("statue"), TEXT("Mitnehmen")));
 	SelfTestSteps.Add([this, Expect]()
 	{
 		bool bProblem = false;

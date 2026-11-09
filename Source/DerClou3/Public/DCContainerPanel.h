@@ -36,7 +36,13 @@ public:
 	void OpenFind(ADCCrewCharacter* InCrew, ADCItemPickup* InPickup, TFunction<void()> InOnContinue);
 	bool IsFindMode() const { return bFindMode && IsOpen(); }
 	/** Takes everything of value that still fits, most valuable first (button; self-tests). */
-	void TakeAllValuable();
+	/** Takes everything of value that fits (most value per cell first). True if nothing was left for lack of room. */
+	bool TakeAllValuable();
+	/**
+	 * "Nach Wertvollem durchsuchen" without the player: packs the valuables if all of them fit and nothing else was
+	 * found (papers, tools, big pieces). False: the player has to decide (what fitted is packed already).
+	 */
+	bool DecideAlone();
 	/** "Weiter": the decision is made. */
 	void ContinueFind();
 	/** A move made while deciding (also one in the profile) costs this much play time. */

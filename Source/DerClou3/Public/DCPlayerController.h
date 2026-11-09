@@ -23,6 +23,8 @@ struct FDCWaitChoice;
 struct FDCPlanTask;
 struct FDCRadialOption;
 struct FDCTaskCheck;
+class UDCItem;
+enum class EDCItemAction : uint8;
 enum class EDCPlanMode : uint8;
 class UDCRadialMenu;
 
@@ -152,7 +154,16 @@ private:
 	/** Tells the camera where the selected crew member is (planning: where their plan has got to). */
 	void UpdateCameraFollow();
 	void OpenDoorMenu(ADCDoor* Door);
-	void OpenPickupMenu(ADCItemPickup* Pickup);
+	/** bSameSpot: in place of the ring that is open (back from a second ring). */
+	void OpenPickupMenu(ADCItemPickup* Pickup, bool bSameSpot = false);
+	/** Second ring "… öffnen mit": lock picks, crowbar, glass, as possible; bThenSearch: each choice also plans the search. */
+	void OpenOpenWithMenu(ADCItemPickup* Pickup, bool bThenSearch);
+	/** "schon im Plan: Vic nimmt es in Schritt 2" if the plan takes the thing away before (empty otherwise). */
+	FText GoneInPlanReason(const ADCItemPickup* Pickup) const;
+	/** Locked / smashed as the plan leaves it (planning) or as it is. */
+	void GetPlannedItemState(const ADCItemPickup* Pickup, const UDCItem* Item, bool& bOutLocked, bool& bOutDestroyed) const;
+	/** Can the selected crew member do this (planning: with what they carry once their plan so far has run)? */
+	FDCTaskCheck CheckPickupAction(const ADCItemPickup* Pickup, const UDCItem* Item, EDCItemAction Action) const;
 	EDCPlanMode GetMode() const;
 	/** Planning: add to the selected crew member's plan. Direct: do it now. */
 	void IssueTask(const FDCPlanTask& Task);
@@ -210,6 +221,8 @@ private:
 	void StartSecretDoorSelfTest();
 	/** -DCSelfTest=Trail (map L_Villa01): footprints and signs of the plan, clicking a sign, the camera following. */
 	void StartTrailSelfTest();
+	/** -DCSelfTest=Search (map L_Room01): search everything, the ring "… öffnen mit", packing valuables without a stop. */
+	void StartSearchSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */

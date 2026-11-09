@@ -738,6 +738,13 @@ TSharedRef<SWidget> UDCMenuWidget::MakeOptionsPage()
 				MenuChoice({ LOCTEXT("InsertPicked", "hinter Gewähltem"), LOCTEXT("InsertButton", "nur per Knopf") }, P.bInsertOnlyWithButton ? 1 : 0,
 					[Edit](int32 Index) { Edit([Index](FDCOptionValues& Values) { Values.bInsertOnlyWithButton = Index == 1; }); }),
 				LOCTEXT("InsertSentence", "Neue Schritte kommen sofort hinter den gewählten Schritt – oder erst nach „+ danach einfügen“."))
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			MenuOptionRow(LOCTEXT("Finds", "Funde"),
+				MenuChoice({ LOCTEXT("FindsAlone", "selbst einpacken"), LOCTEXT("FindsAsk", "immer fragen") }, P.bPauseOnEveryFind ? 1 : 0,
+					[Edit](int32 Index) { Edit([Index](FDCOptionValues& Values) { Values.bPauseOnEveryFind = Index == 1; }); }),
+				LOCTEXT("FindsSentence", "Beim Einbruch packt die Figur Wertvolles selbst ein und fragt nur, wenn nicht alles passt oder etwas anderes dabei ist – oder das Spiel hält bei jedem Fund an."))
 		];
 
 	const bool bChanged = PendingOptions != DCOptions::GetCurrent(GetOwningPlayer());

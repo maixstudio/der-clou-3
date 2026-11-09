@@ -693,9 +693,26 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     wartet auf Vics Schritt 1. Prüft Fußspuren, Schild „1 knacken“ mit `lock-pick`, Rosas leise Schilder, Türschild,
     Klick auf Rosas Schild, Kamera folgt/frei/wieder, rotes Schild ohne Vics Knacken, Vorschau. Bilder
     `trail_vic/rosa/problem/preview.png`.
-- **Konzept 2026-11-09:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Bauschritte 1–2 gebaut (Schritt 38). Offen:
-  3 jeder Gegenstand durchsuchbar mit zweitem Ring „Öffnen mit …“, 4–5 Gepäck (Platz + Gewicht) statt Hände/Taschen/
-  Raster, 6 Kleidung extra (Zeugen, Spuren). Ersetzt „Professioneller Look, Schritt 6“. Offene Fragen am Ende der Datei.
+- **Durchsuchen für alles, „Öffnen mit …“, Funde selbst einpacken (Schritt 39, 2026-11-09 = Bauschritt 3 des Konzepts):**
+  - Gegenstands-Menü (`OpenPickupMenu(Pickup, bSameSpot)`): „Durchsuchen“ bei jedem Möbelstück und Behälter, auch leer
+  (Bedingung: Behälter, Inhalt, groß oder fest eingebaut – kleine lose Dinge haben nur „Mitnehmen“), „ca. 3 s · Inhalt
+  unbekannt“. Ist es oder ein Einbauteil versperrt, öffnet „Durchsuchen“ den zweiten Ring „Schublade öffnen mit …“
+  (`OpenOpenWithMenu(Pickup, bThenSearch)`): „mit Dietrich-Set knacken“, „mit Brecheisen aufbrechen“ (ausgegraut mit Grund,
+  wenn nicht aufzubrechen), „Glas einschlagen“, „ohne Schublade durchsuchen“, „zurück“; eine Wahl legt Öffnen + Durchsuchen
+  an. „Öffnen mit …“ im ersten Ring legt nur das Öffnen an. „Aufheben“ heißt jetzt „Mitnehmen“ (Menü, Schild, Schrittname).
+  - Hilfen: `GoneInPlanReason`, `GetPlannedItemState`, `CheckPickupAction`. Radialmenü: `OpenSub` baut einen Ring an derselben
+  Stelle im nächsten Tick (nie im eigenen Klick), `ChooseOption` baut ihn sofort, `HasOption` für Tests; Titelfeld 260 breit.
+  - Verstecke: Sessel und Esstisch 2×1, Stuhl 1×1 (klein).
+  - Einbruch: Findet jemand etwas, packt die Figur Wertvolles selbst ein, das Wertvollste pro Feld zuerst
+  (`UDCContainerPanel::DecideAlone`, `TakeAllValuable` gibt zurück, ob alles passte). Das Spiel hält nur an, wenn nicht alles
+  passt oder etwas ohne Wert oder Großes dabei ist – oder immer mit Optionen › Planung › Funde „immer fragen“
+  (`UDCPlanSubsystem::bPauseOnEveryFind`, GameUserSettings `PauseOnEveryFind`, `-DCVariant=FindPause`). Der Find-Test setzt
+  ihn. `Select` schließt ein Fund-Fenster nicht mehr.
+  - Noch nicht: Türen mit demselben Ring (wartet auf die Frage „Türen aufhebeln?“), eigene Methodenliste im Katalog.
+  - Selbsttest `-DCSelfTest=Search` (L_Room01): Sessel, kleines loses Ding, Schreibtisch-Ring, Tresor für Vic, Vitrine mit
+    „zurück“, Rosa knackt und räumt den Tresor ohne Pause aus. Bilder `search_desk_ring/safe_vic/packed.png`.
+- **Konzept 2026-11-09:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Bauschritte 1–3 gebaut (Schritte 38–39). Offen:
+  4–5 Gepäck (Platz + Gewicht) statt Hände/Taschen/Raster, 6 Kleidung extra (Zeugen, Spuren). Offene Fragen am Ende der Datei.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -729,11 +746,12 @@ Ziehen mit Bild mit der echten Maus.
 Neu (Schritt 35): die Zeitleiste – Schraffur, Pfeile und Zeitmarke; lesbar genug, Streifen zu stark oder zu schwach?
 Neu (Schritt 38): Kamera folgt (ruhige Mitte groß genug?), Fußspuren und Schilder im Raum (Größe, Farben, Ausweichen,
 Maus-Kasten, Klick), die drei selbst gezeichneten Icons.
+Neu (Schritt 39): zweiter Ring „… öffnen mit“, „Durchsuchen“ bei allem, Funde selbst einpacken (oder Option „immer fragen“).
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
   `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab), `SecretDoor` (L_Villa01),
-  `CrewLook` (L_Room01, Rosas Modell und Animationen von nah), `Trail` (L_Villa01, Fußspuren, Schilder, Kamera).
+  `CrewLook` (L_Room01, Rosas Modell und Animationen von nah), `Trail` (L_Villa01, Fußspuren, Schilder, Kamera), `Search` (L_Room01, Durchsuchen und „Öffnen mit …“).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**

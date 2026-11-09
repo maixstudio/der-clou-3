@@ -42,6 +42,13 @@ class DERCLOU3_API UDCRadialMenu : public UUserWidget
 
 public:
 	void Open(const FText& Title, TArray<FDCRadialOption> Options);
+	/**
+	 * Another ring at the same spot, e.g. "Schublade öffnen mit …" from an entry of this one. Built on the next tick
+	 * (an entry's click must never clear the menu it belongs to); counts as open right away.
+	 */
+	void OpenSub(const FText& Title, TArray<FDCRadialOption> Options);
+	/** Self-tests: the open menu has an entry whose label contains the text; bOutEnabled: whether it is possible. */
+	bool HasOption(const FString& LabelPart, bool* bOutEnabled = nullptr) const;
 	void Close();
 	bool IsOpen() const { return bOpen; }
 	/** The title of the menu opened last ("Hintertür · verschlossen\nplant: Vic"). */
@@ -64,4 +71,12 @@ private:
 	TArray<FDCRadialOption> Current;
 	/** Clearing waits for the next tick, never inside one of the menu's own click handlers. */
 	bool bClearPending = false;
+	/** Puts the title and the options round Centre (clears what was there). */
+	void Build(const FText& Title, TArray<FDCRadialOption> Options, const FVector2D& Centre);
+	/** Where the last ring stood (local units), for OpenSub. */
+	FVector2D LastCentre = FVector2D::ZeroVector;
+	/** A ring OpenSub asked for, built on the next tick. */
+	bool bSubPending = false;
+	FText PendingTitle;
+	TArray<FDCRadialOption> PendingOptions;
 };

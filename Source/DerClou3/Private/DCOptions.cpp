@@ -75,6 +75,7 @@ FDCOptionValues DCOptions::GetCurrent(const UObject* WorldContext)
 		Values.bGhostAsPin = Plans->bGhostAsPin;
 		Values.bHelpAsMenu = Plans->bHelpAsMenu;
 		Values.bInsertOnlyWithButton = Plans->bInsertOnlyWithButton;
+		Values.bPauseOnEveryFind = Plans->bPauseOnEveryFind;
 	}
 	return Values;
 }
@@ -110,6 +111,7 @@ void DCOptions::Apply(const UObject* WorldContext, const FDCOptionValues& Values
 		Plans->bGhostAsPin = Values.bGhostAsPin;
 		Plans->bHelpAsMenu = Values.bHelpAsMenu;
 		Plans->bInsertOnlyWithButton = Values.bInsertOnlyWithButton;
+		Plans->bPauseOnEveryFind = Values.bPauseOnEveryFind;
 		Plans->SaveVariants();
 	}
 	if (UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(WorldContext))

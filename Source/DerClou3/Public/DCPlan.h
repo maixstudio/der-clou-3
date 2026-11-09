@@ -203,8 +203,10 @@ public:
 	bool bGhostAsPin = false;
 	/** ... the help after a click that makes the plan hang as a menu at the mouse instead of a bar ... */
 	bool bHelpAsMenu = false;
-	/** ... new steps after the picked one only after "+ danach einfügen" (instead of right away). */
+	/** ... new steps after the picked one only after "+ danach einfügen" (instead of right away) ... */
 	bool bInsertOnlyWithButton = false;
+	/** ... and during the heist, every find stops the game (instead of packing valuables alone; -DCVariant=FindPause). */
+	bool bPauseOnEveryFind = false;
 	void SaveVariants() const;
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;

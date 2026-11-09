@@ -15,11 +15,13 @@ struct FDCOptionValues
 	bool bGhostAsPin = false;
 	bool bHelpAsMenu = false;
 	bool bInsertOnlyWithButton = false;
+	bool bPauseOnEveryFind = false;
 
 	bool operator==(const FDCOptionValues& Other) const
 	{
 		return Quality == Other.Quality && WindowMode == Other.WindowMode && Resolution == Other.Resolution && CameraSpeed == Other.CameraSpeed
-			&& bGhostAsPin == Other.bGhostAsPin && bHelpAsMenu == Other.bHelpAsMenu && bInsertOnlyWithButton == Other.bInsertOnlyWithButton;
+			&& bGhostAsPin == Other.bGhostAsPin && bHelpAsMenu == Other.bHelpAsMenu && bInsertOnlyWithButton == Other.bInsertOnlyWithButton
+			&& bPauseOnEveryFind == Other.bPauseOnEveryFind;
 	}
 	bool operator!=(const FDCOptionValues& Other) const { return !(*this == Other); }
 };

@@ -22,7 +22,7 @@ namespace
 	const FVector2D ButtonSize(170.0, 44.0);
 	const FVector2D DetailButtonSize(260.0, 56.0);
 	const FLinearColor DetailColor(0.4851f, 0.5089f, 0.5457f); // #B8BCC3
-	const FVector2D TitleSize(220.0, 50.0);
+	const FVector2D TitleSize(260.0, 50.0);
 
 	FSlateFontInfo RadialFont(int32 Size, bool bBold)
 	{
@@ -75,9 +75,36 @@ void UDCRadialMenu::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 		Canvas->ClearChildren();
 		bClearPending = false;
 	}
+	if (bSubPending)
+	{
+		bSubPending = false;
+		Build(PendingTitle, MoveTemp(PendingOptions), LastCentre);
+	}
 }
 
 void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
+{
+	bSubPending = false;
+	const FVector2D Centre = bOpenAtCentreForTests ? FVector2D(LastGeometry.GetLocalSize()) * 0.5
+		: LastGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
+	Build(Title, MoveTemp(Options), Centre);
+}
+
+void UDCRadialMenu::OpenSub(const FText& Title, TArray<FDCRadialOption> Options)
+{
+	if (Options.IsEmpty())
+	{
+		return;
+	}
+	ShownTitle = Title;
+	Current = Options;
+	PendingTitle = Title;
+	PendingOptions = MoveTemp(Options);
+	bSubPending = true;
+	bOpen = true;
+}
+
+void UDCRadialMenu::Build(const FText& Title, TArray<FDCRadialOption> Options, const FVector2D& Centre)
 {
 	ShownTitle = Title;
 	if (!Canvas.IsValid() || Options.IsEmpty())
@@ -88,9 +115,7 @@ void UDCRadialMenu::Open(const FText& Title, TArray<FDCRadialOption> Options)
 	bClearPending = false;
 	bOpen = true;
 	Current = Options;
-
-	const FVector2D Centre = bOpenAtCentreForTests ? FVector2D(LastGeometry.GetLocalSize()) * 0.5
-		: LastGeometry.AbsoluteToLocal(FSlateApplication::Get().GetCursorPos());
+	LastCentre = Centre;
 
 	// The title has the object on the first line and who plans on the second ("Wandtresor" / "plant: Rosa").
 	const FString FullTitle = Title.ToString();
@@ -200,6 +225,12 @@ bool UDCRadialMenu::ChooseOption(const FString& LabelPart)
 			const TFunction<void()> Selected = Option.OnSelected;
 			Close();
 			Selected();
+			// Not inside a click of the menu: a ring the entry opens can be built at once.
+			if (bSubPending)
+			{
+				bSubPending = false;
+				Build(PendingTitle, MoveTemp(PendingOptions), LastCentre);
+			}
 			return true;
 		}
 	}
@@ -210,4 +241,21 @@ void UDCRadialMenu::Close()
 {
 	bClearPending = bClearPending || bOpen;
 	bOpen = false;
+	bSubPending = false;
+}
+
+bool UDCRadialMenu::HasOption(const FString& LabelPart, bool* bOutEnabled) const
+{
+	for (const FDCRadialOption& Option : Current)
+	{
+		if (bOpen && Option.Label.ToString().Contains(LabelPart))
+		{
+			if (bOutEnabled)
+			{
+				*bOutEnabled = Option.bEnabled;
+			}
+			return true;
+		}
+	}
+	return false;
 }

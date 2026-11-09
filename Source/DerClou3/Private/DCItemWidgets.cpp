@@ -635,7 +635,7 @@ namespace DCItemWidgets
 		case EDCPlanTaskType::Signal:
 			return LOCTEXT("VerbSignal", "Zeichen");
 		case EDCPlanTaskType::PickUp:
-			return LOCTEXT("VerbPickUp", "aufheben");
+			return LOCTEXT("VerbPickUp", "mitnehmen");
 		case EDCPlanTaskType::Loot:
 			return LOCTEXT("VerbLoot", "durchsuchen");
 		case EDCPlanTaskType::Drop:

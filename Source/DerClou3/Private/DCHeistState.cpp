@@ -879,7 +879,7 @@ FText UDCHeistStateSubsystem::DescribeTask(const FDCPlanTask& Task) const
 		}
 		if (Task.Type == EDCPlanTaskType::PickUp)
 		{
-			return FText::Format(LOCTEXT("PickUp", "{0} aufheben"), Name);
+			return FText::Format(LOCTEXT("PickUp", "{0} mitnehmen"), Name);
 		}
 		if (Task.Type == EDCPlanTaskType::Loot)
 		{

@@ -23,6 +23,7 @@ void UDCPlanSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		GConfig->GetBool(PlanVariantSection, TEXT("GhostAsPin"), bGhostAsPin, GGameUserSettingsIni);
 		GConfig->GetBool(PlanVariantSection, TEXT("HelpAsMenu"), bHelpAsMenu, GGameUserSettingsIni);
 		GConfig->GetBool(PlanVariantSection, TEXT("InsertOnlyWithButton"), bInsertOnlyWithButton, GGameUserSettingsIni);
+		GConfig->GetBool(PlanVariantSection, TEXT("PauseOnEveryFind"), bPauseOnEveryFind, GGameUserSettingsIni);
 	}
 	FString Variant;
 	if (FParse::Value(FCommandLine::Get(), TEXT("DCVariant="), Variant))
@@ -30,6 +31,7 @@ void UDCPlanSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		bGhostAsPin = Variant.Contains(TEXT("GhostPin"));
 		bHelpAsMenu = Variant.Contains(TEXT("HelpMenu"));
 		bInsertOnlyWithButton = Variant.Contains(TEXT("InsertButton"));
+		bPauseOnEveryFind = Variant.Contains(TEXT("FindPause"));
 	}
 }
 
@@ -42,6 +44,7 @@ void UDCPlanSubsystem::SaveVariants() const
 		GConfig->SetBool(PlanVariantSection, TEXT("GhostAsPin"), bGhostAsPin, GGameUserSettingsIni);
 		GConfig->SetBool(PlanVariantSection, TEXT("HelpAsMenu"), bHelpAsMenu, GGameUserSettingsIni);
 		GConfig->SetBool(PlanVariantSection, TEXT("InsertOnlyWithButton"), bInsertOnlyWithButton, GGameUserSettingsIni);
+		GConfig->SetBool(PlanVariantSection, TEXT("PauseOnEveryFind"), bPauseOnEveryFind, GGameUserSettingsIni);
 		GConfig->Flush(false, GGameUserSettingsIni);
 	}
 }
