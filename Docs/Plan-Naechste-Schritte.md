@@ -3,6 +3,11 @@
 Stand 2026-11-07, mit dem User abgestimmt. Grundlage für die nächsten Sitzungen. Vor dem Bauen jeden
 Schritt kurz mit dem User besprechen, wenn eine Spielregel offen ist (siehe „Offen“).
 
+> **Neu 2026-11-09 (Vorschlag, noch nicht bestätigt):** `Konzept-Wege-Durchsuchen-Gepaeck.md` – Wege als
+> Fußspuren mit Schildern, Kamera folgt der Figur, jeder Gegenstand durchsuchbar mit „Öffnen mit …“, und ein
+> **Gepäck ohne Hände und Raster** (Kleidung extra). Wird es bestätigt, ersetzt es das Raster-Inventar (Schritt 1)
+> und „Wohin damit?“ (Schritt 2).
+
 ## Entscheidungen des Users
 
 | Thema | Entscheidung |

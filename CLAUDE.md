@@ -627,6 +627,10 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=SecretDoor` (L_Villa01): Rosa steht in der Bibliothek, geht durch die Geheimtür und hebt das
     Gemälde auf. Er prüft das NavMesh an der Tür vor und nach dem Öffnen und macht Bilder mit `show Navigation`
     (`secret_door_closed/open.png`). Replay des User-Plans: 17 von 17 Schritten, 41,2 s gespielt (43,7 s geplant).
+- **Vorschlag 2026-11-09, wartet auf den User:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Fußspuren in
+  Crew-Farbe statt Linien, Schilder mit Nummer + Tätigkeits-Icon, Kamera folgt der gewählten Figur, jeder Gegenstand
+  durchsuchbar mit zweitem Ring „Öffnen mit …“, Gepäck (Platz + Gewicht) statt Hände/Taschen/Raster, Kleidung
+  extra (Zeugen, Spuren). Ersetzt „Professioneller Look, Schritt 6“. Offene Fragen stehen am Ende der Datei.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
