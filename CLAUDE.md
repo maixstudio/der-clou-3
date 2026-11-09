@@ -510,17 +510,20 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Oben: Ohr vor „Nachbar: Misstrauen“ (färbt sich mit), Sirene im Alarm, Lautsprecher vor dem Lärm; Ebene mit Ebenen-Icon
     und Pfeilknöpfen, „Menü“ mit Icon. Info und Durchsuchen/Fund mit Icon im Titel und x zum Schließen, Warten-Dialog mit
     Sanduhr.
-- **Professioneller Look, Schritt 3 von 6: Porträts (Schritt 31, 2026-11-09)** – Gerüst fertig, Bilder fehlen noch:
+- **Professioneller Look, Schritt 3 von 6: Porträts (Schritt 31, 2026-11-09)** – Vic und Rosa sind drin (vom User mit der
+  Bild-KI erzeugt, Originale `Art/Portraits/vic.webp`, `rosa.webp`, 1086 × 1448; Kurt fehlt noch):
   - Prompts für die Bild-KI (Stil-Block + je Figur, Vic zuerst, dann als Referenzbild für Rosa/Kurt):
     `Docs/UI-Mockup/Portraet-Prompts.md`. Das Spiel spielt heute, also zeitlose Kleidung statt der 1920er aus dem Mockup.
   - Ablauf: Originale nach `Art/Portraits/<name>.png|jpg|webp`, dann `python Scripts/Tools/prepare_portraits.py`
-    (3:4, 132 × 176) → `Content/Slate/Portraits/<name>.png`. Geladen zur Laufzeit wie Icons und Schriften.
+    (3:4, dann 75 % Ausschnitt um das Gesicht – `ZOOM`, `FOCUS_X`, `TOP` oben im Skript –, 132 × 176)
+    → `Content/Slate/Portraits/<name>.png`. Geladen zur Laufzeit wie Icons und Schriften.
   - `DCItemWidgets::Portrait(CrewName)` (`FSlateDynamicImageBrush` – ein normaler `FSlateImageBrush` aus einer Datei wird
     nur in registrierten Styles geladen und bleibt sonst weiß; schneidet andere Seitenverhältnisse per UV auf 3:4),
     `MakePortrait(Name, Farbe, Breite)` (Messingrahmen; ohne Bild Initiale in der Crew-Farbe auf dunklem Grund).
   - Profilkarte: Porträt 66 × 88 statt des 52er-Quadrats. Profil rechts: Porträt 60 × 80 links, daneben Titel, darunter
     Umschalter „Jetzt | Nach dem Plan“, darunter die Zusammenfassung (sonst wurde „PROFIL – ROSA“ gekürzt).
-  - Mit Platzhalterbildern geprüft (Villa, Signals, PlanHelp bestanden), danach wieder entfernt.
+  - Erst mit Platzhalterbildern, dann mit den echten Bildern geprüft (Villa, Signals, PlanHelp bestanden, Screenshots
+    `crew_profile.png`, `villa_plan.png`, `planhelp_bar.png`).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -548,7 +551,7 @@ Fenstermodus (im Selbsttest nicht umgeschaltet) und das Namensfeld beim Speicher
 Neu (Schritt 29): der neue Look im Ganzen, also Schriften, Farben, Rahmen, Knöpfe und Hover-Zustände mit der Maus
 (die Selbsttests zeigen nur Standbilder).
 Neu (Schritt 30): die Icons – passen sie, sind sie groß genug, fehlt irgendwo eins oder ist eins zu viel?
-Neu (Schritt 31): die Porträts, sobald der User sie erzeugt hat – Stil, Zuschnitt, Größe auf Karte und Profil.
+Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf Karte und Profil.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),

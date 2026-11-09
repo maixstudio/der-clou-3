@@ -177,8 +177,9 @@ Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
 
 **Porträts** – gemalt, Kopf und Schultern, dunkler Hintergrund, warmes Licht von links, kühles von rechts; heute
 spielend, zeitlose dunkle Kleidung. Prompts und Ablauf: `Docs/UI-Mockup/Portraet-Prompts.md`.
-- Originale in `Art/Portraits/<name>.png|jpg|webp`, `python Scripts/Tools/prepare_portraits.py` schneidet auf 3:4
-  und schreibt 132 × 176 nach `Content/Slate/Portraits/<name>.png` (Name der Figur in Kleinbuchstaben).
+- Originale in `Art/Portraits/<name>.png|jpg|webp`, `python Scripts/Tools/prepare_portraits.py` schneidet auf 3:4,
+  geht auf 75 % ans Gesicht heran (auf der Karte ist es sonst zu klein) und schreibt 132 × 176 nach
+  `Content/Slate/Portraits/<name>.png` (Name der Figur in Kleinbuchstaben).
 - Das Spiel lädt sie zur Laufzeit (`DCItemWidgets::Portrait`, `MakePortrait`, dynamischer Slate-Pinsel; andere
   Seitenverhältnisse schneidet es selbst zu: Mitte bei breiten, oberer Teil bei hohen Bildern).
 
