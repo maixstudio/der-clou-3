@@ -95,7 +95,7 @@ gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neu
 | Beute / Wert | `LootColor` | #EDC35B Gold | nur Beute-Namen und €-Werte, nie Rahmen oder Knöpfe |
 | Problem | `MessageColor`, `LockedColor`, `StepBlockedColor` | #EE6A5D | „geht nicht“, versperrt, Ablehnung, Alarm – immer mit Wort/Symbol |
 | Passt / erledigt | `OkColor`, `AcceptColor`, `DoneColor` | #7BC47F | Ablage erlaubt, Schritt erledigt, „Plan geht auf“ |
-| Wartet | `WaitBlockColor` | grau | Wartezeit in der Zeitleiste |
+| Wartet | `WaitGroundColor` + `WaitStripeColor` (DCTimelinePanel.cpp) | #424449, Streifen #B8BCC3 | Wartezeit in der Zeitleiste, grau schraffiert |
 | **Abstimmung** | `CoordinationColor` | #45D6DE Cyan | Warten auf …, Signal, Abhängigkeitspfeile, Geplantes |
 | Lärmskala | `UDCNoiseSubsystem::ColorFor` | nur Lärmring und Lärmanzeige |
 | Crew-Farben | `Crew->Color` | nur Identität (Kartenstreifen, Spur, Marker). Keine reservierten Töne (Gelb, Rot, Grün, Cyan, Grau) |
@@ -115,6 +115,9 @@ gammakorrekt), der Kommentar daneben nennt den sRGB-Hex-Wert aus dem Mockup. Neu
 - Großbuchstaben immer mit `Upper(Text)` (auch als Attribut), **nie** mit `.TransformPolicy(ETextTransformPolicy::ToUpper)`:
   „ß“ wird zu „SS“, dann stimmt die Textlänge in Slate nicht mehr (Ensure in `TextLayout.cpp`, Absturzbericht, Ruckler).
 - `MakeSegments` – Umschalter aus Segmenten („Jetzt | Nach dem Plan“), das aktive in Bernstein.
+- `MakePainter(Funktion)` – ein Widget, das nur zeichnet (Linien, Pfeile; `FSlateDrawElement`), ohne Klicks.
+  `PaintHatch` / `MakeHatch(Grund, Streifen)` – schräge Streifen „/“, an der Bildschirmposition ausgerichtet, damit
+  nebeneinanderliegende Flächen das Muster fortsetzen. Bedeutung: *hier steht jemand / passiert nichts*.
 
 **Knöpfe**
 - Drei Stufen: *Haupt* (`PrimaryButtonStyle`, gefüllt `TitleColor`, dunkler Text, eine pro Bereich), *Normal*
@@ -169,6 +172,18 @@ Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
   gewählten Zeile oder im Tooltip. Feste Spalten, Zeiten gleich breit.
 - Lange Namen mit „…“ kürzen und im Tooltip voll zeigen – nie hart abschneiden.
 - Leerer Zustand: ein Satz mit der nächsten Handlung („Boden, Tür oder Gegenstand anklicken.“).
+
+**Zeitleiste** (`UDCTimelinePanel::RebuildTracks`) – wie im Mockup, eine Spur je Figur.
+- Lineal wie ein Maßband: Haarlinie unten, Strich je Sekunde (wenn Platz ist), längerer Strich und Zeit darüber alle 5 s
+  (bei langen Plänen 10, 15, 30 s – Zeiten mindestens 46 Einheiten auseinander).
+- Links ein Farbbalken in der Crew-Farbe und der Name (Vic, Rosa); die gewählte Figur hell mit schwacher Linie um ihre Spur.
+- Spur: schwach schraffiert, wo nichts geplant ist. Gehen = Crew-Farbe gedämpft, Arbeiten = Crew-Farbe kräftig mit Nummer
+  (fett) und – ab 80 Einheiten – Name des Schritts, Warten = graue Schraffur mit „wartet“ auf einer Lücke in den
+  Streifen, geht nicht = rot mit „geht nicht“, Zeichen = Cyan.
+- Wer auf wen wartet: Pfeil in Cyan vom Rand des Schritts, der den Weg frei macht (Punkt in dessen Crew-Farbe), zum
+  Anfang des wartenden Schritts.
+- Zeitmarke: Linie durch alle Spuren und darüber ein Reiter mit der Zeit („0:21“) – Bernstein für die Vorschau in der
+  Planung, Weiß beim Abspielen.
 
 **Profilkarten** – pro Figur eine, feste Reihenfolge, Taste 1–n auf der Karte.
 - Farbstreifen links (Crew-Farbe = Identität), Porträt 66 × 88 im Messingrahmen (ohne Bild: Initiale in der

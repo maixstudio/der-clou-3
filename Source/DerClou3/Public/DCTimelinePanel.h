@@ -19,10 +19,10 @@ struct FPointerEvent;
  * wait for whom ("wartet 10 s – bis Vic mit „Hintertür knacken“ fertig ist"). Steps can be moved
  * and deleted there; below the title it says what the hands hold once the plan has run.
  *
- * Right: the timeline of all crew members (pale = walking, grey = waiting, strong = working,
- * red = will not happen), with lines from the step someone waits for to the one who waits.
- * Clicking or dragging in it sets a preview time: pins in the room show where everyone is then
- * and what they do.
+ * Right: the timeline of all crew members (pale = walking, grey stripes = waiting, strong = working,
+ * red = will not happen, faint stripes = nothing planned), with cyan arrows from the step someone
+ * waits for to the one who waits. Clicking or dragging in it sets a preview time: pins in the room
+ * show where everyone is then and what they do; the time marker shows it on a tab ("0:21").
  */
 UCLASS()
 class DERCLOU3_API UDCTimelinePanel : public UUserWidget

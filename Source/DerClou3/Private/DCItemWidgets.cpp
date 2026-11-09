@@ -25,6 +25,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SCanvas.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/SLeafWidget.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -286,6 +287,81 @@ namespace DCItemWidgets
 			[
 				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bDim ? BrassDimColor : BrassColor).Padding(0.f)
 			];
+	}
+
+	namespace
+	{
+		/** Draws what its function draws; no size of its own, no input. */
+		class SDCPainter : public SLeafWidget
+		{
+		public:
+			SLATE_BEGIN_ARGS(SDCPainter) {}
+			SLATE_END_ARGS()
+
+			void Construct(const FArguments&, FDCPaintFunction InPaint)
+			{
+				Paint = MoveTemp(InPaint);
+				SetVisibility(EVisibility::HitTestInvisible);
+			}
+
+			virtual int32 OnPaint(const FPaintArgs&, const FGeometry& AllottedGeometry, const FSlateRect&, FSlateWindowElementList& OutDrawElements,
+				int32 LayerId, const FWidgetStyle&, bool) const override
+			{
+				return Paint ? FMath::Max(LayerId, Paint(AllottedGeometry, OutDrawElements, LayerId)) : LayerId;
+			}
+
+			virtual FVector2D ComputeDesiredSize(float) const override
+			{
+				return FVector2D::ZeroVector;
+			}
+
+		private:
+			FDCPaintFunction Paint;
+		};
+	}
+
+	TSharedRef<SWidget> MakePainter(FDCPaintFunction Paint)
+	{
+		return SNew(SDCPainter, MoveTemp(Paint));
+	}
+
+	int32 PaintHatch(const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer, const FLinearColor& Ground, const FLinearColor& Stripe,
+		float Spacing, float Thickness)
+	{
+		const FVector2f Size(Geometry.GetLocalSize());
+		if (Size.X <= 0.f || Size.Y <= 0.f || Spacing <= 1.f)
+		{
+			return Layer;
+		}
+		if (Ground.A > 0.f)
+		{
+			FSlateDrawElement::MakeBox(Out, Layer, Geometry.ToPaintGeometry(), RoundBrush(), ESlateDrawEffect::None, Ground);
+		}
+		if (Stripe.A <= 0.f)
+		{
+			return Layer;
+		}
+		Out.PushClip(FSlateClippingZone(Geometry));
+		// "/" lines, phase taken from the screen position so neighbouring boxes continue the same pattern.
+		const FVector2f Origin = FVector2f(Geometry.GetAbsolutePosition()) / FMath::Max(0.01f, Geometry.Scale);
+		const float Phase = FMath::Fmod(Origin.X + Origin.Y, Spacing);
+		for (float X = -Size.Y - Phase; X < Size.X + Spacing; X += Spacing)
+		{
+			TArray<FVector2f> Points;
+			Points.Add(FVector2f(X, Size.Y));
+			Points.Add(FVector2f(X + Size.Y, 0.f));
+			FSlateDrawElement::MakeLines(Out, Layer + 1, Geometry.ToPaintGeometry(), MoveTemp(Points), ESlateDrawEffect::None, Stripe, true, Thickness);
+		}
+		Out.PopClip();
+		return Layer + 1;
+	}
+
+	TSharedRef<SWidget> MakeHatch(const TAttribute<FLinearColor>& Ground, const TAttribute<FLinearColor>& Stripe, float Spacing, float Thickness)
+	{
+		return MakePainter([Ground, Stripe, Spacing, Thickness](const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer)
+		{
+			return PaintHatch(Geometry, Out, Layer, Ground.Get(), Stripe.Get(), Spacing, Thickness);
+		});
 	}
 
 	TSharedRef<SWidget> MakeSectionTitle(const FText& Text)

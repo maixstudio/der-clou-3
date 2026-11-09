@@ -34,13 +34,24 @@ namespace
 	constexpr float PanelFixedWidth = ListWidth + 14.f + NameWidth + 28.f;
 	/** Messages appear this far above the bottom edge, just over the bar. */
 	constexpr float ToastBottom = UDCFrame::BottomHeight + 12.f;
-	constexpr float RulerHeight = 16.f;
+	/** Times on top, the measuring marks below them. */
+	constexpr float RulerHeight = 24.f;
+	constexpr float RulerLabelWidth = 44.f;
+	/** Times on the ruler are at least this far apart. */
+	constexpr float RulerLabelSpacing = 46.f;
+	/** The tab with the time on top of the time marker. */
+	constexpr float MarkerLabelWidth = 38.f;
 	constexpr float RowHeight = 24.f;
-	constexpr float RowPitch = 30.f;
+	/** Room between the lanes for the arrows of who waits for whom. */
+	constexpr float RowPitch = 32.f;
 	constexpr float MinVisibleSeconds = 30.f;
 	// Linear values, sRGB hex of the mockup palette in the comments (see Docs/UI-Leitfaden.md).
-	const FLinearColor WaitBlockColor(0.0908f, 0.0976f, 0.1144f);       // #55585F
 	const FLinearColor WaitTextColor(0.4851f, 0.5089f, 0.5457f);        // #B8BCC3
+	/** Waiting in the timeline: grey ground with lighter stripes. */
+	const FLinearColor WaitGroundColor(0.0545f, 0.0586f, 0.0686f);      // #424449
+	const FLinearColor WaitStripeColor(0.4851f, 0.5089f, 0.5457f, 0.32f); // #B8BCC3, faint
+	/** Faint stripes on the lanes: nothing planned there. */
+	const FLinearColor LaneStripeColor(1.f, 1.f, 1.f, 0.045f);
 	const FLinearColor StepBlockedColor(0.4793f, 0.0356f, 0.0242f);     // #B8352B
 	const FLinearColor StepBlockedTextColor(0.8550f, 0.1441f, 0.1095f); // #EE6A5D = MessageColor
 	const FLinearColor DoneColor(0.1981f, 0.5520f, 0.2122f);            // #7BC47F = OkColor
@@ -72,6 +83,29 @@ namespace
 	{
 		const UDCPlanSubsystem* Plans = Context ? UDCPlanSubsystem::Get(Context) : nullptr;
 		return Plans ? Plans->GetMode() : EDCPlanMode::Planning;
+	}
+
+	/**
+	 * Where the time marker of the timeline stands: the playback time while the plan runs, otherwise the preview time while
+	 * planning. False if there is none to show.
+	 */
+	bool GetMarkerTime(const UObject* Context, float& OutTime, bool& bOutRunning)
+	{
+		const UDCHeistStateSubsystem* Heist = Context ? UDCHeistStateSubsystem::Get(Context) : nullptr;
+		OutTime = 0.f;
+		bOutRunning = false;
+		if (!Heist)
+		{
+			return false;
+		}
+		if (Heist->IsPlaying())
+		{
+			OutTime = Heist->GetPlaybackTime();
+			bOutRunning = true;
+			return true;
+		}
+		OutTime = FMath::Max(0.f, Heist->GetPreviewTime());
+		return Heist->GetPreviewTime() >= 0.f && GetPlanMode(Context) == EDCPlanMode::Planning;
 	}
 
 	FLinearColor Dim(const FLinearColor& Color, float Factor, float Alpha = 1.f)
@@ -1185,21 +1219,49 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		})
 	];
 
-	// Ruler: a mark every 5 s, a number every 10 s.
-	for (int32 Second = 0; Second <= FMath::FloorToInt(VisibleSeconds); Second += 5)
+	// Ruler like a measuring tape: a hairline along the bottom, a short mark every second (when there is room), a longer one
+	// every 5 s and the time above every 5 s – or every 10, 15, 30 s when the plan is long and the marks get crowded.
+	int32 LabelEvery = 5;
+	for (const int32 Candidate : { 5, 10, 15, 30, 60 })
 	{
-		const bool bMajor = Second % 10 == 0;
-		Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale, bMajor ? 0.0 : 8.0)).Size(FVector2D(1.0, bMajor ? RulerHeight : 8.0))
-		[
-			SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(bMajor ? MutedColor : BrassDimColor).Visibility(EVisibility::HitTestInvisible)
-		];
-		if (bMajor)
+		LabelEvery = Candidate;
+		if (Candidate * Scale >= RulerLabelSpacing)
 		{
-			Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale + 3.0, 0.0)).Size(FVector2D(40.0, 14.0))
-			[
-				SNew(STextBlock).Text(FormatTime(static_cast<float>(Second))).Font(Font(11)).ColorAndOpacity(MutedColor).Visibility(EVisibility::HitTestInvisible)
-			];
+			break;
 		}
+	}
+	const int32 TickEvery = Scale >= 5.f ? 1 : Scale * 5.f >= 5.f ? 5 : LabelEvery;
+	const int32 LastSecond = FMath::FloorToInt(VisibleSeconds + 0.01f);
+	Canvas->AddSlot().Position(FVector2D(NameWidth, 0.0)).Size(FVector2D(TrackWidth, RulerHeight))
+	[
+		MakePainter([Scale, LastSecond, LabelEvery, TickEvery](const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer)
+		{
+			const float Bottom = RulerHeight - 1.5f;
+			const float Width = static_cast<float>(Geometry.GetLocalSize().X);
+			FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(), TArray<FVector2f>{ FVector2f(0.f, Bottom), FVector2f(Width, Bottom) },
+				ESlateDrawEffect::None, BrassDimColor, false, 1.f);
+			for (int32 Second = 0; Second <= LastSecond; Second += TickEvery)
+			{
+				const float X = FMath::Min(FMath::RoundToFloat(Second * Scale), Width - 1.f) + 0.5f;
+				const bool bLabel = Second % LabelEvery == 0;
+				const float Length = bLabel ? 7.f : Second % 5 == 0 ? 5.f : 3.f;
+				FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(), TArray<FVector2f>{ FVector2f(X, Bottom - Length), FVector2f(X, Bottom) },
+					ESlateDrawEffect::None, bLabel ? MutedColor : BrassDimColor, false, 1.f);
+			}
+			return Layer;
+		})
+	];
+	for (int32 Second = 0; Second <= LastSecond; Second += LabelEvery)
+	{
+		Canvas->AddSlot().Position(FVector2D(NameWidth + Second * Scale - RulerLabelWidth * 0.5f, 0.0)).Size(FVector2D(RulerLabelWidth, 14.0))
+		[
+			SNew(STextBlock)
+			.Text(FormatTime(static_cast<float>(Second)))
+			.Justification(ETextJustify::Center)
+			.Font(Font(10))
+			.ColorAndOpacity(MutedColor)
+			.Visibility(EVisibility::HitTestInvisible)
+		];
 	}
 
 	const auto RowTop = [](int32 Row) { return RulerHeight + Row * RowPitch; };
@@ -1211,19 +1273,38 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 		const ADCCrewCharacter* Member = State ? State->FindCrew(Crew.Crew) : nullptr;
 		const UDCPlanRunnerComponent* Runner = Member ? Member->GetPlanRunner() : nullptr;
 
+		// Name with a bar in the crew colour, as on the profile cards.
 		Canvas->AddSlot().Position(FVector2D(0.0, Top)).Size(FVector2D(NameWidth - 6.0, RowHeight))
 		[
-			SNew(SBox).VAlign(VAlign_Center).Visibility(EVisibility::HitTestInvisible)
+			SNew(SHorizontalBox)
+			.Visibility(EVisibility::HitTestInvisible)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 2.f, 7.f, 2.f))
+			[
+				SNew(SBox).WidthOverride(4.f)
+				[
+					SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.55f))
+				]
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(Upper(bSelectedRow ? FText::Format(LOCTEXT("SelectedName", "> {0}"), Crew.Name) : Crew.Name))
-				.Font(HeadFont(bSelectedRow ? 17 : 16))
+				.Text(Crew.Name)
+				.Font(Font(bSelectedRow ? 14 : 13, true))
 				.ColorAndOpacity(bSelectedRow ? Crew.Color : Dim(Crew.Color, 0.75f))
+				.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
 			]
 		];
+		// The lane: faint stripes wherever nothing is planned; the selected crew member's lane has an outline.
 		Canvas->AddSlot().Position(FVector2D(NameWidth, Top)).Size(FVector2D(TrackWidth, RowHeight))
 		[
-			SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor).Visibility(EVisibility::HitTestInvisible)
+			SNew(SBorder)
+			.BorderImage(bSelectedRow ? SoftFramedBrush() : RoundBrush())
+			.BorderBackgroundColor(bSelectedRow ? SelectedTrackColor : ZoneColor)
+			.Padding(0.f)
+			.Visibility(EVisibility::HitTestInvisible)
+			[
+				MakeHatch(FLinearColor::Transparent, LaneStripeColor)
+			]
 		];
 
 		for (const FDCScheduledTask& Task : Crew.Tasks)
@@ -1264,18 +1345,68 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			const int32 TaskIndex = Task.Index;
 			const float StepTime = Task.WorkStart;
 
-			const auto AddBlock = [&Canvas, Scale, Top, &Tip, WeakThis, CrewName, TaskIndex, StepTime](float From, float To, const FLinearColor& Color, const FText& Text, bool bOutline)
+			// One block: solid in Color with the number (and the label if given), or hatched grey while waiting.
+			const auto AddBlock = [&Canvas, Scale, Top, &Tip, WeakThis, CrewName, TaskIndex, StepTime, Fade]
+				(float From, float To, const FLinearColor& Color, const FText& Number, const FText& Label, bool bOutline, bool bWaiting)
 			{
 				const float Width = FMath::Max(0.f, (To - From) * Scale);
 				if (Width < 1.5f)
 				{
 					return;
 				}
+				TSharedPtr<SWidget> Content;
+				if (bWaiting)
+				{
+					const FLinearColor Ground(WaitGroundColor.R, WaitGroundColor.G, WaitGroundColor.B, Fade);
+					Content = SNew(SOverlay)
+						+ SOverlay::Slot()
+						[
+							MakeHatch(Ground, FLinearColor(WaitStripeColor.R, WaitStripeColor.G, WaitStripeColor.B, WaitStripeColor.A * Fade))
+						]
+						// The word sits on a gap in the stripes, so it stays readable.
+						+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Center).Padding(FMargin(4.f, 0.f))
+						[
+							SNew(SBorder)
+							.BorderImage(RoundBrush())
+							.BorderBackgroundColor(Ground)
+							.Padding(FMargin(3.f, 0.f))
+							.Visibility(Width >= 52.f && !Label.IsEmpty() ? EVisibility::HitTestInvisible : EVisibility::Collapsed)
+							[
+								SNew(STextBlock).Text(Label).Font(Font(10, true)).ColorAndOpacity(FLinearColor(WaitTextColor.R, WaitTextColor.G, WaitTextColor.B, Fade))
+							]
+						];
+				}
+				else
+				{
+					Content = SNew(SBorder)
+						.BorderImage(RoundBrush())
+						.BorderBackgroundColor(Color)
+						.Padding(FMargin(5.f, 0.f))
+						.HAlign(Label.IsEmpty() ? HAlign_Center : HAlign_Fill)
+						.VAlign(VAlign_Center)
+						.Clipping(EWidgetClipping::ClipToBounds)
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							[
+								SNew(STextBlock).Text(Width >= 12.f ? Number : FText::GetEmpty()).Font(Font(11, true)).ColorAndOpacity(DarkTextColor)
+							]
+							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(FMargin(5.f, 0.f, 0.f, 0.f))
+							[
+								SNew(STextBlock)
+								.Text(Label)
+								.Font(Font(11))
+								.ColorAndOpacity(DarkTextColor)
+								.OverflowPolicy(ETextOverflowPolicy::Ellipsis)
+								.Visibility(Label.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible)
+							]
+						];
+				}
 				Canvas->AddSlot().Position(FVector2D(NameWidth + From * Scale, Top + 2.0)).Size(FVector2D(Width - 1.0, RowHeight - 4.0))
 				[
 					SNew(SBorder)
 					.BorderImage(RoundBrush())
-					.BorderBackgroundColor(bOutline ? FLinearColor::White : Color)
+					.BorderBackgroundColor(bOutline ? FLinearColor::White : FLinearColor::Transparent)
 					.Padding(bOutline ? 2.f : 0.f)
 					.ToolTipText(Tip)
 					.Cursor(EMouseCursor::Hand)
@@ -1289,24 +1420,17 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 						return FReply::Handled();
 					})
 					[
-						SNew(SBorder)
-						.BorderImage(RoundBrush())
-						.BorderBackgroundColor(Color)
-						.Padding(FMargin(4.f, 0.f))
-						.VAlign(VAlign_Center)
-						.Clipping(EWidgetClipping::ClipToBounds)
-						[
-							SNew(STextBlock).Text(Width >= 12.f ? Text : FText::GetEmpty()).Font(Font(11, true)).ColorAndOpacity(DarkTextColor)
-						]
+						Content.ToSharedRef()
 					]
 				];
 			};
 
 			const FText Number = FText::AsNumber(Task.Index + 1);
+			const FText WaitWord = LOCTEXT("WaitLabel", "wartet");
 			if (Task.bBlocked)
 			{
 				// Will not happen: a short red block where it would start.
-				AddBlock(Task.Ready, Task.Ready + 56.f / Scale, StepBlockedColor, FText::Format(LOCTEXT("BlockedLabel", "{0} geht nicht"), Number), bPicked);
+				AddBlock(Task.Ready, Task.Ready + 96.f / Scale, StepBlockedColor, Number, LOCTEXT("BlockedLabel", "geht nicht"), bPicked, false);
 				continue;
 			}
 			const FLinearColor Base = Crew.Color;
@@ -1314,25 +1438,34 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 			float Previous = Task.Start;
 			for (const FDCWalkLeg& Leg : Task.Legs)
 			{
-				AddBlock(Previous, Leg.Start, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
-				AddBlock(Leg.Start, Leg.End, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
+				AddBlock(Previous, Leg.Start, FLinearColor::Transparent, FText::GetEmpty(), WaitWord, false, true);
+				AddBlock(Leg.Start, Leg.End, Dim(Base, 0.42f, Fade), FText::GetEmpty(), FText::GetEmpty(), false, false);
 				Previous = Leg.End;
 			}
 			if (Task.Legs.IsEmpty())
 			{
-				AddBlock(Task.Start, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), false);
+				AddBlock(Task.Start, Task.Ready, Dim(Base, 0.42f, Fade), FText::GetEmpty(), FText::GetEmpty(), false, false);
 			}
-			AddBlock(Task.Ready, Task.WorkStart, FLinearColor(WaitBlockColor.R, WaitBlockColor.G, WaitBlockColor.B, Fade), LOCTEXT("WaitLabel", "wartet"), false);
+			AddBlock(Task.Ready, Task.WorkStart, FLinearColor::Transparent, FText::GetEmpty(), WaitWord, false, true);
 			const bool bSignal = Task.Type == EDCPlanTaskType::Signal;
 			const FLinearColor Work = bSignal ? FLinearColor(CoordinationColor.R, CoordinationColor.G, CoordinationColor.B, Fade)
 				: Task.bLoud ? FLinearColor(1.f, 0.35f, 0.15f, Fade) : FLinearColor(Base.R, Base.G, Base.B, Fade);
 			const float WorkWidth = (FMath::Max(Task.End, Task.WorkStart + (bSignal ? 1.2f : 0.4f)) - Task.WorkStart) * Scale;
-			const FText WorkText = WorkWidth >= 80.f ? FText::Format(LOCTEXT("WorkLabel", "{0} {1}"), Number, Task.Label) : Number;
-			AddBlock(Task.WorkStart, Task.WorkStart + WorkWidth / Scale, Status == EDCTaskStatus::Failed ? StepBlockedColor : Work, WorkText, bCurrent || bPicked);
+			AddBlock(Task.WorkStart, Task.WorkStart + WorkWidth / Scale, Status == EDCTaskStatus::Failed ? StepBlockedColor : Work, Number,
+				WorkWidth >= 80.f ? Task.Label : FText::GetEmpty(), bCurrent || bPicked, false);
 		}
 	}
 
-	// Who waits for whom: a line from the step that frees the way down (or up) to the one waiting.
+	// Who waits for whom: an arrow from the step that frees the way (a dot in that crew member's colour on its edge) to the
+	// start of the step that waits for it.
+	struct FLink
+	{
+		float X = 0.f;
+		float SourceY = 0.f;
+		float TargetY = 0.f;
+		FLinearColor SourceColor;
+	};
+	TArray<FLink> Links;
 	for (int32 Row = 0; Row < Schedule.Crews.Num(); ++Row)
 	{
 		for (const FDCScheduledTask& Task : Schedule.Crews[Row].Tasks)
@@ -1342,52 +1475,99 @@ void UDCTimelinePanel::RebuildTracks(const FDCSchedule& Schedule, FName Focus)
 				continue;
 			}
 			const int32 Source = Schedule.Crews.IndexOfByPredicate([&Task](const FDCCrewSchedule& Entry) { return Entry.Crew == Task.WaitFor; });
-			if (Source == INDEX_NONE)
+			if (Source == INDEX_NONE || Source == Row)
 			{
 				continue;
 			}
-			const float X = NameWidth + Task.WorkStart * Scale - 1.f;
-			const float From = RowTop(FMath::Min(Row, Source)) + RowHeight * 0.5f;
-			const float To = RowTop(FMath::Max(Row, Source)) + RowHeight * 0.5f;
-			const FLinearColor Color = Schedule.Crews[Source].Color;
-			Canvas->AddSlot().Position(FVector2D(X, From)).Size(FVector2D(3.0, To - From))
-			[
-				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(CoordinationColor).Visibility(EVisibility::HitTestInvisible)
-			];
-			const float DotY = RowTop(Source) + RowHeight * 0.5f - 5.f;
-			Canvas->AddSlot().Position(FVector2D(X - 4.0, DotY)).Size(FVector2D(10.0, 10.0))
-			[
-				SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(CoordinationColor).Padding(2.f).Visibility(EVisibility::HitTestInvisible)
-				[
-					SNew(SBorder).BorderImage(Brush()).BorderBackgroundColor(Color)
-				]
-			];
+			FLink& Link = Links.AddDefaulted_GetRef();
+			Link.X = NameWidth + Task.WorkStart * Scale;
+			// From the edge of the step that frees the way, so the dot does not cover its number.
+			Link.SourceY = Row > Source ? RowTop(Source) + RowHeight - 2.f : RowTop(Source) + 2.f;
+			Link.TargetY = Row > Source ? RowTop(Row) + 2.f : RowTop(Row) + RowHeight - 2.f;
+			Link.SourceColor = Schedule.Crews[Source].Color;
 		}
 	}
+	if (!Links.IsEmpty())
+	{
+		Canvas->AddSlot().Position(FVector2D::ZeroVector).Size(FVector2D(NameWidth + TrackWidth, Height))
+		[
+			MakePainter([Links](const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer)
+			{
+				for (const FLink& Link : Links)
+				{
+					const float Toward = Link.TargetY > Link.SourceY ? 1.f : -1.f;
+					const float TipY = Link.TargetY - Toward;
+					FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(),
+						TArray<FVector2f>{ FVector2f(Link.X, Link.SourceY), FVector2f(Link.X, TipY) }, ESlateDrawEffect::None, CoordinationColor, true, 2.f);
+					FSlateDrawElement::MakeLines(Out, Layer, Geometry.ToPaintGeometry(),
+						TArray<FVector2f>{ FVector2f(Link.X - 4.5f, TipY - Toward * 5.f), FVector2f(Link.X, TipY), FVector2f(Link.X + 4.5f, TipY - Toward * 5.f) },
+						ESlateDrawEffect::None, CoordinationColor, true, 2.f);
+					FSlateDrawElement::MakeBox(Out, Layer + 1,
+						Geometry.ToPaintGeometry(FVector2f(10.f, 10.f), FSlateLayoutTransform(FVector2f(Link.X - 5.f, Link.SourceY - 5.f))),
+						RoundBrush(), ESlateDrawEffect::None, CoordinationColor);
+					FSlateDrawElement::MakeBox(Out, Layer + 2,
+						Geometry.ToPaintGeometry(FVector2f(6.f, 6.f), FSlateLayoutTransform(FVector2f(Link.X - 3.f, Link.SourceY - 3.f))),
+						RoundBrush(), ESlateDrawEffect::None, Link.SourceColor);
+				}
+				return Layer + 2;
+			})
+		];
+	}
 
-	// Preview time (planning, yellow) and playback time (white).
+	// The time marker: a line through all lanes with the time on a tab above it ("0:21"), amber for the preview while
+	// planning, white while the plan runs.
+	const auto MarkerX = [WeakThis, Scale, TrackWidth]()
+	{
+		float Time = 0.f;
+		bool bRunning = false;
+		GetMarkerTime(WeakThis.Get(), Time, bRunning);
+		return NameWidth + FMath::Clamp(Time * Scale, 0.f, TrackWidth);
+	};
+	const auto MarkerColor = [WeakThis]() -> FSlateColor
+	{
+		float Time = 0.f;
+		bool bRunning = false;
+		GetMarkerTime(WeakThis.Get(), Time, bRunning);
+		return bRunning ? FLinearColor::White : TitleColor;
+	};
+	const auto MarkerVisibility = [WeakThis]()
+	{
+		float Time = 0.f;
+		bool bRunning = false;
+		return GetMarkerTime(WeakThis.Get(), Time, bRunning) ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
+	};
 	Canvas->AddSlot()
-		.Position(TAttribute<FVector2D>::CreateLambda([WeakThis, Scale, TrackWidth]()
-		{
-			const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-			const float Time = Heist ? (Heist->IsPlaying() ? Heist->GetPlaybackTime() : Heist->GetPreviewTime()) : 0.f;
-			return FVector2D(NameWidth + FMath::Clamp(Time * Scale, 0.f, TrackWidth - 2.f), 0.0);
-		}))
-		.Size(FVector2D(2.0, Height))
+		.Position(TAttribute<FVector2D>::CreateLambda([MarkerX]() { return FVector2D(MarkerX() - 1.f, RulerHeight - 9.f); }))
+		.Size(FVector2D(2.0, Height - RulerHeight + 9.f))
 		[
 			SNew(SBorder)
 			.BorderImage(Brush())
-			.BorderBackgroundColor_Lambda([WeakThis]() -> FSlateColor
-			{
-				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-				return Heist && Heist->IsPlaying() ? FLinearColor::White : TitleColor;
-			})
-			.Visibility_Lambda([WeakThis]()
-			{
-				const UDCHeistStateSubsystem* Heist = WeakThis.IsValid() ? UDCHeistStateSubsystem::Get(WeakThis.Get()) : nullptr;
-				const bool bShow = Heist && (Heist->IsPlaying() || (Heist->GetPreviewTime() >= 0.f && GetPlanMode(WeakThis.Get()) == EDCPlanMode::Planning));
-				return bShow ? EVisibility::HitTestInvisible : EVisibility::Collapsed;
-			})
+			.BorderBackgroundColor_Lambda(MarkerColor)
+			.Visibility_Lambda(MarkerVisibility)
+		];
+	Canvas->AddSlot()
+		.Position(TAttribute<FVector2D>::CreateLambda([MarkerX]() { return FVector2D(MarkerX() - MarkerLabelWidth * 0.5f, 0.0); }))
+		.Size(FVector2D(MarkerLabelWidth, 15.0))
+		[
+			SNew(SBorder)
+			.BorderImage(RoundBrush())
+			.BorderBackgroundColor_Lambda(MarkerColor)
+			.Padding(0.f)
+			.HAlign(HAlign_Center)
+			.VAlign(VAlign_Center)
+			.Visibility_Lambda(MarkerVisibility)
+			[
+				SNew(STextBlock)
+				.Text_Lambda([WeakThis]()
+				{
+					float Time = 0.f;
+					bool bRunning = false;
+					GetMarkerTime(WeakThis.Get(), Time, bRunning);
+					return FormatTime(Time);
+				})
+				.Font(Font(11, true))
+				.ColorAndOpacity(DarkTextColor)
+			]
 		];
 
 	Tracks->SetContent(SNew(SBox).WidthOverride(NameWidth + TrackWidth).HeightOverride(Height + 2.f)[Canvas]);

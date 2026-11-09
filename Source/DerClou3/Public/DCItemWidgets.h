@@ -4,8 +4,10 @@
 #include "DCItemTypes.h"
 #include "Styling/SlateTypes.h"
 
+class FSlateWindowElementList;
 class SWidget;
 class UDCItem;
+struct FGeometry;
 struct FDCPlanTask;
 enum class EDCSkill : uint8;
 
@@ -112,6 +114,20 @@ namespace DCItemWidgets
 	DERCLOU3_API TSharedRef<SWidget> MakeSectionTitle(const FText& Text);
 	/** A 1 px brass line (horizontal or vertical) to separate areas. */
 	DERCLOU3_API TSharedRef<SWidget> MakeRule(bool bHorizontal = true, bool bDim = true);
+
+	/** Draws into a widget's box (local units) from Layer up and returns the highest layer it used. */
+	using FDCPaintFunction = TFunction<int32(const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer)>;
+	/** A widget that only draws what Paint draws (lines, arrows, hatching) in the box it gets; it takes no clicks. */
+	DERCLOU3_API TSharedRef<SWidget> MakePainter(FDCPaintFunction Paint);
+	/**
+	 * Diagonal stripes ("/") over a rounded Ground box, clipped to the box: standing, waiting, nothing planned.
+	 * The pattern follows the screen position, so boxes side by side continue it. Returns the highest layer used.
+	 */
+	DERCLOU3_API int32 PaintHatch(const FGeometry& Geometry, FSlateWindowElementList& Out, int32 Layer, const FLinearColor& Ground,
+		const FLinearColor& Stripe, float Spacing = 7.f, float Thickness = 1.5f);
+	/** A box filled with PaintHatch (Ground transparent = stripes only). */
+	DERCLOU3_API TSharedRef<SWidget> MakeHatch(const TAttribute<FLinearColor>& Ground, const TAttribute<FLinearColor>& Stripe,
+		float Spacing = 7.f, float Thickness = 1.5f);
 
 	/**
 	 * A line icon (Lucide, white SVG in Content/Slate/Icons/<Name>.svg). Slate rasterises it crisp at the size it is

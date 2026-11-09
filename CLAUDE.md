@@ -593,6 +593,16 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Grenzen: Haare sind eine geschlossene Schale (keine einzelnen Strähnen), Ohren nur aufgemalt, Hinterkopf aus dem
     kleinen Ganzkörperfoto (unschärfer als das Gesicht).
   - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
+- **Professioneller Look, Schritt 5 von 6: Zeitleiste wie im Mockup (Schritt 35, 2026-11-09).** Nur `UDCTimelinePanel::RebuildTracks`
+  und eine Zeichenhilfe, keine Spielregeln:
+  - `DCItemWidgets::MakePainter(Funktion)` (Widget, das nur mit `FSlateDrawElement` zeichnet, ohne Klicks), `PaintHatch` /
+    `MakeHatch(Grund, Streifen)` (schräge Streifen, an der Bildschirmposition ausgerichtet, damit Nachbarflächen weiterlaufen).
+  - Lineal als Maßband (Strich je Sekunde, Zeit alle 5 s bzw. 10/15/30 s bei langen Plänen), links Farbbalken + Name statt
+    „> VIC“, Spuren schwach schraffiert (nichts geplant), Warten grau schraffiert mit „wartet“ auf einer Lücke, Blöcke mit
+    fetter Nummer und Schrittname, „geht nicht“ breiter. Abstimmung als Pfeil in Cyan vom Rand des auslösenden Schritts
+    (Punkt in dessen Crew-Farbe) zum Anfang des wartenden (`RowPitch` 32 für Platz). Zeitmarke mit Reiter „0:21“
+    (`GetMarkerTime`; Bernstein = Vorschau, Weiß = Abspielen).
+  - Geprüft mit Signals, Timeline, PlanHelp, AutoDoor (bestanden, Screenshots angesehen).
 - **Geheimtür in der Villa begehbar (Schritt 36, 2026-11-09, gefunden mit dem Replay aus Schritt 32):** Rosa öffnete das
   Bücherregal, kam aber nicht in die Geheimkammer, und „durch Geheimtür“ zählte trotzdem als erledigt.
   - Ursache 1, Durchgang zu eng: Das NavMesh rechnet mit 35 cm Figurradius (auf dem 10-cm-Raster 40 cm), eine 1,0-m-Tür
@@ -637,6 +647,7 @@ Neu (Schritt 30): die Icons – passen sie, sind sie groß genug, fehlt irgendwo
 Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf Karte und Profil.
 Neu (Schritt 33): die Gegenstands-Icons – erkennt man alles (Dietrich-Set ist klein und grau), Kurzname nur ab 2 × 2,
 Ziehen mit Bild mit der echten Maus.
+Neu (Schritt 35): die Zeitleiste – Schraffur, Pfeile und Zeitmarke; lesbar genug, Streifen zu stark oder zu schwach?
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
