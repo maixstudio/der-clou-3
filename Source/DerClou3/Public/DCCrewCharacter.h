@@ -17,10 +17,21 @@ class UTextRenderComponent;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FDCOnContainerReached, ADCItemPickup*);
 
+/** What the body is doing besides standing and walking (UDCCrewAnimInstance plays it). */
+enum class EDCCrewAnimPose : uint8
+{
+	Default,
+	/** Crouched with the hands at a lock, a drawer or a container. */
+	Work,
+	/** Bending down for something on the floor. */
+	PickUp
+};
+
 /**
  * A crew member: a real Unreal character, controlled by an AI controller and walking on the
- * nav mesh. Graybox look until there is a proper mesh: body, head, facing marker, name and a
- * selection ring.
+ * nav mesh. Modelled crew members (DCVisuals::CrewModel) show their skeletal mesh, animated by
+ * UDCCrewAnimInstance; the others keep the graybox look (body, head, facing marker). Both have a
+ * name and a selection ring.
  */
 UCLASS()
 class DERCLOU3_API ADCCrewCharacter : public ACharacter
@@ -92,6 +103,14 @@ public:
 	FText GetActivityText() const;
 
 	const FText& GetCrewName() const { return CrewName; }
+
+	/** True when the crew member is shown with a modelled, animated mesh instead of the graybox. */
+	bool HasModel() const { return bHasModel; }
+	/** Work at a lock or a container, picking something up, or nothing special. */
+	EDCCrewAnimPose GetAnimPose() const;
+	/** Self-tests: show this pose whatever the crew member is doing. */
+	bool bTestAnimPose = false;
+	EDCCrewAnimPose TestAnimPose = EDCCrewAnimPose::Default;
 
 protected:
 	UPROPERTY(EditAnywhere, Category = "Crew")
@@ -200,8 +219,11 @@ private:
 	void UpdateFootsteps(float DeltaSeconds);
 	void UpdateCarriedLook();
 	void OnInventoryChanged();
+	/** Skeletal mesh and animation for a modelled crew member, graybox parts otherwise. */
+	void ApplyModel();
 
 	bool bSelected = false;
+	bool bHasModel = false;
 	ETaskPhase Phase = ETaskPhase::Idle;
 	TWeakObjectPtr<ADCDoor> TaskDoor;
 	EDCDoorAction TaskAction = EDCDoorAction::Open;

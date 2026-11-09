@@ -1,11 +1,24 @@
 #include "DCVisuals.h"
 
+#include "Animation/AnimSequence.h"
 #include "Components/MeshComponent.h"
+#include "Engine/SkeletalMesh.h"
 #include "Components/StaticMeshComponent.h"
 #include "DCItemTypes.h"
 #include "Engine/StaticMesh.h"
 #include "Misc/PackageName.h"
 #include "Materials/MaterialInstanceDynamic.h"
+
+namespace
+{
+	/** The asset Folder/Name, or null without a warning when the package does not exist. */
+	template <typename T>
+	T* LoadCrewAsset(const FString& Folder, const FString& Name)
+	{
+		const FString Package = Folder + Name;
+		return FPackageName::DoesPackageExist(Package) ? LoadObject<T>(nullptr, *(Package + TEXT(".") + Name)) : nullptr;
+	}
+}
 
 namespace DCVisuals
 {
@@ -101,5 +114,27 @@ namespace DCVisuals
 		Mesh->SetRelativeScale3D(Def.ShapeSize / 100.0);
 		Paint(Mesh, Def.Color);
 		return false;
+	}
+
+	bool CrewModel(const FString& CrewName, FDCCrewModel& Out)
+	{
+		Out = FDCCrewModel();
+		if (CrewName.IsEmpty())
+		{
+			return false;
+		}
+		const FString Folder = TEXT("/Game/DerClou/Characters/") + CrewName + TEXT("/");
+		Out.Mesh = LoadCrewAsset<USkeletalMesh>(Folder, TEXT("SK_") + CrewName);
+		if (!Out.Mesh)
+		{
+			return false;
+		}
+		const FString Prefix = TEXT("A_") + CrewName + TEXT("_");
+		Out.Idle = LoadCrewAsset<UAnimSequence>(Folder, Prefix + TEXT("Idle"));
+		Out.Walk = LoadCrewAsset<UAnimSequence>(Folder, Prefix + TEXT("Walk"));
+		Out.Jog = LoadCrewAsset<UAnimSequence>(Folder, Prefix + TEXT("Jog"));
+		Out.Work = LoadCrewAsset<UAnimSequence>(Folder, Prefix + TEXT("Work"));
+		Out.PickUp = LoadCrewAsset<UAnimSequence>(Folder, Prefix + TEXT("Pickup"));
+		return true;
 	}
 }

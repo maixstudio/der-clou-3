@@ -2,10 +2,23 @@
 
 #include "CoreMinimal.h"
 
+class UAnimSequence;
 class UMeshComponent;
+class USkeletalMesh;
 class UStaticMesh;
 class UStaticMeshComponent;
 struct FDCItemDef;
+
+/** A modelled crew member (Art/Characters in Blender): mesh and the animations the game plays. */
+struct FDCCrewModel
+{
+	USkeletalMesh* Mesh = nullptr;
+	UAnimSequence* Idle = nullptr;
+	UAnimSequence* Walk = nullptr;
+	UAnimSequence* Jog = nullptr;
+	UAnimSequence* Work = nullptr;
+	UAnimSequence* PickUp = nullptr;
+};
 
 /** Small helpers for graybox visuals built from the engine's basic shapes. */
 namespace DCVisuals
@@ -30,6 +43,13 @@ namespace DCVisuals
 	 * (origin at the bottom), false for a shape (origin in the middle).
 	 */
 	DERCLOU3_API bool SetItemLook(UStaticMeshComponent* Mesh, const FDCItemDef& Def);
+
+	/**
+	 * Modelled crew member /Game/DerClou/Characters/<Name>/SK_<Name> with A_<Name>_Idle, _Walk, _Jog, _Work and
+	 * _Pickup (imported by Art/Characters/ue_import_character.py). False when there is no model for the name; missing
+	 * animations stay null. Origin between the feet, front along +Y.
+	 */
+	DERCLOU3_API bool CrewModel(const FString& CrewName, FDCCrewModel& Out);
 
 	/**
 	 * Text for labels in the world (TextRender): their font only has plain Latin-1, so dashes,

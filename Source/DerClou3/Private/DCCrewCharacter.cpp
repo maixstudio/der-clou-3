@@ -3,8 +3,10 @@
 #include "AIController.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
+#include "DCCrewAnim.h"
 #include "DCHeistState.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
@@ -152,6 +154,58 @@ void ADCCrewCharacter::OnConstruction(const FTransform& Transform)
 	DCVisuals::Paint(SelectionRing, FLinearColor(1.f, 0.85f, 0.f));
 	NameLabel->SetText(CrewName);
 	ActivityLabel->SetText(FText::GetEmpty());
+	ApplyModel();
+}
+
+void ADCCrewCharacter::ApplyModel()
+{
+	FDCCrewModel Model;
+	bHasModel = DCVisuals::CrewModel(CrewName.ToString(), Model);
+	USkeletalMeshComponent* Figure = GetMesh();
+	if (bHasModel && Figure)
+	{
+		// Origin between the feet, front along +Y: down to the capsule's bottom, turned to face the actor's +X.
+		const double HalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+		Figure->SetRelativeLocationAndRotation(FVector(0.0, 0.0, -HalfHeight), FRotator(0.0, -90.0, 0.0));
+		Figure->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Figure->SetCanEverAffectNavigation(false);
+		if (Figure->GetSkeletalMeshAsset() != Model.Mesh)
+		{
+			Figure->SetSkeletalMeshAsset(Model.Mesh);
+		}
+		if (Figure->GetAnimClass() != UDCCrewAnimInstance::StaticClass())
+		{
+			Figure->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+			Figure->SetAnimInstanceClass(UDCCrewAnimInstance::StaticClass());
+		}
+#if WITH_EDITOR
+		Figure->SetUpdateAnimationInEditor(true);
+#endif
+	}
+	Body->SetVisibility(!bHasModel);
+	Head->SetVisibility(!bHasModel);
+	Nose->SetVisibility(!bHasModel);
+}
+
+EDCCrewAnimPose ADCCrewCharacter::GetAnimPose() const
+{
+	if (bTestAnimPose)
+	{
+		return TestAnimPose;
+	}
+	switch (Phase)
+	{
+	case ETaskPhase::ItemWork:
+		return EDCCrewAnimPose::Work;
+	case ETaskPhase::AtDoor:
+		return TaskAction == EDCDoorAction::PickLock ? EDCCrewAnimPose::Work : EDCCrewAnimPose::Default;
+	case ETaskPhase::PickingUp:
+		return EDCCrewAnimPose::PickUp;
+	default:
+		break;
+	}
+	// Searching a container while the plan plays: opening, rummaging, taking things out.
+	return PlanRunner && PlanRunner->IsWorkingAtContainer() ? EDCCrewAnimPose::Work : EDCCrewAnimPose::Default;
 }
 
 TArray<FName> ADCCrewCharacter::GetItemIdOptions() const
@@ -167,6 +221,8 @@ TArray<FName> ADCCrewCharacter::GetItemIdOptions() const
 void ADCCrewCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	// Levels saved before the model existed: the construction script does not run again on load.
+	ApplyModel();
 	Inventory->SetStrength(Skills.Strength);
 	Inventory->OnChanged.AddUObject(this, &ADCCrewCharacter::OnInventoryChanged);
 	for (const FName Id : StartItems)
@@ -191,9 +247,15 @@ void ADCCrewCharacter::BeginPlay()
 	// Only the first crew member runs it.
 	FString SelfTest;
 	TActorIterator<ADCCrewCharacter> First(GetWorld());
-	if (First && *First == this && FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), SelfTest) && SelfTest == TEXT("CloseFromSide"))
+	FParse::Value(FCommandLine::Get(), TEXT("DCSelfTest="), SelfTest);
+	if (First && *First == this && SelfTest == TEXT("CloseFromSide"))
 	{
 		GetWorldTimerManager().SetTimer(SelfTestTimer, this, &ADCCrewCharacter::TickCloseFromSideTest, 0.25f, true, 1.5f);
+	}
+	// -DCSelfTest=CrewLook: close-ups of Rosa's model and animations.
+	if (SelfTest == TEXT("CrewLook") && CrewName.ToString() == TEXT("Rosa"))
+	{
+		DCCrewLook::StartSelfTest(this);
 	}
 }
 

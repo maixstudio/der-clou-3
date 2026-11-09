@@ -615,7 +615,7 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - ~65 000 Dreiecke (Körper 24k, Kopf 20k, Hände 10k, Ohren 4,6k, Locken 3k). Grenzen: Die Strähnen hinten sind aus dem
     Profil übertragen, nicht fotografiert. Um das Ohr liegt etwas Hautfarbe auf dem Haar. Schräg von hinten sitzt das Ohr
     in einer Mulde im Haar.
-  - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
+  - Im Spiel seit Schritt 37. Offen: Vic und Kurt genauso.
 - **Professioneller Look, Schritt 5 von 6: Zeitleiste wie im Mockup (Schritt 35, 2026-11-09).** Nur `UDCTimelinePanel::RebuildTracks`
   und eine Zeichenhilfe, keine Spielregeln:
   - `DCItemWidgets::MakePainter(Funktion)` (Widget, das nur mit `FSlateDrawElement` zeichnet, ohne Klicks), `PaintHatch` /
@@ -640,6 +640,29 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Selbsttest `-DCSelfTest=SecretDoor` (L_Villa01): Rosa steht in der Bibliothek, geht durch die Geheimtür und hebt das
     Gemälde auf. Er prüft das NavMesh an der Tür vor und nach dem Öffnen und macht Bilder mit `show Navigation`
     (`secret_door_closed/open.png`). Replay des User-Plans: 17 von 17 Schritten, 41,2 s gespielt (43,7 s geplant).
+- **Rosa im Spiel (Schritt 37, 2026-11-09):** Rosa läuft mit ihrem Modell aus Schritt 34 statt als grauer Zylinder.
+  - Import (Editor zu, absoluter Pfad, Name als Argument): `UnrealEditor-Cmd.exe DerClou3.uproject -run=pythonscript
+    -script="C:/Dev/der-clou-3/Art/Characters/ue_import_character.py Rosa" -unattended` → `/Game/DerClou/Characters/Rosa/`
+    `SK_Rosa`, `SK_Rosa_Skeleton`, `A_Rosa_Idle/Walk/Jog/Work/Pickup`, `T_Rosa_BC`, `MI_Rosa`, gemeinsamer Master
+    `/Game/DerClou/Characters/M_Character` (Textur, Rauheit 0,78, für Skeletal Meshes). Ordner steht in
+    `DirectoriesToAlwaysCook`. Der Commandlet bleibt oft nach „Python script executed“ hängen, dann beenden.
+    Fallen: Materialslots einer SkeletalMesh als neue `SkeletalMaterial` setzen (Elemente der gelesenen Liste sind
+    Kopien), sonst bleibt `WorldGridMaterial`. Das Skelett erst mit `save_directory` gespeichert.
+  - `DCVisuals::CrewModel(Name)` findet Modell und Animationen nach diesen Namen. Gibt es eins, zeigt `ADCCrewCharacter`
+    (`ApplyModel`, in `OnConstruction` und `BeginPlay`) es statt Körper/Kopf/Nase. Fuß auf dem Kapselboden, um −90°
+    gedreht, keine Kollision. Figuren ohne Modell (Vic) bleiben grau. Der Geist der Planung bleibt die abstrakte Figur.
+  - `UDCCrewAnimInstance` (`DCCrewAnim.h`) ohne Anim Blueprint: ein eigener `FAnimInstanceProxy` tastet die Sequenzen
+    ab und mischt sie (wie `UAnimSingleNodeInstance`). Stehen ↔ Gehen ↔ Laufen nach Tempo (Gehen für 1,4 m/s, Laufen für
+    2,5 m/s gemacht). Der Schrittzyklus läuft mit der zurückgelegten Strecke, also rutschen die Füße nicht, auch mit Last.
+    Darüber die Tätigkeit (`ADCCrewCharacter::GetAnimPose`):
+    - Arbeiten (hocken): Schloss knacken, Gegenstand knacken/aufbrechen/einschlagen, Durchsuchen im Plan
+      (`UDCPlanRunnerComponent::IsWorkingAtContainer`).
+    - Aufheben: einmal in 1 s.
+    - Einblenden 0,35 s, Aufheben 0,12 s.
+  - Selbsttest `-DCSelfTest=CrewLook` (L_Room01): Rosa von nah im Stehen, Laufen, Arbeiten, Aufheben und von oben.
+    Prüft Modell, Skelett (53 Knochen, Wurzel `root`), hängende Arme, Armschwung, Hocken, Bücken, Aufstehen. Bilder
+    `crew_idle/walk/work/pickup/top.png`. Testschalter `ADCCrewCharacter::bTestAnimPose`/`TestAnimPose`.
+  - Getragenes hängt noch fest an der Kapsel, nicht an den Händen (Ausrichtung der Handknochen erst klären).
 - **Vorschlag 2026-11-09, wartet auf den User:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Fußspuren in
   Crew-Farbe statt Linien, Schilder mit Nummer + Tätigkeits-Icon, Kamera folgt der gewählten Figur, jeder Gegenstand
   durchsuchbar mit zweitem Ring „Öffnen mit …“, Gepäck (Platz + Gewicht) statt Hände/Taschen/Raster, Kleidung
@@ -678,7 +701,8 @@ Neu (Schritt 35): die Zeitleiste – Schraffur, Pfeile und Zeitmarke; lesbar gen
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
-  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab), `SecretDoor` (L_Villa01).
+  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab), `SecretDoor` (L_Villa01),
+  `CrewLook` (L_Room01, Rosas Modell und Animationen von nah).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**

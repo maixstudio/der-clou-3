@@ -49,6 +49,11 @@ public:
 
 	/** Searching found something: the game is paused until the player has decided what to take. */
 	bool IsAwaitingDecision() const { return LootPhase == ELootPhase::Deciding; }
+	/** Standing at a container searching it (opening, rummaging, deciding, taking things): the crew member works. */
+	bool IsWorkingAtContainer() const
+	{
+		return bRunning && Index < Tasks.Num() && Step == EStep::Execute && bStepStarted && Tasks[Index].Type == EDCPlanTaskType::Loot;
+	}
 	/** The player is through with the find; the crew member still stands there for the handling time. */
 	void ResolveFind(float HandlingSeconds);
 	/** Cells searched in a container: its own grid and those of its fixed parts (what a floor plan shows). */
