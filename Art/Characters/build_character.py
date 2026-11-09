@@ -1,7 +1,10 @@
-"""Rosa: 3D figure from the reference sheet (front, back, both sides), rigged and animated.
+"""Crew members as 3D figures from reference pictures (front, back, both sides, head close-up), rigged and animated.
 
 Run headless (Blender 5.2):
-    blender -b --factory-startup -P Art/Characters/build_rosa.py -- [--stage mesh|rig|anim|all] [--preview] [--export]
+    blender -b --factory-startup -P Art/Characters/build_character.py -- --char Rosa [--stage mesh|rig|anim|all] [--preview] [--export]
+
+What is particular to one figure (reference files, measurements in the pictures, heights of head, hair and clothes)
+lives in Art/Characters/<Name>/character.py; the pictures in Art/Characters/<Name>/ref/ (see Docs/Figuren-Referenzbilder.md).
 
 Stages (each saves a .blend, the next one starts from it):
     mesh  silhouettes -> voxel hull (superellipse cross sections), head from the close-up with a face shaped after the
@@ -10,13 +13,14 @@ Stages (each saves a .blend, the next one starts from it):
     rig   UE-style skeleton (root, pelvis, spine_01..03, neck_01, head, clavicle/upperarm/lowerarm/hand, five digits
           with three bones each, thigh/calf/foot/ball) from landmarks of the silhouettes; bone heat on the body, distance
           weights on the hands, ears and curls on the head
-    anim  actions Rosa_Idle, Rosa_Walk, Rosa_Jog, Rosa_Work, Rosa_Pickup (in place, 30 fps)
---preview renders stills into Saved/Characters/Rosa/, --export writes Art/Characters/Rosa/Export/SK_Rosa.fbx + texture,
---stage showcase renders an MP4 of all actions.
+    anim  actions <Name>_Idle, _Walk, _Jog, _Work, _Pickup (in place, 30 fps)
+--preview renders stills into Saved/Characters/<Name>/, --export writes Art/Characters/<Name>/Export/SK_<Name>.fbx +
+T_<Name>_BC.png, --stage showcase renders an MP4 of all actions.
 
 Conventions as for the items: metres, origin between the feet on the floor, front = Blender -Y (Unreal +Y).
 """
 
+import importlib.util
 import math
 import os
 import sys
@@ -28,13 +32,35 @@ from mathutils import Matrix, Quaternion, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-REF = os.path.join(HERE, "Rosa", "ref")
-EXPORT = os.path.join(HERE, "Rosa", "Export")
-WORK = os.path.join(ROOT, "Saved", "Characters", "Rosa")
+
+
+def _character_name():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    for i, a in enumerate(argv[:-1]):
+        if a == "--char":
+            return argv[i + 1].capitalize()
+    return "Rosa"
+
+
+def _load_character(name):
+    path = os.path.join(HERE, name, "character.py")
+    spec = importlib.util.spec_from_file_location(f"character_{name.lower()}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+C = _load_character(_character_name())
+NAME = C.NAME                      # "Rosa": object, material, action and file names
+LOWER = NAME.lower()
+REF = os.path.join(HERE, NAME, "ref")
+EXPORT = os.path.join(HERE, NAME, "Export")
+WORK = os.path.join(ROOT, "Saved", "Characters", NAME)
 os.makedirs(WORK, exist_ok=True)
 os.makedirs(EXPORT, exist_ok=True)
 
-HEIGHT = 1.70          # hair top to sole, metres
+HEIGHT = C.HEIGHT      # hair top to sole, metres
+SIZE = HEIGHT / 1.70   # preview cameras were set up for Rosa (1.70 m)
 VOXEL = 0.003          # hull resolution
 BG_THRESHOLD = 0.09    # colour distance from the grey backdrop that counts as figure
 HAND_HALF_DEPTH = 0.043
@@ -43,22 +69,22 @@ TARGET_FACES = 24000   # triangles after decimation below the head
 HEAD_FACES = 20000     # triangles for the head (close-up detail, hair relief)
 HEAD_UV_SCALE = 1.7    # head islands get this much more texture space
 HAND_UV_SCALE = 1.6
-HEAD_SMOOTH_FROM = 1.40  # metres; above this the silhouettes are opened by HEAD_OPEN_PX
-HEAD_OPEN_PX = 10
-JAW_SMOOTH_TO = 1.555    # between HEAD_SMOOTH_FROM and this (neck, jaw) curls are removed harder
-JAW_OPEN_PX = 22
+HEAD_SMOOTH_FROM = C.HEAD_SMOOTH_FROM  # metres; above this the silhouettes are opened by HEAD_OPEN_PX
+HEAD_OPEN_PX = C.HEAD_OPEN_PX
+JAW_SMOOTH_TO = C.JAW_SMOOTH_TO        # between HEAD_SMOOTH_FROM and this (neck, jaw) curls are removed harder
+JAW_OPEN_PX = C.JAW_OPEN_PX
 
 VIEWS = {
     # name: file, horizontal world axis (+1 = image right is +axis), which axis
-    "front": ("rosa_front.webp", "x", +1),
-    "back": ("rosa_back.webp", "x", -1),
-    "left": ("rosa_side_left.webp", "y", +1),    # seen from +X, face to the image left
-    "right": ("rosa_side_right.webp", "y", -1),  # seen from -X
+    "front": (C.VIEW_FILES["front"], "x", +1),
+    "back": (C.VIEW_FILES["back"], "x", -1),
+    "left": (C.VIEW_FILES["left"], "y", +1),    # seen from +X, face to the image left
+    "right": (C.VIEW_FILES["right"], "y", -1),  # seen from -X
 }
 
 
 def log(*args):
-    print("[rosa]", *args, flush=True)
+    print(f"[{LOWER}]", *args, flush=True)
 
 
 def args():
@@ -236,13 +262,12 @@ class View:
 # from Z_HEAD up. Placed on the body by matching eye and chin height of the full-body front photo.
 # ---------------------------------------------------------------------------------------------
 
-HEAD_FILE = "rosa_head.png"
-HEAD_SPLIT_COL = 800          # front view left of it, profile right of it
-Z_HEAD = 1.45                 # below: full-body photos, above: close-up (turtleneck)
-BODY_EYE_ROW, BODY_EYE_COLS, BODY_CHIN_ROW = 93.6, (750.0, 786.0), 153.0   # in rosa_front.webp
-HEAD_FRONT = dict(eye_row=389.0, eye_cols=(387.5, 544.0), chin_row=656.0, hair_row=210.0, mouth_row=561.0,
-                  mouth_half=65.0, alae_half=42.5)
-HEAD_SIDE = dict(eye_row=380.0, chin_row=658.0, sellion_row=387.5, subnasale_row=500.0, crease_row=600.0)
+HEAD_FILE = C.HEAD_FILE
+HEAD_SPLIT_COL = C.HEAD_SPLIT_COL   # front view left of it, profile right of it
+Z_HEAD = C.Z_HEAD                   # below: full-body photos, above: close-up
+BODY_EYE_ROW, BODY_EYE_COLS, BODY_CHIN_ROW = C.BODY_EYE_ROW, C.BODY_EYE_COLS, C.BODY_CHIN_ROW   # in the front photo
+HEAD_FRONT = C.HEAD_FRONT
+HEAD_SIDE = C.HEAD_SIDE
 
 
 class HeadView(View):
@@ -286,13 +311,10 @@ class HeadView(View):
 
 # Right ear traced in the close-up profile (full-image pixels, clockwise from the top of the helix), the bowl
 # (concha) centre, how far the ear sits from the face centre where it attaches and how much it tilts outwards.
-EAR_OUTLINE = [(1265, 371.7), (1250, 378), (1235, 390), (1224, 410), (1221.7, 425), (1223, 440), (1227, 455),
-               (1233, 467), (1241, 481), (1251.7, 493), (1268, 507), (1290, 517), (1303, 515), (1311.7, 510),
-               (1314, 495), (1313, 480), (1310, 465), (1306, 450), (1300, 432), (1293, 413), (1288, 395),
-               (1286.7, 380), (1278, 372)]
-EAR_CONCHA = (1296, 447)
-EAR_ATTACH_U = 0.064
-EAR_TILT_DEG = 30.0
+EAR_OUTLINE = C.EAR_OUTLINE
+EAR_CONCHA = C.EAR_CONCHA
+EAR_ATTACH_U = C.EAR_ATTACH_U
+EAR_TILT_DEG = C.EAR_TILT_DEG
 
 
 def catmull_rom(points, samples_per_segment=4):
@@ -435,8 +457,8 @@ class FaceModel:
         # Half width and depth of the face (front edge to the side plane in front of the ears).
         zk = [self.z_chin - 0.004, self.z_chin, self.z_chin + 0.01, self.z_crease, self.z_mouth, self.z_base,
               self.z_eye, self.z_eye + 0.02, self.z_hair + 0.004]
-        self.W = np.interp(self.zt, zk, [0.026, 0.030, 0.045, 0.055, 0.061, 0.067, 0.069, 0.068, 0.065])
-        self.D = np.interp(self.zt, zk, [0.060, 0.065, 0.075, 0.085, 0.090, 0.098, 0.100, 0.100, 0.095])
+        self.W = np.interp(self.zt, zk, C.FACE_W)
+        self.D = np.interp(self.zt, zk, C.FACE_D)
         log(f"face: eyes z {self.z_eye:.3f} u {self.eye_u:.4f}, nose root/base z {self.z_root:.3f}/{self.z_base:.3f}, "
             f"nose tip y {p[nose].min() if nose.any() else 0:.4f}, chin z {self.z_chin:.3f}, hairline z {self.z_hair:.3f}")
 
@@ -505,7 +527,7 @@ def row_runs(row, coords):
 # ---------------------------------------------------------------------------------------------
 
 
-def round_back_outline(S, ys, zs, centre=(0.02, 1.58), sigma_deg=9.0):
+def round_back_outline(S, ys, zs, centre, sigma_deg=9.0):
     """Profile mask (Z, Y): smooth the outline between crown and bun. Where the wisps end, the opened close-up
     leaves a shelf (4 cm deeper within 1 cm of height); the outline's distance from the centre of the head is
     smoothed over the angle and the quarter behind and above the centre rebuilt from it."""
@@ -553,7 +575,8 @@ class Hull:
             top = zs >= Z_HEAD
             self.F[top] = head_front.sample_mask(xs, zs[top])
             self.S[top] = head_side.sample_mask(ys, zs[top])
-            self.S = round_back_outline(self.S, ys, zs)
+            if C.BACK_OUTLINE_CENTRE:
+                self.S = round_back_outline(self.S, ys, zs, C.BACK_OUTLINE_CENTRE)
             self.face = FaceModel(head_front, head_side)
             self.ear = EarModel(head_side, self.face.cx)
         self._arms()
@@ -611,8 +634,8 @@ class Hull:
     def exponent(z):
         # Rounder head and limbs, a little boxier jacket.
         p = np.full_like(z, 2.2)
-        p[(z > 0.80) & (z < 1.42)] = 2.5
-        p[z >= 1.42] = 2.0
+        p[(z > C.JACKET_Z[0]) & (z < C.JACKET_Z[1])] = 2.5
+        p[z >= C.JACKET_Z[1]] = 2.0
         return p
 
     def voxels(self):
@@ -625,10 +648,10 @@ class Hull:
         fm, fh = (flo + fhi) / 2, np.maximum((fhi - flo) / 2, 1e-4)
         sm, sh = (slo + shi) / 2, np.maximum((shi - slo) / 2, 1e-4)
         hy_arm = np.where(self.hand_col[None, :], np.maximum(HAND_HALF_DEPTH, self.arm_half), self.arm_half)
-        if self.face is not None:
+        if self.face is not None and BUN:
             # Back of the head: per height the profile run, the skull taken in beside the bun, the bun's centre.
             s_lo, s_hi = np.zeros(len(zs)), np.zeros(len(zs))
-            for iz in np.nonzero(zs >= 1.45)[0]:
+            for iz in np.nonzero(zs >= Z_HEAD)[0]:
                 rr = row_runs(self.S[iz], ys)
                 if rr:
                     s_lo[iz], s_hi[iz] = max(rr, key=lambda r: r[1] - r[0])
@@ -651,7 +674,7 @@ class Hull:
             V[a:b] = body | arm
             if self.face is not None:
                 zz = zs[a:b]
-                k = np.nonzero((zz >= 1.47) & (s_hi[a:b] > s_mid[a:b] + 0.01))[0]
+                k = np.nonzero((zz >= C.SKULL_FROM) & (s_hi[a:b] > s_mid[a:b] + 0.01))[0] if BUN else []
                 if len(k):
                     y = ys[None, None, :]
                     mid = s_mid[a:b][k][:, None, None]
@@ -731,7 +754,7 @@ def voxel_surface(V, origin):
     ix, iy = rem // ny_, rem % ny_
     ox, oy, oz = origin
     co = np.stack([ox + ix * VOXEL, oy + iy * VOXEL, oz + iz * VOXEL], 1).astype(np.float32)
-    me = bpy.data.meshes.new("RosaVoxels")
+    me = bpy.data.meshes.new(f"{NAME}Voxels")
     me.vertices.add(len(co))
     me.vertices.foreach_set("co", co.ravel())
     me.loops.add(len(quads) * 4)
@@ -750,7 +773,7 @@ def voxel_surface(V, origin):
 
 def clean_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to rosa.blend
+    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to the final .blend
     scene = bpy.context.scene
     scene.render.fps = 30
     scene.unit_settings.system = "METRIC"
@@ -780,7 +803,7 @@ def apply_modifiers(ob):
 
 
 def blend_path(stage):
-    return os.path.join(WORK, f"rosa_{stage}.blend")
+    return os.path.join(WORK, f"{LOWER}_{stage}.blend")
 
 
 def save_blend(stage):
@@ -854,7 +877,7 @@ def projection_material(views, heads, hull, skin_rgb):
     """Emission material that paints every surface point with the reference photo looking at it most directly.
     From Z_HEAD up the close-up replaces the full-body front and side photos. Vertices with the attribute
     "skin" (the modelled hands) get a plain skin colour instead."""
-    mat = bpy.data.materials.new("RosaProjection")
+    mat = bpy.data.materials.new(f"{NAME}Projection")
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
@@ -932,7 +955,7 @@ def projection_material(views, heads, hull, skin_rgb):
 
 
 def final_material(tex):
-    mat = bpy.data.materials.new("M_Rosa")
+    mat = bpy.data.materials.new(f"M_{NAME}")
     mat.use_nodes = True
     nt = mat.node_tree
     bsdf = node_of_type(nt.nodes, "BSDF_PRINCIPLED")
@@ -989,7 +1012,7 @@ def stage_mesh():
     hull = Hull(views["front"], views["left"], heads["front"], heads["side"])
     V = hull.voxels()
     me = voxel_surface(V, hull.lattice_origin())
-    ob = link(bpy.data.objects.new("Rosa", me))
+    ob = link(bpy.data.objects.new(NAME, me))
     activate(ob)
     rem = ob.modifiers.new("Remesh", "REMESH")
     rem.mode = "VOXEL"
@@ -1030,11 +1053,12 @@ def stage_mesh():
     zv = np.empty(len(ob.data.vertices) * 3, np.float32)
     ob.data.vertices.foreach_get("co", zv)
     a = ob.data.attributes.new("scalp", "FLOAT", "POINT")
-    a.data.foreach_set("value", (zv.reshape(-1, 3)[:, 2] > 1.44).astype(np.float32))
+    a.data.foreach_set("value", (zv.reshape(-1, 3)[:, 2] > C.SCALP_FROM).astype(np.float32))
     J = measure(hull)
     parts = [hand_object(side, J[f"hand_layout_{side}"]) for side in SIDES]
     parts += [ear_object(side, hull.ear) for side in SIDES]
-    parts.append(curl_object(ob, hull.face.cx))
+    if CURLS:
+        parts.append(curl_object(ob, hull.face.cx))
     for p in parts:
         for name in ("curl", "scalp"):
             if name not in p.data.attributes:
@@ -1058,7 +1082,7 @@ def stage_mesh():
         scale = 1.0
         if skin_l is not None and min(v[skin_l] for v in f.verts) > 0.5:
             scale = HAND_UV_SCALE
-        elif f.calc_center_median().z > 1.40:
+        elif f.calc_center_median().z > C.HEAD_UV_FROM:
             scale = HEAD_UV_SCALE
         if scale != 1.0:
             for loop in f.loops:
@@ -1072,7 +1096,7 @@ def stage_mesh():
     proj = projection_material(views, heads, hull, skin_colour(heads["front"]))
     ob.data.materials.clear()
     ob.data.materials.append(proj)
-    tex = bpy.data.images.new("T_Rosa_BC", TEX_SIZE, TEX_SIZE, alpha=False)
+    tex = bpy.data.images.new(f"T_{NAME}_BC", TEX_SIZE, TEX_SIZE, alpha=False)
     tn = proj.node_tree.nodes.new("ShaderNodeTexImage")
     tn.image = tex
     proj.node_tree.nodes.active = tn
@@ -1088,7 +1112,7 @@ def stage_mesh():
     log(f"bake {time.time() - t1:.1f} s")
     paint_hand_details(tex, ob, J)
     paint_hair(tex, ob, hd)
-    tex.filepath_raw = os.path.join(EXPORT, "T_Rosa_BC.png")
+    tex.filepath_raw = os.path.join(EXPORT, f"T_{NAME}_BC.png")
     tex.file_format = "PNG"
     tex.save()
     ob.data.materials.clear()
@@ -1272,16 +1296,12 @@ def sample_photos(views, heads, co, no):
 # photos'. The bun gets spiral coils in relief, the same field drives the strands' relief and texture.
 # ---------------------------------------------------------------------------------------------
 
-HAIR_SRC = (75, 300, 290, 640)    # rows, cols of a hair-only patch in the profile half of the close-up
+HAIR_SRC = C.HAIR_SRC             # rows, cols of a hair-only patch in the profile half of the close-up
 HAIR_CELL = 0.016                 # splat spacing and radius on the scalp
 HAIR_BASE_CELL = 0.008            # the photos' colour is kept down to this scale
 HAIR_GAIN = 1.0                   # contrast of the strands relative to the patch
-# Bun (back photo + profile): centre (u from the face centre, z) on the back of the head, radius, spiral coils
-# (radial pitch per turn, number of coils, relief height).
-# The knot itself is an ellipsoid (half widths rx, ry, rz) whose back reaches the profile; beside it the back of
-# the head is taken in by up to `depth`, so the bun stands out instead of the whole back bulging.
-BUN = dict(u=0.0, z=1.57, radius=0.05, pitch=0.036, arms=2, ridge=0.0065,
-           rx=0.055, ry=0.060, rz=0.065, depth=0.035)
+# Bun knot with spiral coils (see the character file), None for a figure without one.
+BUN = C.BUN
 
 
 def blur(img, sigma):
@@ -1352,9 +1372,10 @@ class HairDetail:
             f"strands at {math.degrees(self.theta):.0f} deg, detail sd {self.ratio.std():.2f}")
 
     def set_bun(self, co, no):
-        """Bun centre on the hull: the rearmost surface point at the bun's height and lateral position."""
-        near = ((np.abs(co[:, 0] - (self.cx + BUN["u"])) < 0.012) & (np.abs(co[:, 2] - BUN["z"]) < 0.012)
-                & (co[:, 1] > 0.0))
+        """Bun centre on the hull: the rearmost surface point at the bun's height and lateral position. Without a
+        bun the strands run down to the nape instead."""
+        u0, z0 = (BUN["u"], BUN["z"]) if BUN else (0.0, C.HAIR_FROM + 0.03)
+        near = ((np.abs(co[:, 0] - (self.cx + u0)) < 0.012) & (np.abs(co[:, 2] - z0) < 0.012) & (co[:, 1] > 0.0))
         idx = np.nonzero(near)[0]
         i = idx[np.argmax(co[idx, 1])]
         self.bun = co[i].astype(np.float64)
@@ -1385,7 +1406,9 @@ class HairDetail:
         return BUN["arms"] * phi - 2 * math.pi * r / BUN["pitch"] + wobble
 
     def coils(self, p):
-        """Spiral coils on the bun in [-1, 1] (ridge +1, gap -1), zero away from it."""
+        """Spiral coils on the bun in [-1, 1] (ridge +1, gap -1), zero away from it (and without a bun)."""
+        if not BUN:
+            return np.zeros(len(p))
         _, dn, _, r, phi = self._bun_polar(p)
         R = BUN["radius"]
         mask = (1 - smoothstep(0.75 * R, 1.15 * R, r)) * smoothstep(0.003, 0.012, r) * (dn > -0.05)
@@ -1398,8 +1421,11 @@ class HairDetail:
         inflow = -q - (-q * n).sum(axis=1, keepdims=True) * n
         er = qb / np.maximum(r, 1e-6)[:, None]
         ephi = np.cross(self.bn, er)
-        along = er + (2 * math.pi * r / (BUN["pitch"] * BUN["arms"]))[:, None] * ephi
-        k = (1 - smoothstep(0.7 * BUN["radius"], 1.2 * BUN["radius"], r))[:, None]
+        if BUN:
+            along = er + (2 * math.pi * r / (BUN["pitch"] * BUN["arms"]))[:, None] * ephi
+            k = (1 - smoothstep(0.7 * BUN["radius"], 1.2 * BUN["radius"], r))[:, None]
+        else:
+            along, k = er, np.zeros((len(p), 1))
         t = unit(inflow) * (1 - k) + unit(along) * k
         t = t - (t * n).sum(axis=1, keepdims=True) * n
         bad = np.linalg.norm(t, axis=1) < 1e-4
@@ -1474,7 +1500,7 @@ def paint_hair(tex, ob, hd):
     tex.pixels.foreach_get(px)
     px = px.reshape(size, size, 4)
     X, Y, P, Nn = texels_of(ob, "scalp", size)
-    w = hd.coverage(Nn) * smoothstep(1.47, 1.50, P[:, 2])
+    w = hd.coverage(Nn) * smoothstep(C.HAIR_FROM - 0.005, C.HAIR_FROM + 0.025, P[:, 2])
     sel = w > 0.003
     X, Y, P, Nn, w = X[sel], Y[sel], P[sel].astype(np.float64), Nn[sel].astype(np.float64), w[sel]
     col = px[Y, X, :3].astype(np.float64)
@@ -1512,8 +1538,8 @@ def hair_relief(ob, views, heads, hull, hd):
     rgb = sample_photos(views, heads, co, no)
     # Copper strands pass the general skin test; real skin is lighter and less saturated.
     skin = is_skin(rgb) & (rgb[:, 1] > 0.62 * rgb[:, 0]) & (rgb[:, 0] > 0.45)
-    hair = (co[:, 2] > 1.475) & ~in_face & ~skin
-    weight = smoothstep(1.475, 1.495, co[:, 2]) * hair
+    hair = (co[:, 2] > C.HAIR_FROM) & ~in_face & ~skin
+    weight = smoothstep(C.HAIR_FROM, C.HAIR_FROM + 0.02, co[:, 2]) * hair
     lum = rgb @ np.array([0.3, 0.59, 0.11])
     # Neighbour average via the edges.
     ev = np.empty(len(me.edges) * 2, np.int32)
@@ -1535,7 +1561,7 @@ def hair_relief(ob, views, heads, hull, hd):
     if hair.any():
         hp, hn = co[hair], no[hair]
         strands = hd.detail(hp, hn, hd.band)[:, 0]
-        d_new = np.clip(strands * 0.0009, -0.0022, 0.0022) + hd.coils(hp) * BUN["ridge"]
+        d_new = np.clip(strands * 0.0009, -0.0022, 0.0022) + hd.coils(hp) * (BUN["ridge"] if BUN else 0.0)
         cov = hd.coverage(hn)
         d[hair] = d[hair] * (1 - cov) + d_new * cov
     co += no * (d * weight)[:, None]
@@ -1546,22 +1572,7 @@ def hair_relief(ob, views, heads, hull, hd):
 
 # Loose curls: (u from the face centre, y, z) near the scalp, direction, length, tube radius, helix radius, turns,
 # droop. Framing the face at the temples, two wisps on the forehead, behind the ears and at the nape, loops on the bun.
-CURLS = (
-    (-0.069, -0.022, 1.600, (-0.15, -0.10, -1.0), 0.100, 0.0042, 0.0085, 2.2, 0.1),
-    (-0.073, -0.004, 1.578, (-0.25, 0.05, -1.0), 0.112, 0.0038, 0.0090, 2.5, 0.1),
-    (0.069, -0.024, 1.602, (0.15, -0.10, -1.0), 0.092, 0.0042, 0.0085, 2.1, 0.1),
-    (0.074, -0.006, 1.580, (0.25, 0.05, -1.0), 0.105, 0.0038, 0.0090, 2.4, 0.1),
-    (-0.030, -0.080, 1.655, (-0.6, -0.3, -0.5), 0.042, 0.0030, 0.0060, 1.1, 0.3),
-    (0.028, -0.082, 1.660, (0.55, -0.35, -0.45), 0.038, 0.0030, 0.0060, 1.0, 0.3),
-    (-0.060, 0.065, 1.530, (-0.15, 0.2, -1.0), 0.080, 0.0040, 0.0080, 1.9, 0.0),
-    (0.060, 0.065, 1.530, (0.15, 0.2, -1.0), 0.076, 0.0040, 0.0080, 1.8, 0.0),
-    (-0.025, 0.095, 1.515, (-0.05, 0.25, -1.0), 0.062, 0.0038, 0.0075, 1.5, 0.0),
-    (0.030, 0.095, 1.512, (0.05, 0.25, -1.0), 0.066, 0.0038, 0.0075, 1.6, 0.0),
-    (-0.055, 0.145, 1.625, (-0.8, 0.3, -0.5), 0.040, 0.0048, 0.0095, 0.9, 0.5),
-    (0.050, 0.150, 1.615, (0.8, 0.4, -0.5), 0.040, 0.0048, 0.0095, 0.9, 0.5),
-    (-0.020, 0.170, 1.590, (-0.3, 0.7, -0.7), 0.045, 0.0045, 0.0090, 1.1, 0.4),
-    (0.025, 0.160, 1.570, (0.4, 0.5, -0.8), 0.050, 0.0042, 0.0085, 1.3, 0.3),
-)
+CURLS = C.CURLS   # loose corkscrew curls, see the character file
 
 
 def curl_object(body, face_cx):
@@ -1995,7 +2006,7 @@ def stage_rig():
     views = {n: View(n) for n in ("front", "left")}
     hull = Hull(views["front"], views["left"])
     J = measure(hull)
-    body = bpy.data.objects["Rosa"]
+    body = bpy.data.objects[NAME]
     arm_data = bpy.data.armatures.new("Armature")
     arm = link(bpy.data.objects.new("Armature", arm_data))
     activate(arm)
@@ -2308,7 +2319,7 @@ def act_locomotion(P, arm, name, frames, speed, duty, lift, bob, lean, swing, el
 
 
 def act_idle(P, arm, frames=90):
-    new_action(arm, "Rosa_Idle", frames)
+    new_action(arm, f"{NAME}_Idle", frames)
     for f in range(frames + 1):
         ph = f / frames
         breath = math.sin(2 * math.pi * ph)
@@ -2348,7 +2359,7 @@ def mix_hand(a, b, t):
 
 def act_work(P, arm, frames=60):
     """Crouched in front of a lock or a drawer, both hands busy at about 0.95 m (loop)."""
-    new_action(arm, "Rosa_Work", frames)
+    new_action(arm, f"{NAME}_Work", frames)
     for f in range(frames + 1):
         ph = f / frames
         Dp = rot((0, 0, 1), -6) @ rot((1, 0, 0), 6)
@@ -2378,7 +2389,7 @@ def act_work(P, arm, frames=60):
 
 def act_pickup(P, arm, frames=48):
     """Crouch, pick something up from the floor in front with the right hand, stand up (one shot)."""
-    new_action(arm, "Rosa_Pickup", frames)
+    new_action(arm, f"{NAME}_Pickup", frames)
     for f in range(frames + 1):
         t = f / FPS
         c = smooth(t / 0.55) if t < 0.85 else 1.0 - smooth((t - 0.85) / 0.75)
@@ -2411,7 +2422,7 @@ def act_pickup(P, arm, frames=48):
         P.key(f)
 
 
-ACTIONS = ("Rosa_Idle", "Rosa_Walk", "Rosa_Jog", "Rosa_Work", "Rosa_Pickup")
+ACTIONS = (f"{NAME}_Idle", f"{NAME}_Walk", f"{NAME}_Jog", f"{NAME}_Work", f"{NAME}_Pickup")
 
 
 def stage_anim():
@@ -2421,17 +2432,17 @@ def stage_anim():
     P = Poser(arm)
     act_idle(P, arm)
     # Walk 1.4 m/s (one cycle = two steps of 0.7 m), jog 2.5 m/s = the game's base walk speed.
-    act_locomotion(P, arm, "Rosa_Walk", 30, speed=1.4, duty=0.6, lift=0.09, bob=0.016, lean=4.0,
+    act_locomotion(P, arm, f"{NAME}_Walk", 30, speed=1.4, duty=0.6, lift=0.09, bob=0.016, lean=4.0,
                    swing=22.0, elbow=14.0, jog=False)
-    act_locomotion(P, arm, "Rosa_Jog", 22, speed=2.5, duty=0.38, lift=0.17, bob=0.025, lean=10.0,
+    act_locomotion(P, arm, f"{NAME}_Jog", 22, speed=2.5, duty=0.38, lift=0.17, bob=0.025, lean=10.0,
                    swing=24.0, elbow=88.0, jog=True)
     act_work(P, arm)
     act_pickup(P, arm)
-    arm.animation_data.action = bpy.data.actions["Rosa_Idle"]
+    arm.animation_data.action = bpy.data.actions[f"{NAME}_Idle"]
     for a in bpy.data.actions:
         log(f"action {a.name}: frames {a.frame_range[0]:.0f}-{a.frame_range[1]:.0f}")
     save_blend("anim")
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "Rosa", "rosa.blend"), compress=True, copy=True)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, NAME, f"{LOWER}.blend"), compress=True, copy=True)
     log(f"stage anim done in {time.time() - t0:.1f} s")
 
 
@@ -2463,9 +2474,9 @@ def preview_anim():
     # Close-ups of the hands: idle, jog, work, grabbing.
     scene = bpy.context.scene
     paths = []
-    for name, frame, side, view in (("Rosa_Idle", 20, "r", (-0.3, -1.0, 0.3)), ("Rosa_Jog", 5, "l", (0.6, -1.0, 0.4)),
-                                    ("Rosa_Work", 15, "r", (-0.2, -1.0, 0.6)), ("Rosa_Work", 15, "l", (0.6, -0.6, 0.9)),
-                                    ("Rosa_Pickup", 26, "r", (-0.8, -0.8, 0.5))):
+    for name, frame, side, view in ((f"{NAME}_Idle", 20, "r", (-0.3, -1.0, 0.3)), (f"{NAME}_Jog", 5, "l", (0.6, -1.0, 0.4)),
+                                    (f"{NAME}_Work", 15, "r", (-0.2, -1.0, 0.6)), (f"{NAME}_Work", 15, "l", (0.6, -0.6, 0.9)),
+                                    (f"{NAME}_Pickup", 26, "r", (-0.8, -0.8, 0.5))):
         set_action(arm, name)
         scene.frame_set(frame)
         bpy.context.view_layer.update()
@@ -2475,8 +2486,8 @@ def preview_anim():
     contact_sheet(paths, os.path.join(WORK, "sheet_fingers.png"), len(paths))
 
 
-SHOWCASE = (("Rosa_Idle", 1, "Stehen"), ("Rosa_Walk", 3, "Gehen 1,4 m/s"), ("Rosa_Jog", 4, "Laufen 2,5 m/s"),
-            ("Rosa_Work", 2, "Arbeiten (Schloss, Schublade)"), ("Rosa_Pickup", 1, "Aufheben"))
+SHOWCASE = ((f"{NAME}_Idle", 1, "Stehen"), (f"{NAME}_Walk", 3, "Gehen 1,4 m/s"), (f"{NAME}_Jog", 4, "Laufen 2,5 m/s"),
+            (f"{NAME}_Work", 2, "Arbeiten (Schloss, Schublade)"), (f"{NAME}_Pickup", 1, "Aufheben"))
 
 
 def preview_showcase():
@@ -2528,7 +2539,7 @@ def preview_showcase():
     scene.render.ffmpeg.format = "MPEG4"
     scene.render.ffmpeg.codec = "H264"
     scene.render.ffmpeg.constant_rate_factor = "HIGH"
-    scene.render.filepath = os.path.join(WORK, "rosa_showcase.mp4")
+    scene.render.filepath = os.path.join(WORK, f"{LOWER}_showcase.mp4")
     t0 = time.time()
     bpy.ops.render.render(animation=True)
     log(f"video {scene.render.filepath} ({scene.frame_end + 1} frames, {time.time() - t0:.0f} s)")
@@ -2560,7 +2571,7 @@ def preview_showcase():
 def check_fbx():
     """Read the exported FBX back into an empty scene and report what arrived."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_scene.fbx(filepath=os.path.join(EXPORT, "SK_Rosa.fbx"))
+    bpy.ops.import_scene.fbx(filepath=os.path.join(EXPORT, f"SK_{NAME}.fbx"))
     for ob in bpy.data.objects:
         if ob.type == "ARMATURE":
             log(f"fbx armature {ob.name}: {len(ob.data.bones)} bones, root {[b.name for b in ob.data.bones if not b.parent]}")
@@ -2571,7 +2582,7 @@ def check_fbx():
                 f"materials {[m.name for m in ob.data.materials]}")
     for a in bpy.data.actions:
         log(f"fbx action {a.name}: {a.frame_range[0]:.0f}-{a.frame_range[1]:.0f}")
-    fbm = os.path.join(EXPORT, "SK_Rosa.fbm")   # the importer unpacks textures here
+    fbm = os.path.join(EXPORT, f"SK_{NAME}.fbm")   # the importer unpacks textures here
     if os.path.isdir(fbm):
         import shutil
         shutil.rmtree(fbm)
@@ -2585,14 +2596,14 @@ def check_fbx():
 def export_fbx():
     open_blend("anim")
     arm = bpy.data.objects["Armature"]
-    body = bpy.data.objects["Rosa"]
+    body = bpy.data.objects[NAME]
     arm.animation_data.action = None
     for pb in arm.pose.bones:
         pb.rotation_quaternion = Quaternion()
         pb.location = Vector()
     activate(arm)
     body.select_set(True)
-    path = os.path.join(EXPORT, "SK_Rosa.fbx")
+    path = os.path.join(EXPORT, f"SK_{NAME}.fbx")
     bpy.ops.export_scene.fbx(
         filepath=path, use_selection=True, object_types={"ARMATURE", "MESH"},
         apply_scale_options="FBX_SCALE_ALL", axis_forward="-Z", axis_up="Y",
@@ -2673,12 +2684,14 @@ def setup_preview_scene():
     return scene.camera
 
 
-def render_views(prefix, views=PREVIEW_VIEWS, size=(520, 760), centre=(0, 0, 0.88), radius=1.0, frames=None):
+def render_views(prefix, views=PREVIEW_VIEWS, size=(520, 760), centre=None, radius=1.0, frames=None):
     scene = bpy.context.scene
     cam = setup_preview_scene()
     scene.render.resolution_x, scene.render.resolution_y = size
     scene.render.image_settings.file_format = "PNG"
     out = []
+    if centre is None:   # whole figure
+        centre, radius = (0, 0, 0.88 * SIZE), radius * SIZE
     centre = Vector(centre)
     for name, d in views.items():
         direction = Vector(d).normalized()
@@ -2720,15 +2733,15 @@ def preview_mesh():
     open_blend("mesh")
     paths = render_views("mesh")
     contact_sheet(paths, os.path.join(WORK, "sheet_mesh.png"), len(paths))
-    paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57), radius=0.17)
+    paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57 * SIZE), radius=0.17 * SIZE)
     contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), 3)
     ear_views = {"side": (-1.0, 0.05, 0.1), "behind": (-0.75, 0.65, 0.15), "front": (-0.6, -0.8, 0.1),
                  "above": (-0.6, 0.2, 0.8)}
-    paths = render_views("ear", ear_views, size=(320, 320), centre=(-0.07, 0.037, 1.537), radius=0.055)
+    paths = render_views("ear", ear_views, size=(320, 320), centre=(-0.07 * SIZE, 0.037, 1.537 * SIZE), radius=0.055 * SIZE)
     contact_sheet(paths, os.path.join(WORK, "sheet_ear.png"), len(paths))
     hand_views = {"top": (0.15, -0.3, 1.0), "front": (0.1, -1.0, 0.25), "below": (0.2, -0.5, -1.0),
                   "end": (1.0, -0.4, 0.3)}
-    paths = render_views("hand", hand_views, size=(360, 360), centre=(0.74, 0.02, 1.35), radius=0.13)
+    paths = render_views("hand", hand_views, size=(360, 360), centre=(0.74 * SIZE, 0.02, 1.35 * SIZE), radius=0.13 * SIZE)
     contact_sheet(paths, os.path.join(WORK, "sheet_hand.png"), len(paths))
 
 
@@ -2738,7 +2751,7 @@ def preview_mesh():
 
 
 def main():
-    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to rosa.blend
+    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to the final .blend
     a = args()
     stage = a["stage"]
     if stage in ("mesh", "all"):

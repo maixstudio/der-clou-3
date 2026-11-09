@@ -564,7 +564,10 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
 - **Rosa als 3D-Figur mit Skelett und Animationen (Schritt 34, 2026-11-09, nur Blender, noch nicht im Spiel).** Vorlage:
   Referenzblatt des Users (T-Pose, vorn/hinten/beide Seiten/zwei Schrägansichten) und Kopf-Nahaufnahme (vorn + Profil
   nebeneinander, `rosa_head.png`) in `Art/Characters/Rosa/ref/`.
-  - `blender -b --factory-startup -P Art/Characters/build_rosa.py -- --stage mesh|rig|anim|all [--preview] [--export]`,
+  - `blender -b --factory-startup -P Art/Characters/build_character.py -- --char Rosa --stage mesh|rig|anim|all [--preview]
+    [--export]` (bis Schritt 37 hieß es `build_rosa.py`). Alles, was nur Rosa betrifft (Bilddateien, Messpunkte, Höhen,
+    Ohrumriss, Locken, Dutt), steht in `Art/Characters/Rosa/character.py`; Bilder für neue Figuren nach
+    `Docs/Figuren-Referenzbilder.md`,
     `--stage showcase` rendert `Saved/Characters/Rosa/rosa_showcase.mp4` und `sheet_game.png` (Spielkamera-Abstand).
     Zwischenstände `Saved/Characters/Rosa/rosa_<stage>.blend`, fertig `Art/Characters/Rosa/rosa.blend`.
   - Form: Umriss vorn (x–z) und Seite (y–z) → je Höhe eine Superellipse in beide Umrisse eingeschrieben (Voxel 3 mm),
