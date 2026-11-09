@@ -124,6 +124,11 @@ namespace DCItemWidgets
 	/** The icon of a skill (key for locks, vault for safes …). */
 	DERCLOU3_API FName IconForSkill(EDCSkill Skill);
 
+	/** Painted portrait of a crew member (Content/Slate/Portraits/<name in lower case>.png or .jpg), cut to 3:4. Null while there is none. */
+	DERCLOU3_API const FSlateBrush* Portrait(const FString& CrewName);
+	/** The portrait in a brass frame, Width × Width·4/3; without a picture the initial in the crew colour on a dark tile. */
+	DERCLOU3_API TSharedRef<SWidget> MakePortrait(const FString& CrewName, const FLinearColor& CrewColor, float Width);
+
 	/**
 	 * Takes dropped items; Check decides green or red while hovering, and the reason shows next to
 	 * the dragged item. Target names the place in that line ("→ Rechte Hand").

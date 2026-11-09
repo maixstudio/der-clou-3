@@ -14,6 +14,7 @@
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -112,40 +113,50 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 					.OnMouseButtonDown_Lambda([](const FGeometry&, const FPointerEvent&) { return FReply::Handled(); })
 					[
 						SNew(SVerticalBox)
-						+ SVerticalBox::Slot().AutoHeight()
+						// Portrait on the left, next to it title, view toggle and the summary line.
+						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
 						[
 							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 0.f, 12.f, 0.f)
 							[
-								MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]()
-								{
-									const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
-									return Member ? FText::Format(LOCTEXT("Title", "Profil – {0}"), Member->GetCrewName()) : LOCTEXT("TitleNobody", "Profil");
-								}), 22)
+								SAssignNew(PortraitBox, SBox)
 							]
-							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+							+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Top)
 							[
-								MakeViewToggle()
+								SNew(SVerticalBox)
+								// Title, then the view toggle, then the summary – like the mockup, so long names still fit.
+								+ SVerticalBox::Slot().AutoHeight()
+								[
+									MakeTitle(TAttribute<FText>::CreateLambda([WeakThis]()
+									{
+										const ADCCrewCharacter* Member = WeakThis.IsValid() ? WeakThis->Crew.Get() : nullptr;
+										return Member ? FText::Format(LOCTEXT("Title", "Profil – {0}"), Member->GetCrewName()) : LOCTEXT("TitleNobody", "Profil");
+									}), 22)
+								]
+								+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0.f, 4.f, 0.f, 0.f)
+								[
+									MakeViewToggle()
+								]
+								+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 5.f, 0.f, 0.f)
+								[
+									SNew(STextBlock)
+									.Text_Lambda([WeakThis]()
+									{
+										const UDCInventoryComponent* Inventory = WeakThis.IsValid() ? WeakThis->GetShownInventory() : nullptr;
+										if (!Inventory)
+										{
+											return FText::GetEmpty();
+										}
+										return FText::Format(WeakThis->IsPlanView() ? LOCTEXT("SummaryPlan", "Nach dem Plan: {0} / {1} · Tempo {2} % · Wert {3}")
+											: LOCTEXT("Summary", "Gewicht {0} / {1}  ·  Tempo {2} %  ·  Wert {3}"),
+											DCItems::FormatKg(Inventory->GetTotalMass()), DCItems::FormatKg(Inventory->GetMaxCarryMass()),
+											FText::AsNumber(FMath::RoundToInt(Inventory->GetSpeedFactor() * 100.f)), DCItems::FormatEuro(Inventory->GetTotalValue()));
+									})
+									.AutoWrapText(true)
+									.Font(Font(12))
+									.ColorAndOpacity(MutedColor)
+								]
 							]
-						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 3.f, 0.f, 12.f)
-						[
-							SNew(STextBlock)
-							.Text_Lambda([WeakThis]()
-							{
-								const UDCInventoryComponent* Inventory = WeakThis.IsValid() ? WeakThis->GetShownInventory() : nullptr;
-								if (!Inventory)
-								{
-									return FText::GetEmpty();
-								}
-								return FText::Format(WeakThis->IsPlanView() ? LOCTEXT("SummaryPlan", "Nach dem Plan: {0} / {1} · Tempo {2} % · Wert {3}")
-									: LOCTEXT("Summary", "Gewicht {0} / {1}  ·  Tempo {2} %  ·  Wert {3}"),
-									DCItems::FormatKg(Inventory->GetTotalMass()), DCItems::FormatKg(Inventory->GetMaxCarryMass()),
-									FText::AsNumber(FMath::RoundToInt(Inventory->GetSpeedFactor() * 100.f)), DCItems::FormatEuro(Inventory->GetTotalValue()));
-							})
-							.AutoWrapText(true)
-							.Font(Font(12))
-							.ColorAndOpacity(MutedColor)
 						]
 						+ SVerticalBox::Slot().MaxHeight(640.f)
 						[
@@ -172,6 +183,7 @@ TSharedRef<SWidget> UDCInventoryPanel::RebuildWidget()
 			]
 		];
 	bDirty = true;
+	PortraitShown.Reset();
 	return Root.ToSharedRef();
 }
 
@@ -180,12 +192,21 @@ void UDCInventoryPanel::ReleaseSlateResources(bool bReleaseChildren)
 	Super::ReleaseSlateResources(bReleaseChildren);
 	Root.Reset();
 	Content.Reset();
+	PortraitBox.Reset();
+	PortraitShown.Reset();
 }
 
 void UDCInventoryPanel::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	MessageTime = FMath::Max(0.f, MessageTime - InDeltaTime);
+	// Portrait of whoever the window shows now.
+	if (PortraitBox.IsValid() && Crew.Get() != PortraitShown.Get())
+	{
+		PortraitShown = Crew;
+		const ADCCrewCharacter* Member = Crew.Get();
+		PortraitBox->SetContent(Member ? DCItemWidgets::MakePortrait(Member->GetCrewName().ToString(), Member->GetBodyColor(), 60.f) : SNullWidget::NullWidget);
+	}
 	// The planned inventory is rebuilt after every plan change: show the new one.
 	if (GetShownInventory() != LastShown.Get())
 	{

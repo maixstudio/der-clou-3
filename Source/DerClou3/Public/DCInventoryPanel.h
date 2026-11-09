@@ -76,6 +76,9 @@ private:
 	TSharedPtr<FDCItemTreeContext> Context;
 	TSharedPtr<SWidget> Root;
 	TSharedPtr<SVerticalBox> Content;
+	/** Holds the portrait of the crew member shown; refilled when the crew member changes. */
+	TSharedPtr<class SBox> PortraitBox;
+	TWeakObjectPtr<ADCCrewCharacter> PortraitShown;
 	bool bShown = false;
 	/** Rebuilding waits for the next tick, never inside one of the window's own drop handlers. */
 	bool bDirty = true;

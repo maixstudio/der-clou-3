@@ -1,6 +1,7 @@
 #include "DCItemWidgets.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "Brushes/SlateDynamicImageBrush.h"
 #include "Brushes/SlateImageBrush.h"
 #include "Brushes/SlateNoResource.h"
 #include "Brushes/SlateRoundedBoxBrush.h"
@@ -10,6 +11,7 @@
 #include "DCSkills.h"
 #include "DerClou3.h"
 #include "Fonts/CompositeFont.h"
+#include "ImageUtils.h"
 #include "Input/DragAndDrop.h"
 #include "Misc/Paths.h"
 #include "Rendering/DrawElements.h"
@@ -327,6 +329,86 @@ namespace DCItemWidgets
 				SNew(SImage)
 				.Image(IconBrush)
 				.ColorAndOpacity(Color)
+			];
+	}
+
+	const FSlateBrush* Portrait(const FString& CrewName)
+	{
+		// Dynamic brushes: a plain image brush is only loaded when it belongs to a registered style.
+		static TMap<FString, TSharedPtr<FSlateDynamicImageBrush>> Cache;
+		const FString Key = CrewName.ToLower();
+		if (Key.IsEmpty())
+		{
+			return nullptr;
+		}
+		if (const TSharedPtr<FSlateDynamicImageBrush>* Found = Cache.Find(Key))
+		{
+			return Found->Get();
+		}
+		TSharedPtr<FSlateDynamicImageBrush>& Entry = Cache.Add(Key);
+		for (const TCHAR* Extension : { TEXT(".png"), TEXT(".jpg") })
+		{
+			const FString Path = FPaths::ProjectContentDir() / TEXT("Slate/Portraits") / (Key + Extension);
+			FImage Picture;
+			if (!FPaths::FileExists(Path) || !FImageUtils::LoadImage(*Path, Picture) || Picture.SizeX <= 0 || Picture.SizeY <= 0)
+			{
+				continue;
+			}
+			// Cut to 3:4: trim the sides of wider pictures, keep the upper part (the head) of taller ones.
+			constexpr float Aspect = 3.f / 4.f;
+			const float Own = static_cast<float>(Picture.SizeX) / static_cast<float>(Picture.SizeY);
+			FBox2f Region(FVector2f(0.f, 0.f), FVector2f(1.f, 1.f));
+			if (Own > Aspect)
+			{
+				const float Keep = Aspect / Own;
+				Region = FBox2f(FVector2f((1.f - Keep) * 0.5f, 0.f), FVector2f((1.f + Keep) * 0.5f, 1.f));
+			}
+			else if (Own < Aspect)
+			{
+				const float Keep = Own / Aspect;
+				const float Top = (1.f - Keep) * 0.25f;
+				Region = FBox2f(FVector2f(0.f, Top), FVector2f(1.f, Top + Keep));
+			}
+			Entry = MakeShared<FSlateDynamicImageBrush>(FName(*Path), FVector2f(static_cast<float>(Picture.SizeX), static_cast<float>(Picture.SizeY)));
+			Entry->SetUVRegion(Region);
+			UE_LOG(LogDerClou, Display, TEXT("Portrait of %s: %s (%d x %d)"), *CrewName, *Path, Picture.SizeX, Picture.SizeY);
+			break;
+		}
+		return Entry.Get();
+	}
+
+	TSharedRef<SWidget> MakePortrait(const FString& CrewName, const FLinearColor& CrewColor, float Width)
+	{
+		const float Height = FMath::RoundToFloat(Width * 4.f / 3.f);
+		TSharedRef<SWidget> Inside = SNullWidget::NullWidget;
+		if (const FSlateBrush* Picture = Portrait(CrewName))
+		{
+			Inside = SNew(SImage).Image(Picture);
+		}
+		else
+		{
+			Inside = SNew(SBox)
+				.HAlign(HAlign_Center)
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(CrewName.Left(1).ToUpper()))
+					.Font(HeadFont(FMath::RoundToInt(Width * 0.55f)))
+					.ColorAndOpacity(CrewColor)
+				];
+		}
+		// Brass line around it; the 1.5 padding keeps the square picture inside the rounded corners.
+		return SNew(SBox)
+			.WidthOverride(Width)
+			.HeightOverride(Height)
+			[
+				SNew(SBorder)
+				.BorderImage(FramedBrush())
+				.BorderBackgroundColor(TileColor)
+				.Padding(1.5f)
+				[
+					Inside
+				]
 			];
 	}
 

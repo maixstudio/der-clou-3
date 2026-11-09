@@ -20,7 +20,8 @@
 namespace
 {
 	constexpr float CardWidth = 252.f;
-	constexpr float PortraitSize = 52.f;
+	/** Width of the painted portrait; 3:4, so 88 high – about as tall as name, status and two skills. */
+	constexpr float PortraitWidth = 66.f;
 	constexpr float StripeWidth = 4.f;
 	const FLinearColor CardColor(0.0091f, 0.0137f, 0.0203f, 0.97f);         // #181F27 like the windows
 	const FLinearColor SelectedCardColor(0.0152f, 0.0222f, 0.0319f, 0.98f); // #212932
@@ -118,7 +119,6 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 	TWeakObjectPtr<ADCCrewCharacter> WeakMember = Member;
 	const FLinearColor Color = Member->GetBodyColor();
 	const FString Name = Member->GetCrewName().ToString();
-	const FText Initial = FText::FromString(Name.Left(1).ToUpper());
 
 	const auto IsSelected = [WeakThis, WeakMember]()
 	{
@@ -198,14 +198,8 @@ TSharedRef<SWidget> UDCCrewBar::MakeCard(ADCCrewCharacter* Member, int32 Number)
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Top).Padding(0.f, 0.f, 10.f, 0.f)
 						[
-							// Portrait placeholder: the initial on the crew colour.
-							SNew(SBox).WidthOverride(PortraitSize).HeightOverride(PortraitSize)
-							[
-								SNew(SBorder).BorderImage(RoundBrush()).BorderBackgroundColor(Color).HAlign(HAlign_Center).VAlign(VAlign_Center)
-								[
-									SNew(STextBlock).Text(Initial).Font(HeadFont(30)).ColorAndOpacity(DarkTextColor)
-								]
-							]
+							// Painted portrait (the initial on a dark tile while there is no picture yet).
+							MakePortrait(Name, Color, PortraitWidth)
 						]
 						+ SHorizontalBox::Slot().FillWidth(1.f)
 						[

@@ -169,10 +169,18 @@ Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
 - Leerer Zustand: ein Satz mit der nächsten Handlung („Boden, Tür oder Gegenstand anklicken.“).
 
 **Profilkarten** – pro Figur eine, feste Reihenfolge, Taste 1–n auf der Karte.
-- Farbstreifen links (Crew-Farbe = Identität), Porträt (bis es Bilder gibt: Initiale auf der Crew-Farbe),
-  Tastennummer als Abzeichen vor dem Namen, Name in Großbuchstaben, darunter der Plan-Stand (hängt der Plan: rot mit
-  Warnzeichen) und die zwei besten Fähigkeiten als Zeilen mit Icon, Name und Wert.
+- Farbstreifen links (Crew-Farbe = Identität), Porträt 66 × 88 im Messingrahmen (ohne Bild: Initiale in der
+  Crew-Farbe auf dunklem Grund), Tastennummer als Abzeichen vor dem Namen, Name in Großbuchstaben, darunter der
+  Plan-Stand (hängt der Plan: rot mit Warnzeichen) und die zwei besten Fähigkeiten als Zeilen mit Icon, Name und Wert.
 - Gewählt: 2 px Bernstein-Rahmen und hellerer Grund. Klick = wählen + Kamera hin.
+- Das Profil rechts zeigt dasselbe Porträt (60 × 80) links neben Titel, Umschalter und Zusammenfassung.
+
+**Porträts** – gemalt, Kopf und Schultern, dunkler Hintergrund, warmes Licht von links, kühles von rechts; heute
+spielend, zeitlose dunkle Kleidung. Prompts und Ablauf: `Docs/UI-Mockup/Portraet-Prompts.md`.
+- Originale in `Art/Portraits/<name>.png|jpg|webp`, `python Scripts/Tools/prepare_portraits.py` schneidet auf 3:4
+  und schreibt 132 × 176 nach `Content/Slate/Portraits/<name>.png` (Name der Figur in Kleinbuchstaben).
+- Das Spiel lädt sie zur Laufzeit (`DCItemWidgets::Portrait`, `MakePortrait`, dynamischer Slate-Pinsel; andere
+  Seitenverhältnisse schneidet es selbst zu: Mitte bei breiten, oberer Teil bei hohen Bildern).
 
 **Tooltips**: nach ca. 0,4 s; höchstens vier Zeilen: was es tut · Kürzel · warum nicht · Zahlen.
 Nichts, was man zum Spielen *braucht*, steht nur im Tooltip.
