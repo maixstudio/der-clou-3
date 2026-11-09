@@ -134,6 +134,11 @@ def build_surface_master(name="M_ItemSurface", world_aligned=False):
     world_aligned: UVs from the world position (room floors and walls built from scaled cubes).
     """
     mat = new_asset(name, MAT_PATH, unreal.Material, unreal.MaterialFactoryNew())
+    # Nanite meshes otherwise draw the default material in the game ("missing usage flag Nanite").
+    try:
+        mat.set_editor_property("used_with_nanite", True)
+    except Exception as error:  # noqa: BLE001 – report and keep going
+        log(f"{name}: could not set used_with_nanite ({error})")
     uv = world_uvs(mat) if world_aligned else expr(mat, unreal.MaterialExpressionTextureCoordinate, -1400, 0)
     tiling = expr(mat, unreal.MaterialExpressionScalarParameter, -1400, 150, parameter_name="Tiling", default_value=1.0)
     uvs = expr(mat, unreal.MaterialExpressionMultiply, -1200, 50)
@@ -205,6 +210,31 @@ def build_glass_master():
     return mat
 
 
+def build_plan_mark_master():
+    """Footprints and rings of the plan on the floor: unlit, see-through, colour and opacity per instance.
+
+    Per-instance custom data (UInstancedStaticMeshComponent, 4 floats): 0..2 colour (linear), 3 opacity.
+    Glow scales the colour, because the scene runs with a fixed dark exposure at night.
+    """
+    mat = new_asset("M_PlanMark", MAT_PATH, unreal.Material, unreal.MaterialFactoryNew())
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    mat.set_editor_property("two_sided", True)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
+    color = expr(mat, unreal.MaterialExpressionPerInstanceCustomData3Vector, -600, -150, data_index=0,
+                 const_default_value=unreal.LinearColor(1.0, 1.0, 1.0, 1.0))
+    alpha = expr(mat, unreal.MaterialExpressionPerInstanceCustomData, -600, 100, data_index=3, const_default_value=1.0)
+    glow = expr(mat, unreal.MaterialExpressionScalarParameter, -600, -20, parameter_name="Glow", default_value=2.0)
+    lit = expr(mat, unreal.MaterialExpressionMultiply, -300, -100)
+    mel.connect_material_expressions(color, "", lit, "A")
+    mel.connect_material_expressions(glow, "", lit, "B")
+    mel.connect_material_property(lit, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.connect_material_property(alpha, "", unreal.MaterialProperty.MP_OPACITY)
+    mel.recompile_material(mat)
+    lib.save_loaded_asset(mat)
+    return mat
+
+
 def build_instances(surface, glass, room):
     out = {}
     for name, spec in dc_materials.MATERIALS.items():
@@ -261,7 +291,13 @@ def import_meshes(instances, only=None):
             else:
                 log(f"{name}: unknown slot {slot_name}")
         sm_sub.remove_collisions(mesh)
-        sm_sub.add_simple_collisions(mesh, unreal.ScriptCollisionShapeType.BOX)
+        if name.startswith("SM_Plan_"):
+            # Plan marks: own material, nothing to bump into.
+            plan_mark = unreal.load_asset(f"{MAT_PATH}/M_PlanMark")
+            for i in range(len(materials)):
+                mesh.set_material(i, plan_mark)
+        else:
+            sm_sub.add_simple_collisions(mesh, unreal.ScriptCollisionShapeType.BOX)
         box = mesh.get_bounding_box()
         log(f"{name}: slots {[str(m.get_editor_property('material_slot_name')) for m in materials]} bounds {box.min} .. {box.max}")
         lib.save_loaded_asset(mesh)
@@ -284,6 +320,7 @@ def main():
     glass = build_glass_master()
     room = build_surface_master("M_RoomSurface", world_aligned=True)
     instances = build_instances(surface, glass, room)
+    build_plan_mark_master()
     if os.environ.get("DC_SKIP_MESHES") != "1":  # set to only refresh textures and materials
         import_meshes(instances, only)
     log("done")

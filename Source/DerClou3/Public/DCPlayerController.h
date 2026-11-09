@@ -16,6 +16,7 @@ class UDCNoiseHud;
 class UDCTimelinePanel;
 class UDCCrewBar;
 class UDCFrame;
+class UDCWorldBadges;
 class UDCWaitDialog;
 class UDCMenuWidget;
 struct FDCWaitChoice;
@@ -120,6 +121,8 @@ public:
 	//~ Crew cards
 	/** Selects the crew member and moves the camera to them. */
 	void SelectFromBar(ADCCrewCharacter* Crew);
+	/** The camera follows the selected crew member again (after the player panned away). Key F. */
+	void ResumeCameraFollow();
 	/** Selects the crew member and opens their profile (skills and inventory). */
 	void OpenProfile(ADCCrewCharacter* Crew);
 	/** 1x, 2x, 4x. */
@@ -146,6 +149,8 @@ private:
 	/** Self-tests: a real click (trace from the camera, menus, ground check) on this world point; false if it is off screen. */
 	bool ClickWorldPoint(const FVector& Location);
 	void Select(ADCCrewCharacter* Crew);
+	/** Tells the camera where the selected crew member is (planning: where their plan has got to). */
+	void UpdateCameraFollow();
 	void OpenDoorMenu(ADCDoor* Door);
 	void OpenPickupMenu(ADCItemPickup* Pickup);
 	EDCPlanMode GetMode() const;
@@ -203,6 +208,8 @@ private:
 	void StartVillaSelfTest();
 	void StartReplaySelfTest();
 	void StartSecretDoorSelfTest();
+	/** -DCSelfTest=Trail (map L_Villa01): footprints and signs of the plan, clicking a sign, the camera following. */
+	void StartTrailSelfTest();
 	/** Trying things out: walk there - through a door as a one-step plan, so it opens on the way (or she says it is locked). */
 	void TryMoveTo(const FVector& Location);
 	/** Each step returns true when it is done. */
@@ -237,6 +244,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCFrame> Frame;
+
+	/** The signs over the room while planning (under the frame and the panels). */
+	UPROPERTY(Transient)
+	TObjectPtr<UDCWorldBadges> WorldBadges;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDCWaitDialog> WaitDialog;

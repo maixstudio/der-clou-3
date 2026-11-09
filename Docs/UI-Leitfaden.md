@@ -142,9 +142,11 @@ nicht als Assets.
 
 | Bedeutung | Icon | | Bedeutung | Icon |
 |---|---|---|---|---|
-| Gehen, Durchgehen | `footprints` | | Schlösser / knacken | `key-round` |
-| Tür öffnen / schließen | `door-open` / `door-closed` | | Tresore | `vault` |
-| Aufbrechen, Einschlagen | `hammer` | | Elektronik | `cpu` |
+| Gehen | `footprints` | | Schlösser (Fähigkeit) | `key-round` |
+| Tür öffnen / durchgehen / schließen | `door-open` / `door-closed` | | Tresore | `vault` |
+| Schloss knacken | `lock-pick` (eigenes) | | Elektronik | `cpu` |
+| Aufbrechen | `crowbar` (eigenes) | | Tresor knacken (Schild) | `vault` |
+| Glas einschlagen | `glass-break` (eigenes) | | Tür aufgesperrt (Schild) | `lock-open` |
 | Aufheben, Nehmen | `hand-grab` | | Sprengstoff | `bomb` |
 | Durchsuchen, Fund | `search` | | Fahren | `car` |
 | Ablegen | `arrow-down-to-line` | | Kampf | `swords` |
@@ -159,7 +161,8 @@ nicht als Assets.
 | Menü | `menu` | | | |
 
 Ein neues Icon: die SVG-Datei aus derselben Lucide-Version holen, `currentColor` durch `#ffffff` ersetzen, in die Tabelle
-eintragen. Icons stehen vor dem Text, nie allein (Ausnahme: Pfeile, Schließen – mit Tooltip). Farbe wie der Text daneben,
+eintragen. Fehlt eins bei Lucide, selbst zeichnen im selben Stil (24 × 24, Strich 2, runde Enden, keine Füllung), wie
+`lock-pick`, `crowbar`, `glass-break` – und bei 16 px prüfen, ob es noch lesbar ist. Icons stehen vor dem Text, nie allein (Ausnahme: Pfeile, Schließen – mit Tooltip). Farbe wie der Text daneben,
 Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
 
 **Dialoge** – nur für mehrteilige Entscheidungen oder Zerstörendes; keine Dialoge im Dialog.
@@ -184,6 +187,20 @@ Problem rot, Abstimmung cyan; kein Bernstein, außer es ist die Auswahl.
   Anfang des wartenden Schritts.
 - Zeitmarke: Linie durch alle Spuren und darüber ein Reiter mit der Zeit („0:21“) – Bernstein für die Vorschau in der
   Planung, Weiß beim Abspielen.
+
+**Plan im Raum** (`ADCPlanTrail`, `UDCWorldBadges`) – statt Linien Fußspuren und Schilder.
+- Fußspuren in der Crew-Farbe, links/rechts im Wechsel, in Gehrichtung (unbeleuchtet, `M_PlanMark`). Die gewählte Figur
+  kräftig, die anderen blass; nach dem gezeigten Moment (Vorschau, gewählter Schritt) heller.
+- Wo jemand etwas tut: Ring am Boden und darüber ein Schild am Stiel. Gewählte Figur: Pille in ihrer Farbe mit Nummer im
+  hellen Kreis, Icon und Verb („1 knacken“). Andere Figuren: dunkle Pille mit Rand in ihrer Farbe, nur Nummer und Icon.
+  Mehrere Schritte am selben Ort teilen sich ein Schild; geht einer nicht, ist das Schild rot mit Warnzeichen.
+- Schilder sind 2D, immer gleich groß, liegen unter Rahmen und Fenstern und weichen sich nach oben aus. Maus darüber:
+  Kasten mit Zeit, Dauer, Chance, Wartezeit. Klick: wählt den Schritt wie in der Liste.
+- Türen, die der Plan ändert, und die Zeitvorschau („Rosa: wartet auf Vic“) nutzen dasselbe Schild in dunkel mit Rand.
+- Neue optische Actors: nie Teil des NavMesh (`IsComponentRelevantForNavigation` = false), keine Kollision, kein Schatten.
+
+**Kamera** – folgt der gewählten Figur (Planung: ihrem Plan-Stand, mit ruhiger Mitte; Abspielen: der Figur). Selbst
+schieben löst das; oben rechts erscheint „Kamera frei · F folgt“.
 
 **Profilkarten** – pro Figur eine, feste Reihenfolge, Taste 1–n auf der Karte.
 - Farbstreifen links (Crew-Farbe = Identität), Porträt 66 × 88 im Messingrahmen (ohne Bild: Initiale in der

@@ -666,10 +666,36 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Prüft Modell, Skelett (53 Knochen, Wurzel `root`), hängende Arme, Armschwung, Hocken, Bücken, Aufstehen. Bilder
     `crew_idle/walk/work/pickup/top.png`. Testschalter `ADCCrewCharacter::bTestAnimPose`/`TestAnimPose`.
   - Getragenes hängt noch fest an der Kapsel, nicht an den Händen (Ausrichtung der Handknochen erst klären).
-- **Vorschlag 2026-11-09, wartet auf den User:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Fußspuren in
-  Crew-Farbe statt Linien, Schilder mit Nummer + Tätigkeits-Icon, Kamera folgt der gewählten Figur, jeder Gegenstand
-  durchsuchbar mit zweitem Ring „Öffnen mit …“, Gepäck (Platz + Gewicht) statt Hände/Taschen/Raster, Kleidung
-  extra (Zeugen, Spuren). Ersetzt „Professioneller Look, Schritt 6“. Offene Fragen stehen am Ende der Datei.
+- **Kamera folgt, Fußspuren und Schilder statt Linien (Schritt 38, 2026-11-09 = Bauschritte 1–2 aus
+  `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md`, vom User bestätigt):**
+  - Kamera (`ADCCameraPawn::SetFollowPoint`, `ResumeFollow`, `IsFollowing`): folgt immer der gewählten Figur. Planung: ihrem
+    Plan-Stand (`UDCHeistStateSubsystem::GetPlanSpot` = Vorschauzeit oder Geist, `FindGhostSpot`), erst wenn der Punkt die
+    ruhige Mitte (0,2 × Armlänge) verlässt. Abspielen/Ausprobieren: der Figur selbst. Figur wechseln und „Abspielen“ holen
+    die Kamera zurück; WASD oder `FocusOn` lösen sie, oben rechts steht dann „Kamera frei · F folgt“ (Knopf, Taste F).
+  - Fußspuren (`ADCPlanTrail`, ein Actor für alle): `SM_Plan_footprint` (Blender, `Art/Items/dc_items_plan.py`, 26 cm,
+    Zehen nach Unreal +Y) als Instanzen je Stockwerk, alle 56 cm abwechselnd links/rechts (gespiegelt) in Gehrichtung, auf
+    den Boden gesetzt (Trace auf WorldStatic), 1,6-fach vergrößert (andere Figuren 1,3) – in echter Größe sah man aus der
+    Spielkamera nur Punkte. Material `M_PlanMark` (unbeleuchtet, durchscheinend, Farbe und Deckkraft je
+    Instanz als Custom Data, `Glow` 2), gebaut von `ue_import_items.py` (`build_plan_mark_master`). Gewählte Figur kräftig,
+    andere blass, nach dem gezeigten Moment heller. Ring `SM_Plan_ring` am Ort jedes Schilds. Stockwerke über dem
+    gezeigten sind ausgeblendet.
+  - Schilder (`UDCWorldBadges`, ein Overlay unter dem Rahmen, Z −1, nimmt keine Klicks): `FDCWorldBadge` (Step/Door/Moment)
+    aus `UDCHeistStateSubsystem::GetStepBadges/GetDoorBadges/GetMomentBadges`. Pro Ort eine Pille: Nummer im Kreis, Icon
+    (`IconForTask`, Tresor-Schloss = `vault`), Verb (`DCItemWidgets::VerbForTask`) bei der gewählten Figur; andere dunkel
+    mit Rand. Rot mit Warnzeichen, wenn ein Schritt nicht geht. Warten unterwegs = Sanduhr ohne Nummer. Schilder weichen
+    sich nach oben aus. Maus darüber: Kasten mit Zeit, Dauer, Chance, Wartezeit. Klick: `HandleClickAt` fragt zuerst
+    `FindStepAt` und wählt den Schritt. Türschilder (statt TextRender an `ADCDoor`, `GetSignLocation`) und Zeitvorschau
+    (statt Stecknadeln) im selben Stil. `ADCPlanMarker` ist gelöscht. Der Text am Geist ist ausgeblendet (das Schild
+    an derselben Stelle sagt es; `GetText` bleibt für Tests).
+  - Neue Icons im Lucide-Stil (selbst gezeichnet): `lock-pick`, `crowbar`, `glass-break`; dazu `lock-open` (Lucide).
+  - `M_ItemSurface`/`M_RoomSurface` bekommen `used_with_nanite` (Log meldete „MI_Item_* missing usage flag Nanite“).
+  - Selbsttest `-DCSelfTest=Trail` (L_Villa01): Vic knackt die Gartenpforte, geht in den Garten, knackt die Haustür; Rosa
+    wartet auf Vics Schritt 1. Prüft Fußspuren, Schild „1 knacken“ mit `lock-pick`, Rosas leise Schilder, Türschild,
+    Klick auf Rosas Schild, Kamera folgt/frei/wieder, rotes Schild ohne Vics Knacken, Vorschau. Bilder
+    `trail_vic/rosa/problem/preview.png`.
+- **Konzept 2026-11-09:** `Docs/Konzept-Wege-Durchsuchen-Gepaeck.md` – Bauschritte 1–2 gebaut (Schritt 38). Offen:
+  3 jeder Gegenstand durchsuchbar mit zweitem Ring „Öffnen mit …“, 4–5 Gepäck (Platz + Gewicht) statt Hände/Taschen/
+  Raster, 6 Kleidung extra (Zeugen, Spuren). Ersetzt „Professioneller Look, Schritt 6“. Offene Fragen am Ende der Datei.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -701,11 +727,13 @@ Neu (Schritt 31): die Porträts im Spiel – Ausschnitt (75 %) und Größe auf K
 Neu (Schritt 33): die Gegenstands-Icons – erkennt man alles (Dietrich-Set ist klein und grau), Kurzname nur ab 2 × 2,
 Ziehen mit Bild mit der echten Maus.
 Neu (Schritt 35): die Zeitleiste – Schraffur, Pfeile und Zeitmarke; lesbar genug, Streifen zu stark oder zu schwach?
+Neu (Schritt 38): Kamera folgt (ruhige Mitte groß genug?), Fußspuren und Schilder im Raum (Größe, Farben, Ausweichen,
+Maus-Kasten, Klick), die drei selbst gezeichneten Icons.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
   `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab), `SecretDoor` (L_Villa01),
-  `CrewLook` (L_Room01, Rosas Modell und Animationen von nah).
+  `CrewLook` (L_Room01, Rosas Modell und Animationen von nah), `Trail` (L_Villa01, Fußspuren, Schilder, Kamera).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**

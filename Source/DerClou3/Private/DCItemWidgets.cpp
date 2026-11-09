@@ -595,18 +595,19 @@ namespace DCItemWidgets
 			case EDCDoorAction::Close:
 				return TEXT("door-closed");
 			case EDCDoorAction::PickLock:
-				return TEXT("key-round");
+				return TEXT("lock-pick");
 			default:
-				return TEXT("footprints");
+				return TEXT("door-open");
 			}
 		case EDCPlanTaskType::Item:
 			switch (static_cast<EDCItemAction>(Task.Action))
 			{
 			case EDCItemAction::PickLock:
-				return TEXT("key-round");
+				return TEXT("lock-pick");
 			case EDCItemAction::Force:
+				return TEXT("crowbar");
 			case EDCItemAction::Smash:
-				return TEXT("hammer");
+				return TEXT("glass-break");
 			case EDCItemAction::Take:
 				return TEXT("hand-grab");
 			case EDCItemAction::Drop:
@@ -619,6 +620,58 @@ namespace DCItemWidgets
 		default:
 			return NAME_None;
 		}
+	}
+
+	FText VerbForTask(const FDCPlanTask& Task)
+	{
+		switch (Task.Type)
+		{
+		case EDCPlanTaskType::Move:
+			return LOCTEXT("VerbMove", "gehen");
+		case EDCPlanTaskType::Wait:
+			return FText::Format(LOCTEXT("VerbWait", "wartet {0} s"), FText::AsNumber(FMath::RoundToInt(Task.Seconds)));
+		case EDCPlanTaskType::WaitFor:
+			return LOCTEXT("VerbWaitFor", "wartet");
+		case EDCPlanTaskType::Signal:
+			return LOCTEXT("VerbSignal", "Zeichen");
+		case EDCPlanTaskType::PickUp:
+			return LOCTEXT("VerbPickUp", "aufheben");
+		case EDCPlanTaskType::Loot:
+			return LOCTEXT("VerbLoot", "durchsuchen");
+		case EDCPlanTaskType::Drop:
+			return LOCTEXT("VerbDrop", "ablegen");
+		case EDCPlanTaskType::Door:
+			switch (static_cast<EDCDoorAction>(Task.Action))
+			{
+			case EDCDoorAction::Open:
+				return LOCTEXT("VerbDoorOpen", "öffnen");
+			case EDCDoorAction::Close:
+				return LOCTEXT("VerbDoorClose", "schließen");
+			case EDCDoorAction::PickLock:
+				return LOCTEXT("VerbDoorPick", "knacken");
+			default:
+				return LOCTEXT("VerbDoorThrough", "durchgehen");
+			}
+		case EDCPlanTaskType::Item:
+			switch (static_cast<EDCItemAction>(Task.Action))
+			{
+			case EDCItemAction::PickLock:
+				return LOCTEXT("VerbItemPick", "knacken");
+			case EDCItemAction::Force:
+				return LOCTEXT("VerbItemForce", "aufbrechen");
+			case EDCItemAction::Smash:
+				return LOCTEXT("VerbItemSmash", "einschlagen");
+			case EDCItemAction::Take:
+				return LOCTEXT("VerbItemTake", "nehmen");
+			case EDCItemAction::Drop:
+				return LOCTEXT("VerbItemDrop", "ablegen");
+			case EDCItemAction::Close:
+				return LOCTEXT("VerbItemClose", "schließen");
+			default:
+				return LOCTEXT("VerbItemOpen", "öffnen");
+			}
+		}
+		return FText::GetEmpty();
 	}
 
 	FName IconForSkill(EDCSkill Skill)

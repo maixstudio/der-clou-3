@@ -141,8 +141,10 @@ namespace DCItemWidgets
 		const TAttribute<FSlateColor>& Color, float Gap = 6.f);
 	/** Icon size that sits well next to text of this font size. */
 	DERCLOU3_API float IconSizeFor(int32 FontSize);
-	/** The icon of a plan step (footprints for walking, key for picking a lock …). */
+	/** The icon of a plan step (footprints for walking, lock with a pick for picking a lock …). */
 	DERCLOU3_API FName IconForTask(const FDCPlanTask& Task);
+	/** What a step does in one or two words, for the signs in the room ("knacken", "durchsuchen", "wartet 5 s"). */
+	DERCLOU3_API FText VerbForTask(const FDCPlanTask& Task);
 	/** The icon of a skill (key for locks, vault for safes …). */
 	DERCLOU3_API FName IconForSkill(EDCSkill Skill);
 

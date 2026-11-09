@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "DCPlan.h"
+#include "DCWorldBadges.h"
 #include "Subsystems/WorldSubsystem.h"
 
 #include "DCHeistState.generated.h"
@@ -9,7 +10,7 @@
 class ADCCrewCharacter;
 class ADCDoor;
 class ADCItemPickup;
-class ADCPlanMarker;
+class ADCPlanTrail;
 class ADCPlanGhost;
 class ANavigationData;
 class UDCInventoryComponent;
@@ -315,6 +316,11 @@ public:
 	void UpdateWorldLook();
 	/** The ghost of the selected crew member (nullptr while none is shown). */
 	ADCPlanGhost* GetFigureGhost() const { return FigureGhost.Get(); }
+	/**
+	 * Where the crew member's plan has got to, as the room shows it while planning: at the preview time, else where
+	 * their ghost stands (after the picked step, at the end of their plan, or where they get stuck). False: no plan known.
+	 */
+	bool GetPlanSpot(FName Crew, FVector& Out) const;
 	/** The wait before a step: "wartet 4 s auf Vic (1. Hintertür knacken)" – or "wartet 4 s – {reason}". */
 	static FText DescribeWaited(const FDCScheduledTask& Task, float Waited);
 
@@ -329,8 +335,12 @@ public:
 	void SetFocus(FName Crew, int32 Step = INDEX_NONE);
 	FName GetFocusCrew() const { return FocusCrew; }
 	int32 GetFocusStep() const { return FocusStep; }
-	/** Planning preview: pins show where everyone is at this time of the plan (< 0 = off). */
+	/** Planning preview: signs show where everyone is at this time of the plan (< 0 = off). */
 	void SetPreviewTime(float Time);
+	/** Signs over the room while planning (UDCWorldBadges draws them): steps per place, doors the plan changes, the preview moment. */
+	const TArray<FDCWorldBadge>& GetStepBadges() const { return StepBadges; }
+	const TArray<FDCWorldBadge>& GetDoorBadges() const { return DoorBadges; }
+	const TArray<FDCWorldBadge>& GetMomentBadges() const { return MomentBadges; }
 	float GetPreviewTime() const { return PreviewTime; }
 
 	//~ Playback
@@ -359,10 +369,20 @@ private:
 	 * could walk ("Dort kann niemand stehen"). So the PIE world always builds its own at start.
 	 */
 	bool bRebuildingAtStart = false;
+	/** Footprints, rings and step signs of all plans (planning only). */
 	void UpdateMarkers();
+	/** The signs of the preview moment: where everyone is at the preview time. */
 	void UpdateGhosts();
+	/** Footprints along the crew member's planned ways; those after FadeAfter are paler. */
+	void AddTrailFor(ADCPlanTrail& Out, const FDCCrewSchedule& Crew, bool bFocus, float FadeAfter) const;
+	/** One sign per place with the steps done there, and a ring under it. */
+	void AddStepBadgesFor(ADCPlanTrail& Out, const FDCCrewSchedule& Crew, const FDCCrewPlan* Plan, bool bFocus);
+	/** The icon of a step on its sign (a safe's lock shows the safe). */
+	FName BadgeIconFor(const FDCPlanTask& Task) const;
 	/** Planning without a preview: one ghost of the selected crew member where their next step begins. */
 	void UpdateFigureGhost();
+	/** Where the ghost of this crew member stands (see UpdateFigureGhost); text and stuck for its sign. */
+	FVector FindGhostSpot(const FDCCrewSchedule& Crew, FText* OutText = nullptr, bool* bOutStuck = nullptr) const;
 
 	FDCSchedule Schedule;
 	FString ScheduleSignature;
@@ -373,8 +393,10 @@ private:
 	double PlaybackStart = -1.0;
 	bool bWorldUsed = false;
 	FDelegateHandle PlanChangedHandle;
-	TArray<TWeakObjectPtr<ADCPlanMarker>> Markers;
-	TArray<TWeakObjectPtr<ADCPlanMarker>> Ghosts;
+	TWeakObjectPtr<ADCPlanTrail> Trail;
+	TArray<FDCWorldBadge> StepBadges;
+	TArray<FDCWorldBadge> DoorBadges;
+	TArray<FDCWorldBadge> MomentBadges;
 	TWeakObjectPtr<ADCPlanGhost> FigureGhost;
 
 	UPROPERTY(Transient)

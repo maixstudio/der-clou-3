@@ -35,6 +35,19 @@ ADCCameraPawn::ADCCameraPawn()
 void ADCCameraPawn::FocusOn(const FVector& Location)
 {
 	FocusTarget = Location;
+	bFollow = false;
+}
+
+void ADCCameraPawn::SetFollowPoint(const FVector& Location, bool bCalmMiddle)
+{
+	FollowPoint = Location;
+	bFollowCalm = bCalmMiddle;
+}
+
+void ADCCameraPawn::ResumeFollow()
+{
+	bFollow = true;
+	bGlideToFollow = true;
 }
 
 void ADCCameraPawn::SetFloorHeight(double InFloorZ)
@@ -63,6 +76,18 @@ void ADCCameraPawn::Tick(float DeltaSeconds)
 		const float Scale = SpringArm->TargetArmLength / StartDistance;
 		AddActorWorldOffset(Direction * PanSpeed * DCOptions::CameraSpeedFactor() * Scale * DeltaSeconds);
 		FocusTarget.Reset();
+		bFollow = false;
+	}
+	// Following: while planning only once the point leaves the calm middle (about 40 % of the view),
+	// then it glides until the point is centred; while the plan runs, it keeps on the figure.
+	if (bFollow && FollowPoint.IsSet())
+	{
+		const double Calm = bFollowCalm ? 0.2 * SpringArm->TargetArmLength : 0.0;
+		if (bGlideToFollow || FVector::Dist2D(GetActorLocation(), *FollowPoint) > Calm)
+		{
+			FocusTarget = *FollowPoint;
+			bGlideToFollow = false;
+		}
 	}
 	// Storeys: the pivot glides to the shown storey's floor (kept relative to the start height).
 	if (!BaseZ.IsSet())

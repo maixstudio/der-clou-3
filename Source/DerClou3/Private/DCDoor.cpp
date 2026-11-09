@@ -87,16 +87,6 @@ ADCDoor::ADCDoor()
 	USceneComponent* Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
 
-	PlanLabel = CreateDefaultSubobject<UTextRenderComponent>(TEXT("PlanLabel"));
-	PlanLabel->SetupAttachment(Root);
-	PlanLabel->SetHorizontalAlignment(EHTA_Center);
-	PlanLabel->SetVerticalAlignment(EVRTA_TextCenter);
-	PlanLabel->SetWorldSize(24.f);
-	PlanLabel->SetTextRenderColor(FColor(110, 225, 255));
-	PlanLabel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	PlanLabel->SetCastShadow(false);
-	PlanLabel->SetHiddenInGame(false);
-	PlanLabel->SetVisibility(false);
 
 	Hinge = CreateDefaultSubobject<USceneComponent>(TEXT("Hinge"));
 	Hinge->SetupAttachment(Root);
@@ -266,11 +256,6 @@ void ADCDoor::RefreshLook()
 	{
 		Part->SetVisibility(bShowLock);
 	}
-	if (PlanLabel)
-	{
-		PlanLabel->SetText(DCVisuals::PlainText(LookLabel));
-		PlanLabel->SetVisibility(bPlanLook && !LookLabel.IsEmpty());
-	}
 }
 
 bool ADCDoor::IsPadlockShown() const
@@ -296,10 +281,6 @@ void ADCDoor::SetPlanLook(bool bShow, bool bShowLocked, bool bShowOpen, float Sh
 	bLookOpen = bShowOpen;
 	LookSwing = Swing;
 	LookLabel = bShow ? Label : FText::GetEmpty();
-	if (PlanLabel)
-	{
-		PlanLabel->SetWorldLocation(GetCenter() + FVector(0.0, 0.0, Height + 30.0));
-	}
 	RefreshLook();
 }
 
@@ -488,16 +469,6 @@ void ADCDoor::Tick(float DeltaSeconds)
 	{
 		ShownSign = Sign;
 		ApplyOpenPose(ShownAmount, Sign);
-	}
-	// The sign above the door faces the camera, like the names over the crew.
-	if (PlanLabel && PlanLabel->IsVisible())
-	{
-		const APlayerController* Player = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
-		if (Player && Player->PlayerCameraManager)
-		{
-			const FQuat CameraRotation = Player->PlayerCameraManager->GetCameraRotation().Quaternion();
-			PlanLabel->SetWorldRotation(FRotationMatrix::MakeFromXZ(-CameraRotation.GetForwardVector(), CameraRotation.GetUpVector()).Rotator());
-		}
 	}
 }
 

@@ -5,11 +5,13 @@
 
 #include "DCCrewCharacter.h"
 #include "DCDoor.h"
+#include "DCFloors.h"
 #include "DCInventoryComponent.h"
 #include "DCItem.h"
 #include "DCItemPickup.h"
+#include "DCItemWidgets.h"
 #include "DCPlanGhost.h"
-#include "DCPlanMarker.h"
+#include "DCPlanTrail.h"
 #include "DCPlanRunner.h"
 #include "DCRoomVolume.h"
 #include "DCWatchdog.h"
@@ -1796,94 +1798,293 @@ void UDCHeistStateSubsystem::Refresh(bool bMarkers)
 	UpdateWorldLook();
 }
 
+namespace
+{
+	/**
+	 * Footprints: one every stride, a little to the left and right of the way. Larger than life (like the small items),
+	 * so they read as steps from the game camera and not as dots.
+	 */
+	constexpr double TrailStride = 56.0;
+	constexpr double TrailSideOffset = 11.0;
+	constexpr float TrailFocusScale = 1.6f;
+	constexpr float TrailQuietScale = 1.3f;
+
+	/** A stretch of walking with the plan times at its ends. */
+	struct FDCTrailPiece
+	{
+		const TArray<FVector>* Path = nullptr;
+		float T0 = 0.f;
+		float T1 = 0.f;
+	};
+
+	FText BadgeClock(float Seconds)
+	{
+		const int32 Whole = FMath::Max(0, FMath::RoundToInt(Seconds));
+		return FText::FromString(FString::Printf(TEXT("%d:%02d"), Whole / 60, Whole % 60));
+	}
+}
+
 void UDCHeistStateSubsystem::UpdateMarkers()
 {
-	for (const TWeakObjectPtr<ADCPlanMarker>& Marker : Markers)
-	{
-		if (Marker.IsValid())
-		{
-			Marker->Destroy();
-		}
-	}
-	Markers.Reset();
+	StepBadges.Reset();
 	UpdateGhosts();
+	UWorld* World = GetWorld();
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
-	if (!Plans || Plans->GetMode() != EDCPlanMode::Planning)
+	const bool bPlanning = World && Plans && Plans->GetMode() == EDCPlanMode::Planning;
+	if (!Trail.IsValid() && bPlanning)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Trail = World->SpawnActor<ADCPlanTrail>(FVector::ZeroVector, FRotator::ZeroRotator, Params);
+	}
+	if (!Trail.IsValid())
 	{
 		return;
 	}
-	// One marker per step with a place, with the way there on the floor, in the crew member's
-	// colour. Only the plan being edited is numbered; the others stay small and dark.
-	for (const FDCCrewSchedule& Crew : Schedule.Crews)
+	Trail->Clear();
+	if (bPlanning)
 	{
-		const ADCCrewCharacter* Member = FindCrew(Crew.Crew);
-		if (!Member)
+		// With the time preview or a picked step, the footprints after that moment are paler: you see how far everyone has got.
+		const bool bFade = PreviewTime >= 0.f || FocusStep != INDEX_NONE;
+		const float FadeAfter = bFade ? GetViewTime() : TNumericLimits<float>::Max();
+		for (const FDCCrewSchedule& Crew : Schedule.Crews)
+		{
+			// The plan being edited is bright and has verbs; the others stay quiet.
+			const bool bFocus = FocusCrew.IsNone() || FocusCrew == Crew.Crew;
+			const FDCCrewPlan* Plan = Plans->GetPlans().FindByPredicate([&Crew](const FDCCrewPlan& Entry) { return Entry.Crew == Crew.Crew; });
+			AddTrailFor(*Trail, Crew, bFocus, FadeAfter);
+			AddStepBadgesFor(*Trail, Crew, Plan, bFocus);
+		}
+	}
+	Trail->Finish();
+}
+
+void UDCHeistStateSubsystem::AddTrailFor(ADCPlanTrail& Out, const FDCCrewSchedule& Crew, bool bFocus, float FadeAfter) const
+{
+	// The walked stretches in order: up to the first step that does not happen.
+	TArray<FDCTrailPiece> Pieces;
+	for (const FDCScheduledTask& Task : Crew.Tasks)
+	{
+		if (Task.bAfterBlocked)
+		{
+			break;
+		}
+		if (!Task.Legs.IsEmpty())
+		{
+			for (const FDCWalkLeg& Leg : Task.Legs)
+			{
+				if (Leg.Path.Num() >= 2)
+				{
+					Pieces.Add({ &Leg.Path, Leg.Start, Leg.End });
+				}
+			}
+		}
+		else if (Task.Path.Num() >= 2)
+		{
+			Pieces.Add({ &Task.Path, Task.Start, Task.Ready });
+		}
+		if (Task.bBlocked)
+		{
+			break;
+		}
+		if (Task.WorkPath.Num() >= 2)
+		{
+			Pieces.Add({ &Task.WorkPath, Task.WorkStart + Task.WorkPathDelay, Task.End });
+		}
+	}
+	const float Scale = bFocus ? TrailFocusScale : TrailQuietScale;
+	double Carry = TrailStride * 0.5;
+	int32 Side = 1;
+	for (const FDCTrailPiece& Piece : Pieces)
+	{
+		const TArray<FVector>& Path = *Piece.Path;
+		double Length = 0.0;
+		for (int32 Index = 1; Index < Path.Num(); ++Index)
+		{
+			Length += FVector::Dist2D(Path[Index - 1], Path[Index]);
+		}
+		if (Length < 1.0)
 		{
 			continue;
 		}
-		const bool bFocus = FocusCrew.IsNone() || FocusCrew == Crew.Crew;
-		const double FloorZ = Member->GetActorLocation().Z - 90.0;
-		for (const FDCScheduledTask& Task : Crew.Tasks)
+		double Walked = 0.0;
+		for (int32 Index = 1; Index < Path.Num(); ++Index)
 		{
-			if (!Task.bHasLocation)
+			const FVector& A = Path[Index - 1];
+			const FVector& B = Path[Index];
+			const double Segment = FVector::Dist2D(A, B);
+			if (Segment < 1.0)
 			{
 				continue;
 			}
-			TArray<FVector> Route = Task.Path;
-			Route.Append(Task.WorkPath);
-			for (FVector& Point : Route)
+			const FVector Direction = FVector(B.X - A.X, B.Y - A.Y, 0.0) / Segment;
+			const FVector Right(-Direction.Y, Direction.X, 0.0);
+			const double Yaw = Direction.Rotation().Yaw;
+			double Along = Carry;
+			while (Along < Segment)
 			{
-				Point.Z = FloorZ;
+				// Right foot right of the way, left foot (mirrored) left of it.
+				const FVector Point = FMath::Lerp(A, B, Along / Segment) + Right * (Side * TrailSideOffset);
+				const float Time = Piece.T0 + (Piece.T1 - Piece.T0) * static_cast<float>((Walked + Along) / Length);
+				const bool bAhead = Time > FadeAfter;
+				const float Opacity = bFocus ? (bAhead ? 0.28f : 0.9f) : (bAhead ? 0.12f : 0.38f);
+				Out.AddFootprint(Point, Yaw, Side < 0, Crew.Color, Opacity, Scale);
+				Side = -Side;
+				Along += TrailStride;
 			}
-			FVector Spot = Task.EndLocation;
-			Spot.Z = FloorZ;
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			if (ADCPlanMarker* Marker = GetWorld()->SpawnActor<ADCPlanMarker>(Spot, FRotator::ZeroRotator, Params))
+			Carry = Along - Segment;
+			Walked += Segment;
+		}
+	}
+}
+
+FName UDCHeistStateSubsystem::BadgeIconFor(const FDCPlanTask& Task) const
+{
+	if (Task.Type == EDCPlanTaskType::Item && Task.Action == static_cast<uint8>(EDCItemAction::PickLock))
+	{
+		ADCItemPickup* Pickup = FindPickup(Task.Target);
+		const UDCItem* Item = Pickup ? ResolveItem(Pickup, Task.ItemPath) : nullptr;
+		if (Item && Item->GetDef().LockSkill == EDCSkill::Safes)
+		{
+			return TEXT("vault");
+		}
+	}
+	return DCItemWidgets::IconForTask(Task);
+}
+
+void UDCHeistStateSubsystem::AddStepBadgesFor(ADCPlanTrail& Out, const FDCCrewSchedule& Crew, const FDCCrewPlan* Plan, bool bFocus)
+{
+	const int32 First = StepBadges.Num();
+	// Steps at the same place share one sign.
+	const auto AddAt = [this, First, &Crew, bFocus](const FVector& Where, const FDCBadgeEntry& Entry, const TArray<FText>& Details, int32 Step)
+	{
+		for (int32 Index = First; Index < StepBadges.Num(); ++Index)
+		{
+			FDCWorldBadge& Badge = StepBadges[Index];
+			if (FVector::Dist2D(Badge.Anchor, Where) < 70.0 && FMath::Abs(Badge.Anchor.Z - Where.Z) < 150.0)
 			{
-				const EDCMarkerLook Look = !bFocus ? EDCMarkerLook::Faint : Task.Index == FocusStep ? EDCMarkerLook::Highlight : EDCMarkerLook::Normal;
-				Marker->Init(Crew.Color, Task.Index + 1, Route, Task.bBlocked, Look);
-				Markers.Add(Marker);
+				Badge.Entries.Add(Entry);
+				Badge.Details.Append(Details);
+				Badge.bProblem |= Entry.bProblem;
+				return;
 			}
 		}
+		FDCWorldBadge& Badge = StepBadges.AddDefaulted_GetRef();
+		Badge.Kind = EDCBadgeKind::Step;
+		Badge.Anchor = Where;
+		Badge.Storey = UDCFloorSubsystem::FloorOfHeight(Where.Z + 90.0);
+		Badge.Color = Crew.Color;
+		Badge.Crew = Crew.Crew;
+		Badge.bFocus = bFocus;
+		Badge.bProblem = Entry.bProblem;
+		Badge.Entries.Add(Entry);
+		Badge.Details = Details;
+		Badge.Step = Step;
+	};
+	for (const FDCScheduledTask& Task : Crew.Tasks)
+	{
+		if (Task.bAfterBlocked)
+		{
+			break;
+		}
+		const FDCPlanTask* PlanTask = Plan && Plan->Tasks.IsValidIndex(Task.Index) ? &Plan->Tasks[Task.Index] : nullptr;
+		// Waiting on the way (beside a locked door): an hourglass where the crew member stands.
+		float Previous = Task.Start;
+		for (const FDCWalkLeg& Leg : Task.Legs)
+		{
+			const float Gap = Leg.Start - Previous;
+			if (Gap > 0.5f && !Leg.Path.IsEmpty())
+			{
+				FDCBadgeEntry Wait;
+				Wait.Icon = TEXT("hourglass");
+				Wait.Verb = FText::Format(LOCTEXT("BadgeWaitVerb", "wartet {0} s"), FText::AsNumber(FMath::RoundToInt(Gap)));
+				AddAt(Leg.Path[0], Wait, { FText::Format(LOCTEXT("BadgeWaitOnWay", "{0} wartet hier {1} s (bei Schritt {2})"), Crew.Name,
+					FText::AsNumber(FMath::RoundToInt(Gap)), FText::AsNumber(Task.Index + 1)) }, Task.Index);
+			}
+			Previous = Leg.End;
+		}
+		// Where it happens: the end of a walk, the place of waiting, or where the work begins (where it gets stuck).
+		FVector Where;
+		switch (Task.Type)
+		{
+		case EDCPlanTaskType::Move:
+			Where = GetPositionAt(Crew, Task.End);
+			break;
+		case EDCPlanTaskType::Wait:
+		case EDCPlanTaskType::WaitFor:
+		case EDCPlanTaskType::Signal:
+			Where = GetPositionAt(Crew, Task.Start);
+			break;
+		default:
+			Where = GetPositionAt(Crew, FMath::Max(Task.Ready, Task.WorkStart));
+			break;
+		}
+		if (Task.bBlocked)
+		{
+			Where = GetPositionAt(Crew, Task.End);
+		}
+		FDCBadgeEntry Entry;
+		Entry.Number = Task.Index + 1;
+		Entry.Icon = PlanTask ? BadgeIconFor(*PlanTask) : FName(TEXT("footprints"));
+		Entry.Verb = PlanTask ? DCItemWidgets::VerbForTask(*PlanTask) : FText::GetEmpty();
+		Entry.bProblem = Task.bBlocked;
+		TArray<FText> Details;
+		Details.Add(FText::Format(LOCTEXT("BadgeStepLine", "{0}. {1} · {2}–{3}"), FText::AsNumber(Task.Index + 1), Task.Label, BadgeClock(Task.Start), BadgeClock(Task.End)));
+		if (Task.bBlocked)
+		{
+			Details.Add(Task.WaitReason.IsEmpty() ? Task.ShortReason : Task.WaitReason);
+		}
+		else
+		{
+			if (!Task.Detail.IsEmpty())
+			{
+				Details.Add(Task.Detail);
+			}
+			const float Waited = Task.WorkStart - Task.Ready;
+			if (Waited > 0.5f)
+			{
+				Details.Add(DescribeWaited(Task, Waited));
+			}
+			if (!Task.WayNote.IsEmpty())
+			{
+				Details.Add(Task.WayNote);
+			}
+		}
+		AddAt(Where, Entry, Details, Task.Index);
+		if (Task.bBlocked)
+		{
+			break;
+		}
+	}
+	// A ring on the floor under every sign: here the crew member stands.
+	for (int32 Index = First; Index < StepBadges.Num(); ++Index)
+	{
+		const FDCWorldBadge& Badge = StepBadges[Index];
+		Out.AddRing(Badge.Anchor, Badge.bProblem ? DCItemWidgets::MessageColor : Badge.Color, bFocus ? 0.9f : 0.4f, bFocus ? 30.f : 22.f);
 	}
 }
 
 void UDCHeistStateSubsystem::UpdateGhosts()
 {
+	MomentBadges.Reset();
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
-	const bool bShow = PreviewTime >= 0.f && Plans && Plans->GetMode() == EDCPlanMode::Planning;
-	if (!bShow)
+	if (PreviewTime < 0.f || !Plans || Plans->GetMode() != EDCPlanMode::Planning)
 	{
-		for (const TWeakObjectPtr<ADCPlanMarker>& Ghost : Ghosts)
-		{
-			if (Ghost.IsValid())
-			{
-				Ghost->Destroy();
-			}
-		}
-		Ghosts.Reset();
 		return;
 	}
-	Ghosts.RemoveAll([](const TWeakObjectPtr<ADCPlanMarker>& Ghost) { return !Ghost.IsValid(); });
-	for (int32 Index = 0; Index < Schedule.Crews.Num(); ++Index)
+	// Where everyone is at the preview time, and what they do then.
+	for (const FDCCrewSchedule& Crew : Schedule.Crews)
 	{
-		const FDCCrewSchedule& Crew = Schedule.Crews[Index];
-		if (!Ghosts.IsValidIndex(Index))
-		{
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			ADCPlanMarker* Ghost = GetWorld()->SpawnActor<ADCPlanMarker>(Crew.StartLocation, FRotator::ZeroRotator, Params);
-			if (!Ghost)
-			{
-				return;
-			}
-			Ghost->InitGhost(Crew.Color);
-			Ghosts.Add(Ghost);
-		}
-		FVector Floor = GetPositionAt(Crew, PreviewTime);
-		Floor.Z = Crew.StartLocation.Z - 90.0;
-		Ghosts[Index]->SetGhost(Floor, FText::Format(LOCTEXT("GhostLabel", "{0}: {1}"), Crew.Name, DescribeActivityAt(Crew, PreviewTime)));
+		FDCWorldBadge& Badge = MomentBadges.AddDefaulted_GetRef();
+		Badge.Kind = EDCBadgeKind::Moment;
+		Badge.Anchor = GetPositionAt(Crew, PreviewTime);
+		Badge.Storey = UDCFloorSubsystem::FloorOfHeight(Badge.Anchor.Z + 90.0);
+		Badge.Color = Crew.Color;
+		Badge.Crew = Crew.Crew;
+		Badge.bFocus = FocusCrew.IsNone() || FocusCrew == Crew.Crew;
+		Badge.Text = FText::Format(LOCTEXT("GhostLabel", "{0}: {1}"), Crew.Name, DescribeActivityAt(Crew, PreviewTime));
+		Badge.Details.Add(FText::Format(LOCTEXT("MomentDetail", "{0} um {1}"), Crew.Name, BadgeClock(PreviewTime)));
+		Badge.Details.Add(DescribeActivityAt(Crew, PreviewTime));
 	}
 }
 
@@ -1901,7 +2102,8 @@ void UDCHeistStateSubsystem::SetFocus(FName Crew, int32 Step)
 void UDCHeistStateSubsystem::SetPreviewTime(float Time)
 {
 	PreviewTime = Time < 0.f ? -1.f : FMath::Min(Time, FMath::Max(Schedule.Duration, 0.f));
-	UpdateGhosts();
+	// The footprints fade after the shown moment, and the moment signs move.
+	UpdateMarkers();
 	UpdateWorldLook();
 }
 
@@ -2099,6 +2301,7 @@ void UDCHeistStateSubsystem::UpdateWorldLook()
 	const UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(World);
 	const bool bPlanning = Plans && Plans->GetMode() == EDCPlanMode::Planning;
 	const float Time = GetViewTime();
+	DoorBadges.Reset();
 	for (TActorIterator<ADCDoor> It(World); It; ++It)
 	{
 		FDCSimDoor At;
@@ -2122,6 +2325,17 @@ void UDCHeistStateSubsystem::UpdateWorldLook()
 			const FText What = Shown->bWasLocked && !Shown->bLocked ? LOCTEXT("SignUnlocked", "aufgesperrt")
 				: Shown->bOpen ? LOCTEXT("SignOpen", "offen") : LOCTEXT("SignShut", "zu");
 			Label = FText::Format(Shown == By ? LOCTEXT("SignDone", "{0} {1} · {2}") : LOCTEXT("SignAhead", "{0} ab {1} · {2}"), What, Clock, Schedule.Crews[Shown->CrewIndex].Name);
+			// The sign over the door, in the colour of whoever changes it.
+			const FDCCrewSchedule& Changer = Schedule.Crews[Shown->CrewIndex];
+			FDCWorldBadge& Badge = DoorBadges.AddDefaulted_GetRef();
+			Badge.Kind = EDCBadgeKind::Door;
+			Badge.Anchor = It->GetSignLocation();
+			Badge.Storey = UDCFloorSubsystem::FloorOfHeight(It->GetCenter().Z);
+			Badge.Color = Changer.Color;
+			Badge.bFocus = FocusCrew.IsNone() || FocusCrew == Changer.Crew;
+			Badge.Icon = Shown->bWasLocked && !Shown->bLocked ? FName(TEXT("lock-open")) : Shown->bOpen ? FName(TEXT("door-open")) : FName(TEXT("door-closed"));
+			Badge.Text = Label;
+			Badge.Details = { It->GetInteractableName(), Label };
 		}
 		It->SetPlanLook(true, At.bLocked, At.bOpen, At.Swing, Label);
 	}
@@ -2143,30 +2357,9 @@ void UDCHeistStateSubsystem::UpdateFigureGhost()
 		FigureGhost.Reset();
 		return;
 	}
-	// Where the next step begins: after the picked step, else at the end of the plan - or, if the
-	// crew member hangs before that, where they hang (red).
-	const TArray<FDCPlanProblem> Problems = Schedule.FindProblems();
-	const FDCPlanProblem* Stuck = Problems.FindByPredicate([this](const FDCPlanProblem& Problem) { return Problem.Crew == FocusCrew; });
-	const FDCScheduledTask* Picked = FocusStep == INDEX_NONE ? nullptr : Crew->Tasks.FindByPredicate([this](const FDCScheduledTask& Task) { return Task.Index == FocusStep; });
-	FVector Where = Crew->StartLocation;
 	FText Text;
 	bool bStuck = false;
-	if (Stuck && (!Picked || FocusStep >= Stuck->Index))
-	{
-		Where = Stuck->Where;
-		bStuck = true;
-		Text = FText::Format(LOCTEXT("GhostStuck", "{0} hängt: {1}"), Crew->Name, Stuck->ShortReason);
-	}
-	else if (Picked)
-	{
-		Where = GetPositionAt(*Crew, Picked->End);
-		Text = FText::Format(LOCTEXT("GhostAfterStep", "{0} nach {1}"), Crew->Name, FText::AsNumber(FocusStep + 1));
-	}
-	else
-	{
-		Where = Crew->Tasks.IsEmpty() ? Crew->StartLocation : GetPositionAt(*Crew, Crew->End);
-		Text = Crew->Tasks.IsEmpty() ? FText::Format(LOCTEXT("GhostStart", "{0} startet hier"), Crew->Name) : FText::Format(LOCTEXT("GhostAfter", "{0} danach"), Crew->Name);
-	}
+	FVector Where = FindGhostSpot(*Crew, &Text, &bStuck);
 	Where.Z = Crew->StartLocation.Z - 90.0;
 	if (!FigureGhost.IsValid())
 	{
@@ -2178,6 +2371,55 @@ void UDCHeistStateSubsystem::UpdateFigureGhost()
 	{
 		FigureGhost->Show(Crew->Crew, Crew->Color, Where, Text, bStuck, Plans->bGhostAsPin);
 	}
+}
+
+FVector UDCHeistStateSubsystem::FindGhostSpot(const FDCCrewSchedule& Crew, FText* OutText, bool* bOutStuck) const
+{
+	// Where the next step begins: after the picked step, else at the end of the plan - or, if the
+	// crew member hangs before that, where they hang (red).
+	const TArray<FDCPlanProblem> Problems = Schedule.FindProblems();
+	const FDCPlanProblem* Stuck = Problems.FindByPredicate([&Crew](const FDCPlanProblem& Problem) { return Problem.Crew == Crew.Crew; });
+	const int32 Step = Crew.Crew == FocusCrew ? FocusStep : INDEX_NONE;
+	const FDCScheduledTask* Picked = Step == INDEX_NONE ? nullptr : Crew.Tasks.FindByPredicate([Step](const FDCScheduledTask& Task) { return Task.Index == Step; });
+	FVector Where = Crew.StartLocation;
+	FText Text;
+	bool bStuck = false;
+	if (Stuck && (!Picked || Step >= Stuck->Index))
+	{
+		Where = Stuck->Where;
+		bStuck = true;
+		Text = FText::Format(LOCTEXT("GhostStuck", "{0} hängt: {1}"), Crew.Name, Stuck->ShortReason);
+	}
+	else if (Picked)
+	{
+		Where = GetPositionAt(Crew, Picked->End);
+		Text = FText::Format(LOCTEXT("GhostAfterStep", "{0} nach {1}"), Crew.Name, FText::AsNumber(Step + 1));
+	}
+	else
+	{
+		Where = Crew.Tasks.IsEmpty() ? Crew.StartLocation : GetPositionAt(Crew, Crew.End);
+		Text = Crew.Tasks.IsEmpty() ? FText::Format(LOCTEXT("GhostStart", "{0} startet hier"), Crew.Name) : FText::Format(LOCTEXT("GhostAfter", "{0} danach"), Crew.Name);
+	}
+	if (OutText)
+	{
+		*OutText = Text;
+	}
+	if (bOutStuck)
+	{
+		*bOutStuck = bStuck;
+	}
+	return Where;
+}
+
+bool UDCHeistStateSubsystem::GetPlanSpot(FName CrewName, FVector& Out) const
+{
+	const FDCCrewSchedule* Crew = Schedule.Find(CrewName);
+	if (!Crew)
+	{
+		return false;
+	}
+	Out = PreviewTime >= 0.f ? GetPositionAt(*Crew, PreviewTime) : FindGhostSpot(*Crew);
+	return true;
 }
 
 FText UDCHeistStateSubsystem::DescribeWaited(const FDCScheduledTask& Task, float Waited)

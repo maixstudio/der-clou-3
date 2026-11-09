@@ -1,5 +1,6 @@
 #include "DCFrame.h"
 
+#include "DCCameraPawn.h"
 #include "DCFloors.h"
 #include "DCGameViewportClient.h"
 #include "DCHeistState.h"
@@ -104,6 +105,59 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 			];
 	};
 
+	// The game menu (pause, save, load, options); Esc opens it too.
+	const TSharedRef<SWidget> MenuButton = SNew(SButton)
+		.IsFocusable(false)
+		.ButtonStyle(&NormalButtonStyle())
+		.ToolTipText(LOCTEXT("MenuTip", "Pause, Plan speichern, Laden, Optionen, Hauptmenü (Esc)"))
+		.ContentPadding(FMargin(14.f, 1.f))
+		.OnClicked_Lambda([WeakThis]()
+		{
+			if (ADCPlayerController* Controller = WeakThis.IsValid() ? Cast<ADCPlayerController>(WeakThis->GetOwningPlayer()) : nullptr)
+			{
+				Controller->OpenPauseMenu();
+			}
+			return FReply::Handled();
+		})
+		[
+			MakeIconText(TEXT("menu"), LOCTEXT("Menu", "Menü"), Font(13, true), FSlateColor::UseForeground())
+		];
+	// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
+	const TSharedRef<SWidget> FloorBox = SNew(SHorizontalBox)
+		.Visibility_Lambda([WeakThis]()
+		{
+			const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
+			return Floors && Floors->HasSeveralFloors() ? EVisibility::Visible : EVisibility::Collapsed;
+		})
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			MakeIcon(TEXT("layers"), 18.f, MutedColor)
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor)
+			.Text(Upper(LOCTEXT("FloorLabel", "Ebene")))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+		[
+			SNew(STextBlock)
+			.Font(HeadFont(18))
+			.ColorAndOpacity(TextColor)
+			.Text_Lambda([WeakThis]()
+			{
+				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
+				return Upper(UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0));
+			})
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+		[
+			FloorButton(1, TEXT("chevron-up"), LOCTEXT("FloorUpTip", "Eine Ebene höher zeigen (Bild ↑)"))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+		[
+			FloorButton(-1, TEXT("chevron-down"), LOCTEXT("FloorDownTip", "Eine Ebene tiefer zeigen (Bild ↓)"))
+		];
+
 	Root = SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
@@ -180,62 +234,42 @@ TSharedRef<SWidget> UDCFrame::RebuildWidget()
 				]
 			]
 		]
-		// The game menu (pause, save, load, options), top right; Esc opens it too.
+		// Top right, from the right: the game menu, the storeys, and - once the player panned the camera away -
+		// the way back to following the selected crew member.
 		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f))
 		[
-			SNew(SButton)
-			.IsFocusable(false)
-			.ButtonStyle(&NormalButtonStyle())
-			.ToolTipText(LOCTEXT("MenuTip", "Pause, Plan speichern, Laden, Optionen, Hauptmenü (Esc)"))
-			.ContentPadding(FMargin(14.f, 1.f))
-			.OnClicked_Lambda([WeakThis]()
-			{
-				if (ADCPlayerController* Controller = WeakThis.IsValid() ? Cast<ADCPlayerController>(WeakThis->GetOwningPlayer()) : nullptr)
-				{
-					Controller->OpenPauseMenu();
-				}
-				return FReply::Handled();
-			})
-			[
-				MakeIconText(TEXT("menu"), LOCTEXT("Menu", "Menü"), Font(13, true), FSlateColor::UseForeground())
-			]
-		]
-		// Storeys (only where the building has several): which one the camera shows, and arrows to change it.
-		+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(FMargin(16.f, 7.f, 108.f, 7.f))
-		[
 			SNew(SHorizontalBox)
-			.Visibility_Lambda([WeakThis]()
-			{
-				const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
-				return Floors && Floors->HasSeveralFloors() ? EVisibility::Visible : EVisibility::Collapsed;
-			})
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 18.f, 0.f)
 			[
-				MakeIcon(TEXT("layers"), 18.f, MutedColor)
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 6.f, 0.f)
-			[
-				SNew(STextBlock).Font(HeadFont(16, false)).ColorAndOpacity(MutedColor)
-				.Text(Upper(LOCTEXT("FloorLabel", "Ebene")))
-			]
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
-			[
-				SNew(STextBlock)
-				.Font(HeadFont(18))
-				.ColorAndOpacity(TextColor)
-				.Text_Lambda([WeakThis]()
+				SNew(SButton)
+				.IsFocusable(false)
+				.ButtonStyle(&NormalButtonStyle())
+				.ContentPadding(FMargin(12.f, 1.f))
+				.Visibility_Lambda([WeakThis]()
 				{
-					const UDCFloorSubsystem* Floors = WeakThis.IsValid() ? UDCFloorSubsystem::Get(WeakThis.Get()) : nullptr;
-					return Upper(UDCFloorSubsystem::FloorName(Floors ? Floors->GetShownFloor() : 0));
+					const ADCCameraPawn* Camera = WeakThis.IsValid() ? Cast<ADCCameraPawn>(WeakThis->GetOwningPlayerPawn()) : nullptr;
+					return Camera && !Camera->IsFollowing() ? EVisibility::Visible : EVisibility::Collapsed;
 				})
+				.ToolTipText(LOCTEXT("CameraFreeTip", "Die Kamera folgt gerade niemandem, weil du sie verschoben hast.\nKlick oder F: wieder der ausgewählten Figur folgen."))
+				.OnClicked_Lambda([WeakThis]()
+				{
+					if (ADCPlayerController* Controller = WeakThis.IsValid() ? Cast<ADCPlayerController>(WeakThis->GetOwningPlayer()) : nullptr)
+					{
+						Controller->ResumeCameraFollow();
+					}
+					return FReply::Handled();
+				})
+				[
+					MakeIconText(TEXT("crosshair"), LOCTEXT("CameraFree", "Kamera frei · F folgt"), Font(13, true), FSlateColor::UseForeground())
+				]
 			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 18.f, 0.f)
 			[
-				FloorButton(1, TEXT("chevron-up"), LOCTEXT("FloorUpTip", "Eine Ebene höher zeigen (Bild ↑)"))
+				FloorBox
 			]
-			+ SHorizontalBox::Slot().AutoWidth().Padding(2.f, 0.f)
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				FloorButton(-1, TEXT("chevron-down"), LOCTEXT("FloorDownTip", "Eine Ebene tiefer zeigen (Bild ↓)"))
+				MenuButton
 			]
 		];
 	return Root.ToSharedRef();

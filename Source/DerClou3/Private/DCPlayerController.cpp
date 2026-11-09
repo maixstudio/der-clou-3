@@ -11,6 +11,7 @@
 #include "DCCrewBar.h"
 #include "DCWaitDialog.h"
 #include "DCFrame.h"
+#include "DCWorldBadges.h"
 #include "Kismet/GameplayStatics.h"
 #include "DCContainerPanel.h"
 #include "DCCrewCharacter.h"
@@ -66,6 +67,13 @@ void ADCPlayerController::BeginPlay()
 	Params.Owner = this;
 	Marker = GetWorld()->SpawnActor<ADCClickMarker>(FVector::ZeroVector, FRotator::ZeroRotator, Params);
 
+	// The signs over the room lie under the frame: where they reach past the scene, the frame covers them.
+	WorldBadges = CreateWidget<UDCWorldBadges>(this, UDCWorldBadges::StaticClass());
+	if (WorldBadges)
+	{
+		WorldBadges->SetVisibility(ESlateVisibility::HitTestInvisible);
+		WorldBadges->AddToViewport(-1);
+	}
 	// The frame around the scene comes first, everything else sits in or on it.
 	Frame = CreateWidget<UDCFrame>(this, UDCFrame::StaticClass());
 	if (Frame)
@@ -229,6 +237,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartSecretDoorSelfTest();
 	}
+	else if (SelfTest == TEXT("Trail"))
+	{
+		StartTrailSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);
@@ -248,6 +260,7 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 	UpdateHoverCursor();
+	UpdateCameraFollow();
 
 	if (!SelfTestSteps.IsEmpty() && SelfTestSteps[0]())
 	{
@@ -292,6 +305,10 @@ void ADCPlayerController::PlayerTick(float DeltaTime)
 	if (InventoryPanel && WasInputKeyJustPressed(EKeys::I))
 	{
 		InventoryPanel->Toggle();
+	}
+	if (WasInputKeyJustPressed(EKeys::F))
+	{
+		ResumeCameraFollow();
 	}
 	// 1 to 9: the crew members, in the order of the cards on the left.
 	{
@@ -743,6 +760,11 @@ FDCRadialOption ADCPlayerController::MakeTaskOption(const FText& Label, const FD
 
 void ADCPlayerController::Select(ADCCrewCharacter* Crew)
 {
+	// Someone else: the camera goes over to them.
+	if (Crew && Crew != Selected)
+	{
+		ResumeCameraFollow();
+	}
 	if (Selected)
 	{
 		Selected->SetSelected(false);
@@ -791,6 +813,14 @@ bool ADCPlayerController::ClickWorldPoint(const FVector& Location)
 
 void ADCPlayerController::HandleClickAt(const FVector2D& ScreenPosition)
 {
+	// A sign over the room: picks that step (and its crew member), like a click in the list.
+	FName BadgeCrew;
+	int32 BadgeStep = INDEX_NONE;
+	if (WorldBadges && GetMode() == EDCPlanMode::Planning && WorldBadges->FindStepAt(ScreenPosition, BadgeCrew, BadgeStep))
+	{
+		FocusStep(BadgeCrew, BadgeStep);
+		return;
+	}
 	FHitResult Hit;
 	if (!UDCFloorSubsystem::HitUnderScreenPosition(this, ScreenPosition, Hit))
 	{
@@ -1032,6 +1062,7 @@ void ADCPlayerController::StartPlayback()
 		ContainerPanel->Close();
 	}
 	Heist->StartPlayback();
+	ResumeCameraFollow();
 }
 
 void ADCPlayerController::RequestFindDecision(ADCCrewCharacter* Crew, ADCItemPickup* Pickup)
@@ -1479,10 +1510,32 @@ void ADCPlayerController::SelectFromBar(ADCCrewCharacter* Crew)
 	{
 		ShowCrewMoment(Crew);
 	}
+	ResumeCameraFollow();
+}
+
+void ADCPlayerController::ResumeCameraFollow()
+{
 	if (ADCCameraPawn* Camera = Cast<ADCCameraPawn>(GetPawn()))
 	{
-		Camera->FocusOn(Crew->GetActorLocation());
+		Camera->ResumeFollow();
 	}
+}
+
+void ADCPlayerController::UpdateCameraFollow()
+{
+	ADCCameraPawn* Camera = Cast<ADCCameraPawn>(GetPawn());
+	if (!Camera || !Selected)
+	{
+		return;
+	}
+	// Planning: where the plan has got the crew member to (their ghost or the preview time); otherwise the figure itself.
+	FVector Where = Selected->GetActorLocation();
+	const bool bPlanning = GetMode() == EDCPlanMode::Planning;
+	if (const UDCHeistStateSubsystem* Heist = UDCHeistStateSubsystem::Get(this); Heist && bPlanning)
+	{
+		Heist->GetPlanSpot(Selected->GetFName(), Where);
+	}
+	Camera->SetFollowPoint(Where, bPlanning);
 }
 
 void ADCPlayerController::OpenProfile(ADCCrewCharacter* Crew)

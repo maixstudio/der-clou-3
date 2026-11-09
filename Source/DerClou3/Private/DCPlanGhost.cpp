@@ -55,6 +55,8 @@ ADCPlanGhost::ADCPlanGhost()
 	Label->SetWorldSize(24.f);
 	Label->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Label->SetCastShadow(false);
+	// The sign over the same spot (UDCWorldBadges) says it already; the text stays for the self-tests (GetText).
+	Label->SetVisibility(false);
 }
 
 void ADCPlanGhost::Show(FName InCrew, const FLinearColor& Color, const FVector& FloorLocation, const FText& InText, bool bStuck, bool bAsPin)

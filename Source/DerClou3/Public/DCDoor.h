@@ -110,6 +110,8 @@ public:
 	bool IsPadlockShown() const;
 	float GetShownOpenAmount() const { return ShownAmount; }
 	FText GetPlanLabel() const { return bPlanLook ? LookLabel : FText::GetEmpty(); }
+	/** Where the plan's sign for this door stands: above the middle of the opening. */
+	FVector GetSignLocation() const { return GetCenter() + FVector(0.0, 0.0, Height + 30.0); }
 
 protected:
 	UPROPERTY(EditAnywhere, Category = "Door")
@@ -214,10 +216,6 @@ protected:
 	/** Padlock on both faces of the panel (body + shackle), visible while locked. */
 	UPROPERTY(VisibleAnywhere, Category = "Door")
 	TArray<TObjectPtr<UStaticMeshComponent>> LockParts;
-
-	/** Planning: who changes the door when ("aufgesperrt 0:04 · Vic"), above the opening. */
-	UPROPERTY(VisibleAnywhere, Category = "Door")
-	TObjectPtr<UTextRenderComponent> PlanLabel;
 
 private:
 	void ApplyLayout();
