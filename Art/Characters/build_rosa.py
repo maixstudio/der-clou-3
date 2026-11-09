@@ -1,0 +1,1478 @@
+"""Rosa: 3D figure from the reference sheet (front, back, both sides), rigged and animated.
+
+Run headless (Blender 5.2):
+    blender -b --factory-startup -P Art/Characters/build_rosa.py -- [--stage mesh|rig|anim|all] [--preview] [--export]
+
+Stages (each saves a .blend, the next one starts from it):
+    mesh  silhouettes -> voxel hull (superellipse cross sections) -> smooth mesh -> UVs -> projected colour texture
+    rig   UE-style skeleton (root, pelvis, spine_01..03, neck_01, head, clavicle/upperarm/lowerarm/hand, thigh/calf/foot/ball)
+          from landmarks of the silhouettes, automatic weights
+    anim  actions Rosa_Idle, Rosa_Walk, Rosa_Work, Rosa_Pickup (in place, 30 fps)
+--preview renders stills into Saved/Characters/Rosa/, --export writes Art/Characters/Rosa/Export/SK_Rosa.fbx + texture.
+
+Conventions as for the items: metres, origin between the feet on the floor, front = Blender -Y (Unreal +Y).
+"""
+
+import math
+import os
+import sys
+import time
+
+import bpy
+import numpy as np
+from mathutils import Matrix, Quaternion, Vector
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+REF = os.path.join(HERE, "Rosa", "ref")
+EXPORT = os.path.join(HERE, "Rosa", "Export")
+WORK = os.path.join(ROOT, "Saved", "Characters", "Rosa")
+os.makedirs(WORK, exist_ok=True)
+os.makedirs(EXPORT, exist_ok=True)
+
+HEIGHT = 1.70          # hair top to sole, metres
+VOXEL = 0.004          # hull resolution
+BG_THRESHOLD = 0.09    # colour distance from the grey backdrop that counts as figure
+HAND_HALF_DEPTH = 0.043
+TEX_SIZE = 2048
+TARGET_FACES = 22000   # triangles after decimation
+HEAD_SMOOTH_FROM = 1.40  # metres; above this the silhouettes are opened by HEAD_OPEN_PX
+HEAD_OPEN_PX = 10
+JAW_SMOOTH_TO = 1.555    # between HEAD_SMOOTH_FROM and this (neck, jaw) curls are removed harder
+JAW_OPEN_PX = 22
+
+VIEWS = {
+    # name: file, horizontal world axis (+1 = image right is +axis), which axis
+    "front": ("rosa_front.webp", "x", +1),
+    "back": ("rosa_back.webp", "x", -1),
+    "left": ("rosa_side_left.webp", "y", +1),    # seen from +X, face to the image left
+    "right": ("rosa_side_right.webp", "y", -1),  # seen from -X
+}
+
+
+def log(*args):
+    print("[rosa]", *args, flush=True)
+
+
+def args():
+    argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    out = {"stage": "all", "preview": False, "export": False}
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--stage":
+            out["stage"] = argv[i + 1]
+            i += 1
+        elif a == "--preview":
+            out["preview"] = True
+        elif a == "--export":
+            out["export"] = True
+        i += 1
+    return out
+
+
+def node_of_type(nodes, type_name):
+    return next(n for n in nodes if n.type == type_name)
+
+
+# ---------------------------------------------------------------------------------------------
+# Reference images
+# ---------------------------------------------------------------------------------------------
+
+
+def load_rgb(path):
+    img = bpy.data.images.load(path, check_existing=True)
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    return px.reshape(h, w, 4)[::-1, :, :3].copy()  # row 0 = top
+
+
+def save_rgb(arr, path):
+    h, w = arr.shape[:2]
+    rgba = np.ones((h, w, 4), np.float32)
+    rgba[:, :, :3] = arr if arr.ndim == 3 else arr[:, :, None]
+    name = os.path.splitext(os.path.basename(path))[0]
+    img = bpy.data.images.new(name, w, h, alpha=False)
+    img.pixels.foreach_set(rgba[::-1].ravel())
+    img.filepath_raw = path
+    img.file_format = "PNG"
+    img.save()
+    return img
+
+
+def dilate(m):
+    out = m.copy()
+    out[1:] |= m[:-1]
+    out[:-1] |= m[1:]
+    out[:, 1:] |= m[:, :-1]
+    out[:, :-1] |= m[:, 1:]
+    return out
+
+
+def opened(m, radius):
+    out = m.copy()
+    for _ in range(radius):
+        out = ~dilate(~out)
+    for _ in range(radius):
+        out = dilate(out)
+    return out & m
+
+
+def raw_figure(px):
+    """Pixels clearly different from the grey backdrop (holes between curls stay backdrop)."""
+    corners = np.concatenate([px[:40, :40].reshape(-1, 3), px[:40, -40:].reshape(-1, 3),
+                              px[-40:, :40].reshape(-1, 3), px[-40:, -40:].reshape(-1, 3)])
+    bg = np.median(corners, axis=0)
+    return np.abs(px - bg).max(axis=2) > BG_THRESHOLD
+
+
+def figure_mask(px):
+    fg = raw_figure(px)
+    # Background = everything reachable from the border; holes inside the figure become figure.
+    free = ~fg
+    reach = np.zeros_like(fg)
+    reach[0], reach[-1], reach[:, 0], reach[:, -1] = free[0], free[-1], free[:, 0], free[:, -1]
+    for _ in range(4000):
+        grown = dilate(reach) & free
+        if grown.sum() == reach.sum():
+            break
+        reach = grown
+    return ~reach
+
+
+def bleed(px, mask, iterations=48):
+    """Push figure colours outwards so projections never pick up the grey backdrop at silhouette edges."""
+    known = mask.copy()
+    # Drop the anti-aliased rim first.
+    for _ in range(2):
+        known = ~dilate(~known)
+    col = np.where(known[:, :, None], px, 0.0)
+    for _ in range(iterations):
+        acc = np.zeros_like(col)
+        cnt = np.zeros(known.shape, np.float32)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
+            sh_c = np.roll(np.roll(col, dy, 0), dx, 1)
+            sh_k = np.roll(np.roll(known, dy, 0), dx, 1)
+            acc += sh_c * sh_k[:, :, None]
+            cnt += sh_k
+        new = (~known) & (cnt > 0)
+        col[new] = acc[new] / cnt[new][:, None]
+        known = known | new
+    col[~known] = px[~known]
+    return col
+
+
+class View:
+    def __init__(self, name):
+        file, axis, sign = VIEWS[name]
+        self.name, self.axis, self.sign = name, axis, sign
+        self.path = os.path.join(REF, file)
+        self.px = load_rgb(self.path)
+        self.h, self.w = self.px.shape[:2]
+        self.mask = figure_mask(self.px)
+        rows = np.nonzero(self.mask.any(axis=1))[0]
+        self.top, self.bottom = int(rows[0]), int(rows[-1])
+        self.scale = HEIGHT / (self.bottom - self.top + 1)  # metres per pixel
+        # Shape mask: loose curls would become thin blades in the hull, so open (erode, then dilate) the head
+        # region strongly and the rest a little.
+        self.geo_mask = self.mask.copy()
+        head_row = int(self.bottom - HEAD_SMOOTH_FROM / self.scale)
+        jaw_row = int(self.bottom - JAW_SMOOTH_TO / self.scale)
+        top = self.mask[:head_row + 40]
+        self.geo_mask[:jaw_row] = opened(top, HEAD_OPEN_PX)[:jaw_row]
+        self.geo_mask[jaw_row:head_row] = opened(top, JAW_OPEN_PX)[jaw_row:head_row]
+        self.geo_mask[head_row:] = opened(self.mask[head_row - 40:], 2)[40:]
+        # Curls hanging beside the face are separate runs in a row; they would become thin blades. Keep only the
+        # widest run per row above the shoulders.
+        for r in range(0, head_row):
+            row = self.geo_mask[r]
+            if not row.any():
+                continue
+            edges = np.nonzero(np.diff(np.concatenate([[0], row.astype(np.int8), [0]])))[0]
+            spans = list(zip(edges[::2], edges[1::2]))
+            if len(spans) > 1:
+                a, b = max(spans, key=lambda s: s[1] - s[0])
+                row[:] = False
+                row[a:b] = True
+        # Horizontal centre: middle of the figure at hip height.
+        cols = []
+        for frac in np.linspace(0.50, 0.58, 9):
+            r = int(round(self.bottom - frac * HEIGHT / self.scale))
+            c = np.nonzero(self.mask[r])[0]
+            cols.append((c[0] + c[-1]) / 2)
+        self.centre = float(np.mean(cols))
+        log(f"view {name}: rows {self.top}-{self.bottom}, {self.scale * 1000:.3f} mm/px, centre col {self.centre:.1f}")
+
+    def pixel(self, h_coord, z):
+        """World horizontal coordinate (x or y) and height -> image (row, col), float."""
+        col = self.centre + self.sign * h_coord / self.scale
+        row = self.bottom + 0.5 - z / self.scale
+        return row, col
+
+    def sample_mask(self, hs, zs):
+        """Shape mask on a (len(zs), len(hs)) grid, nearest pixel."""
+        rows = np.clip(np.round(self.bottom + 0.5 - zs / self.scale - 0.5).astype(int), 0, self.h - 1)
+        cols = np.clip(np.round(self.centre + self.sign * hs / self.scale).astype(int), 0, self.w - 1)
+        return self.geo_mask[rows[:, None], cols[None, :]]
+
+    def sample_rgb(self, hs, zs):
+        rows = np.clip(np.round(self.bottom + 0.5 - zs / self.scale - 0.5).astype(int), 0, self.h - 1)
+        cols = np.clip(np.round(self.centre + self.sign * hs / self.scale).astype(int), 0, self.w - 1)
+        return self.px[rows[:, None], cols[None, :]]
+
+
+def runs(m, coords):
+    """For a boolean grid, per cell the [lo, hi] world bounds of the run along the last axis it lies in."""
+    n = m.shape[-1]
+    idx = np.arange(n)
+    prev = np.zeros_like(m)
+    prev[..., 1:] = m[..., :-1]
+    nxt = np.zeros_like(m)
+    nxt[..., :-1] = m[..., 1:]
+    start = np.where(m & ~prev, idx, -1)
+    start = np.maximum.accumulate(start, axis=-1)
+    end = np.where(m & ~nxt, idx, n)
+    end = np.minimum.accumulate(end[..., ::-1], axis=-1)[..., ::-1]
+    start = np.clip(start, 0, n - 1)
+    end = np.clip(end, 0, n - 1)
+    step = coords[1] - coords[0]
+    lo = coords[start] - step / 2
+    hi = coords[end] + step / 2
+    return lo, hi
+
+
+def is_skin(rgb):
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    return (r > 0.32) & (r > g * 1.12) & (g > b * 1.02) & (r - b > 0.12)
+
+
+def row_runs(row, coords):
+    """List of (lo, hi) runs of a 1-D boolean row."""
+    out = []
+    step = coords[1] - coords[0]
+    idx = np.nonzero(np.diff(np.concatenate([[0], row.astype(np.int8), [0]])))[0]
+    for a, b in zip(idx[::2], idx[1::2]):
+        out.append((coords[a] - step / 2, coords[b - 1] + step / 2))
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Hull: front silhouette gives x-z, side silhouette gives y-z, each cross section is a superellipse
+# inscribed in the two runs. Arms in T-pose are sliced along x instead (round, hands flat).
+# ---------------------------------------------------------------------------------------------
+
+
+class Hull:
+    def __init__(self, front, side):
+        self.front, self.side = front, side
+        self.xs = np.arange(-0.90, 0.90, VOXEL) + VOXEL / 2
+        self.zs = np.arange(0.0, HEIGHT + 2 * VOXEL, VOXEL) + VOXEL / 2
+        side_cols = np.nonzero(side.mask.any(axis=0))[0]
+        y_a = (side_cols[0] - side.centre) * side.scale * side.sign
+        y_b = (side_cols[-1] - side.centre) * side.scale * side.sign
+        y_lo, y_hi = min(y_a, y_b) - 0.03, max(y_a, y_b) + 0.03
+        self.ys = np.arange(y_lo, y_hi, VOXEL) + VOXEL / 2
+        xs, ys, zs = self.xs, self.ys, self.zs
+        self.F = front.sample_mask(xs, zs)            # (Z, X)
+        self.S = side.sample_mask(ys, zs)             # (Z, Y)
+        self.skin = is_skin(front.sample_rgb(xs, zs)) & self.F
+        self._arms()
+
+    def _arms(self):
+        xs, zs = self.xs, self.zs
+        x0 = int(np.argmin(np.abs(xs)))
+        lo, hi = runs(self.F, xs)
+        has = self.F[:, x0]
+        L = np.where(has, lo[:, x0], 0.0)
+        R = np.where(has, hi[:, x0], 0.0)
+        self.centre_L, self.centre_R, self.centre_has = L, R, has
+        arm_rows = has & ((R > 0.45) | (L < -0.45))
+        z_arm_lo, z_arm_hi = zs[arm_rows].min(), zs[arm_rows].max()
+        below = has & (zs > z_arm_lo - 0.14) & (zs < z_arm_lo - 0.05)
+        torso_r, torso_l = float(np.median(R[below])), float(np.median(L[below]))
+        self.xs_r, self.xs_l = torso_r + 0.012, torso_l - 0.012
+
+        # Armpit: from the arm band downwards, first row whose centre run fits inside the torso.
+        def pit(vals, limit, sign):
+            for iz in range(len(zs) - 1, -1, -1):
+                if zs[iz] > z_arm_lo:
+                    continue
+                if has[iz] and sign * vals[iz] <= sign * limit:
+                    return zs[iz]
+            return z_arm_lo
+
+        z_pit_r, z_pit_l = pit(R, self.xs_r, +1), pit(L, self.xs_l, -1)
+        self.z_cut = min(z_pit_r, z_pit_l) + 0.004
+        log(f"arms: band z {z_arm_lo:.3f}-{z_arm_hi:.3f}, torso x {torso_l:.3f}/{torso_r:.3f}, "
+            f"armpit z {z_pit_l:.3f}/{z_pit_r:.3f}")
+        overlap = 0.045
+        upper = zs[:, None] > self.z_cut
+        side_ok = (xs[None, :] > self.xs_r - overlap) | (xs[None, :] < self.xs_l + overlap)
+        self.A = self.F & upper & side_ok
+        alo, ahi = runs(self.A.T, zs)
+        self.arm_mid = ((alo + ahi) / 2).T
+        self.arm_half = ((ahi - alo) / 2).T
+        skin_cnt = (self.skin & self.A).sum(axis=0)
+        cnt = self.A.sum(axis=0)
+        self.hand_col = (cnt > 0) & (skin_cnt > 0.5 * np.maximum(cnt, 1)) & (np.abs(xs) > 0.45)
+        z_arm = 0.5 * (z_arm_lo + z_arm_hi)
+        iz = int(np.argmin(np.abs(zs - z_arm)))
+        best = max(row_runs(self.S[iz], self.ys), key=lambda r: r[1] - r[0])
+        self.arm_y = 0.5 * (best[0] + best[1]) + 0.005
+        self.z_arm_lo, self.z_arm_hi = z_arm_lo, z_arm_hi
+        hx = xs[self.hand_col]
+        log(f"hands: left x {hx[hx < 0].min():.3f}..{hx[hx < 0].max():.3f}, right x {hx[hx > 0].min():.3f}.."
+            f"{hx[hx > 0].max():.3f}, arm depth centre y {self.arm_y:.3f}")
+
+    @staticmethod
+    def exponent(z):
+        # Rounder head and limbs, a little boxier jacket.
+        p = np.full_like(z, 2.2)
+        p[(z > 0.80) & (z < 1.42)] = 2.5
+        p[z >= 1.42] = 2.0
+        return p
+
+    def voxels(self):
+        xs, ys, zs = self.xs, self.ys, self.zs
+        Fb = self.F.copy()
+        upper = zs > self.z_cut
+        Fb[upper] &= (xs >= self.xs_l) & (xs <= self.xs_r)
+        flo, fhi = runs(Fb, xs)
+        slo, shi = runs(self.S, ys)
+        fm, fh = (flo + fhi) / 2, np.maximum((fhi - flo) / 2, 1e-4)
+        sm, sh = (slo + shi) / 2, np.maximum((shi - slo) / 2, 1e-4)
+        hy_arm = np.where(self.hand_col[None, :], np.maximum(HAND_HALF_DEPTH, self.arm_half), self.arm_half)
+        V = np.zeros((len(zs), len(xs), len(ys)), bool)
+        chunk = 24
+        for a in range(0, len(zs), chunk):
+            b = min(a + chunk, len(zs))
+            p = self.exponent(zs[a:b])[:, None, None]
+            ex = np.abs((xs[None, :, None] - fm[a:b, :, None]) / fh[a:b, :, None]) ** p
+            ey = np.abs((ys[None, None, :] - sm[a:b, None, :]) / sh[a:b, None, :]) ** p
+            body = Fb[a:b, :, None] & self.S[a:b, None, :] & (ex + ey <= 1.0)
+            az = ((zs[a:b, None, None] - self.arm_mid[a:b, :, None]) / np.maximum(self.arm_half[a:b, :, None], 1e-4)) ** 2
+            ay = ((ys[None, None, :] - self.arm_y) / np.maximum(hy_arm[a:b, :, None], 1e-4)) ** 2
+            arm = self.A[a:b, :, None] & (az + ay <= 1.0)
+            V[a:b] = body | arm
+        log(f"voxels: {int(V.sum())} filled of {V.size} {V.shape}")
+        return V
+
+    def lattice_origin(self):
+        return (self.xs[0] - VOXEL / 2, self.ys[0] - VOXEL / 2, self.zs[0] - VOXEL / 2)
+
+
+def voxel_surface(V, origin):
+    """Quads on every face between a filled and an empty voxel. V is (Z, X, Y)."""
+    Z, X, Y = V.shape
+    nx_, ny_ = X + 1, Y + 1
+
+    def vid(iz, ix, iy):
+        return (iz * nx_ + ix) * ny_ + iy
+
+    quads = []
+    P = np.zeros((Z + 2, X, Y), bool)
+    P[1:-1] = V
+    d = P[1:] != P[:-1]
+    pos = P[:-1] & ~P[1:]
+    k, i, j = np.nonzero(d)
+    q = np.stack([vid(k, i, j), vid(k, i + 1, j), vid(k, i + 1, j + 1), vid(k, i, j + 1)], 1)
+    flip = ~pos[k, i, j]
+    q[flip] = q[flip][:, ::-1]
+    quads.append(q)
+    P = np.zeros((Z, X + 2, Y), bool)
+    P[:, 1:-1] = V
+    d = P[:, 1:] != P[:, :-1]
+    pos = P[:, :-1] & ~P[:, 1:]
+    k, i, j = np.nonzero(d)
+    q = np.stack([vid(k, i, j), vid(k, i, j + 1), vid(k + 1, i, j + 1), vid(k + 1, i, j)], 1)
+    flip = ~pos[k, i, j]
+    q[flip] = q[flip][:, ::-1]
+    quads.append(q)
+    P = np.zeros((Z, X, Y + 2), bool)
+    P[:, :, 1:-1] = V
+    d = P[:, :, 1:] != P[:, :, :-1]
+    pos = P[:, :, :-1] & ~P[:, :, 1:]
+    k, i, j = np.nonzero(d)
+    q = np.stack([vid(k, i, j), vid(k + 1, i, j), vid(k + 1, i + 1, j), vid(k, i + 1, j)], 1)
+    flip = ~pos[k, i, j]
+    q[flip] = q[flip][:, ::-1]
+    quads.append(q)
+    quads = np.concatenate(quads)
+    used, inv = np.unique(quads, return_inverse=True)
+    quads = inv.reshape(-1, 4)
+    iz = used // (nx_ * ny_)
+    rem = used % (nx_ * ny_)
+    ix, iy = rem // ny_, rem % ny_
+    ox, oy, oz = origin
+    co = np.stack([ox + ix * VOXEL, oy + iy * VOXEL, oz + iz * VOXEL], 1).astype(np.float32)
+    me = bpy.data.meshes.new("RosaVoxels")
+    me.vertices.add(len(co))
+    me.vertices.foreach_set("co", co.ravel())
+    me.loops.add(len(quads) * 4)
+    me.loops.foreach_set("vertex_index", quads.ravel().astype(np.int32))
+    me.polygons.add(len(quads))
+    me.polygons.foreach_set("loop_start", np.arange(0, len(quads) * 4, 4, dtype=np.int32))
+    me.update(calc_edges=True)
+    log(f"voxel surface: {len(co)} verts, {len(quads)} quads")
+    return me
+
+
+# ---------------------------------------------------------------------------------------------
+# Blender helpers
+# ---------------------------------------------------------------------------------------------
+
+
+def clean_scene():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to rosa.blend
+    scene = bpy.context.scene
+    scene.render.fps = 30
+    scene.unit_settings.system = "METRIC"
+    scene.unit_settings.scale_length = 1.0
+
+
+def link(ob):
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def activate(ob):
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    bpy.context.view_layer.objects.active = ob
+    ob.select_set(True)
+
+
+def apply_modifiers(ob):
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
+    old = ob.data
+    ob.modifiers.clear()
+    ob.data = me
+    me.name = old.name
+    bpy.data.meshes.remove(old)
+
+
+def blend_path(stage):
+    return os.path.join(WORK, f"rosa_{stage}.blend")
+
+
+def save_blend(stage):
+    bpy.ops.wm.save_as_mainfile(filepath=blend_path(stage), compress=True)
+    log("saved", blend_path(stage))
+
+
+def open_blend(stage):
+    bpy.ops.wm.open_mainfile(filepath=blend_path(stage))
+
+
+class Nodes:
+    """Tiny helper to wire shader math without drowning in boilerplate."""
+
+    def __init__(self, nt):
+        self.nt = nt
+
+    def _set(self, sock, v):
+        if v is None:
+            return
+        if isinstance(v, (int, float)):
+            sock.default_value = v
+        elif isinstance(v, tuple):
+            sock.default_value = v
+        else:
+            self.nt.links.new(v, sock)
+
+    def math(self, op, a, b=None, c=None, clamp=False):
+        n = self.nt.nodes.new("ShaderNodeMath")
+        n.operation = op
+        n.use_clamp = clamp
+        for i, v in enumerate((a, b, c)):
+            self._set(n.inputs[i], v)
+        return n.outputs[0]
+
+    def vmath(self, op, a, b=None, scale=None):
+        n = self.nt.nodes.new("ShaderNodeVectorMath")
+        n.operation = op
+        self._set(n.inputs[0], a)
+        self._set(n.inputs[1], b)
+        if scale is not None:
+            self._set(n.inputs["Scale"], scale)
+        return n.outputs[0]
+
+    def separate(self, v):
+        n = self.nt.nodes.new("ShaderNodeSeparateXYZ")
+        self.nt.links.new(v, n.inputs[0])
+        return n.outputs[0], n.outputs[1], n.outputs[2]
+
+    def combine(self, x, y, z):
+        n = self.nt.nodes.new("ShaderNodeCombineXYZ")
+        for i, v in enumerate((x, y, z)):
+            self._set(n.inputs[i], v)
+        return n.outputs[0]
+
+    def image(self, img, vector):
+        n = self.nt.nodes.new("ShaderNodeTexImage")
+        n.image = img
+        n.interpolation = "Linear"
+        n.extension = "EXTEND"
+        self.nt.links.new(vector, n.inputs["Vector"])
+        return n.outputs["Color"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Stage: mesh
+# ---------------------------------------------------------------------------------------------
+
+
+def projection_material(views, hull):
+    """Emission material that paints every surface point with the reference photo looking at it most directly."""
+    mat = bpy.data.materials.new("RosaProjection")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    nt.nodes.clear()
+    N = Nodes(nt)
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    px_, py_, pz_ = N.separate(geo.outputs["Position"])
+    nx, ny, nz = N.separate(geo.outputs["Normal"])
+    colours, weights = [], []
+    x_s = 0.5 * (hull.xs_r - hull.xs_l)
+    arm_gate = N.math("MULTIPLY",
+                      N.math("DIVIDE", N.math("SUBTRACT", N.math("ABSOLUTE", px_), x_s), 0.03, clamp=True),
+                      N.math("DIVIDE", N.math("SUBTRACT", pz_, hull.z_cut), 0.02, clamp=True))
+    side_gate = N.math("SUBTRACT", 1.0, arm_gate)
+    # On the head the profile photos would paint a second eye onto the cheek (the hull is wider than the face),
+    # so they only colour the back half there; the face comes from the front photo alone.
+    head_gate = N.math("DIVIDE", N.math("SUBTRACT", pz_, 1.44), 0.03, clamp=True)
+    back_half = N.math("DIVIDE", N.math("ADD", ny, 0.45), 0.35, clamp=True)
+    side_gate = N.math("MULTIPLY", side_gate,
+                       N.math("ADD", N.math("SUBTRACT", 1.0, head_gate), N.math("MULTIPLY", head_gate, back_half)))
+    # Surfaces facing up or down (shoulders, hair top, soles) get front and back photo half and half.
+    flat = N.math("ADD", N.math("MULTIPLY", N.math("MULTIPLY", nz, nz), 0.03), 0.0001)
+    for name, v in views.items():
+        bled = bleed(v.px, v.geo_mask & raw_figure(v.px))
+        img = save_rgb(bled, os.path.join(WORK, f"proj_{name}.png"))
+        h_coord = px_ if v.axis == "x" else py_
+        u = N.math("MULTIPLY_ADD", h_coord, v.sign / (v.scale * v.w), v.centre / v.w)
+        vv = N.math("MULTIPLY_ADD", pz_, 1.0 / (v.scale * v.h), 1.0 - (v.bottom + 0.5) / v.h)
+        colours.append(N.image(img, N.combine(u, vv, 0.0)))
+        if name == "front":
+            w = N.math("ADD", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", ny, -1.0), 0.0), 3.0), flat)
+        elif name == "back":
+            w = N.math("ADD", N.math("POWER", N.math("MAXIMUM", ny, 0.0), 3.0), flat)
+        elif name == "left":
+            w = N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", nx, 0.0), 3.0), side_gate)
+        else:
+            w = N.math("MULTIPLY", N.math("POWER", N.math("MAXIMUM", N.math("MULTIPLY", nx, -1.0), 0.0), 3.0), side_gate)
+        weights.append(w)
+    total = weights[0]
+    for w in weights[1:]:
+        total = N.math("ADD", total, w)
+    acc = None
+    for c, w in zip(colours, weights):
+        term = N.vmath("SCALE", c, scale=w)
+        acc = term if acc is None else N.vmath("ADD", acc, term)
+    col = N.vmath("SCALE", acc, scale=N.math("DIVIDE", 1.0, total))
+    emit = nt.nodes.new("ShaderNodeEmission")
+    nt.links.new(col, emit.inputs["Color"])
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    nt.links.new(emit.outputs[0], out.inputs["Surface"])
+    return mat
+
+
+def final_material(tex):
+    mat = bpy.data.materials.new("M_Rosa")
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = node_of_type(nt.nodes, "BSDF_PRINCIPLED")
+    t = nt.nodes.new("ShaderNodeTexImage")
+    t.image = tex
+    nt.links.new(t.outputs["Color"], bsdf.inputs["Base Color"])
+    bsdf.inputs["Roughness"].default_value = 0.78
+    for name in ("Specular IOR Level", "Specular"):
+        if name in bsdf.inputs:
+            bsdf.inputs[name].default_value = 0.3
+            break
+    return mat
+
+
+def stage_mesh():
+    t0 = time.time()
+    clean_scene()
+    views = {n: View(n) for n in VIEWS}
+    hull = Hull(views["front"], views["left"])
+    V = hull.voxels()
+    me = voxel_surface(V, hull.lattice_origin())
+    ob = link(bpy.data.objects.new("Rosa", me))
+    activate(ob)
+    rem = ob.modifiers.new("Remesh", "REMESH")
+    rem.mode = "VOXEL"
+    rem.voxel_size = 0.005
+    rem.adaptivity = 0.0
+    sm = ob.modifiers.new("Smooth", "SMOOTH")
+    sm.factor = 0.6
+    sm.iterations = 14
+    apply_modifiers(ob)
+    n_faces = len(ob.data.polygons)
+    dec = ob.modifiers.new("Decimate", "DECIMATE")
+    dec.decimate_type = "COLLAPSE"
+    dec.ratio = min(1.0, TARGET_FACES / max(2 * n_faces, 1))
+    apply_modifiers(ob)
+    ob.data.shade_smooth()
+    log(f"mesh: {n_faces} -> {len(ob.data.polygons)} faces ({time.time() - t0:.1f} s)")
+    # UVs
+    activate(ob)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(60), island_margin=0.003)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    # Bake the projected colours.
+    proj = projection_material(views, hull)
+    ob.data.materials.clear()
+    ob.data.materials.append(proj)
+    tex = bpy.data.images.new("T_Rosa_BC", TEX_SIZE, TEX_SIZE, alpha=False)
+    tn = proj.node_tree.nodes.new("ShaderNodeTexImage")
+    tn.image = tex
+    proj.node_tree.nodes.active = tn
+    tn.select = True
+    scene = bpy.context.scene
+    scene.render.engine = "CYCLES"
+    scene.cycles.device = "CPU"
+    scene.cycles.samples = 4
+    scene.render.bake.margin = 8
+    activate(ob)
+    t1 = time.time()
+    bpy.ops.object.bake(type="EMIT")
+    log(f"bake {time.time() - t1:.1f} s")
+    tex.filepath_raw = os.path.join(EXPORT, "T_Rosa_BC.png")
+    tex.file_format = "PNG"
+    tex.save()
+    ob.data.materials.clear()
+    ob.data.materials.append(final_material(tex))
+    bpy.data.materials.remove(proj)
+    # Remember what the rig needs.
+    ob["arm_y"] = float(hull.arm_y)
+    ob["x_s"] = [float(hull.xs_l), float(hull.xs_r)]
+    ob["z_cut"] = float(hull.z_cut)
+    ob["z_arm"] = [float(hull.z_arm_lo), float(hull.z_arm_hi)]
+    save_blend("mesh")
+    log(f"stage mesh done in {time.time() - t0:.1f} s")
+
+
+# ---------------------------------------------------------------------------------------------
+# Stage: rig
+# ---------------------------------------------------------------------------------------------
+
+SIDES = {"l": +1, "r": -1}   # character's left is Blender +X (she faces -Y)
+
+
+def measure(hull):
+    """Joint positions from the silhouettes (metres, Blender axes)."""
+    xs, ys, zs, F, S = hull.xs, hull.ys, hull.zs, hull.F, hull.S
+
+    def iz(z):
+        return int(np.argmin(np.abs(zs - z)))
+
+    def y_centre(z):
+        lo, hi = max(row_runs(S[iz(z)], ys), key=lambda r: r[1] - r[0])
+        return 0.5 * (lo + hi)
+
+    def side_run(z):
+        return max(row_runs(S[iz(z)], ys), key=lambda r: r[1] - r[0])
+
+    def leg_centre(z, s):
+        runs_ = [r for r in row_runs(F[iz(z)], xs) if not (r[0] < 0 < r[1]) and s * (r[0] + r[1]) > 0]
+        if not runs_:
+            return s * 0.09
+        lo, hi = max(runs_, key=lambda r: r[1] - r[0])
+        return 0.5 * (lo + hi)
+
+    x0 = int(np.argmin(np.abs(xs)))
+    col = F[:, x0]
+    k = iz(1.0)
+    while k > 0 and col[k]:
+        k -= 1
+    z_crotch = zs[k + 1]
+    z_hip = z_crotch + 0.075
+    z_ankle = 0.085
+    z_neck = hull.z_arm_hi + 0.035
+    z_head = 1.505
+    J = {"root": Vector((0, 0, 0))}
+    J["pelvis"] = Vector((0, y_centre(z_hip), z_hip))
+    spine_lo = z_hip + 0.09
+    for i, name in enumerate(("spine_01", "spine_02", "spine_03")):
+        z = spine_lo + i * (z_neck - spine_lo) / 3
+        J[name] = Vector((0, y_centre(z) + 0.01, z))
+    J["neck_01"] = Vector((0, y_centre(z_neck) + 0.015, z_neck))
+    J["head"] = Vector((0, y_centre(z_head) + 0.01, z_head))
+    J["head_end"] = Vector((0, y_centre(z_head) + 0.01, HEIGHT - 0.02))
+    toe, heel = side_run(0.03)
+    for side, s in SIDES.items():
+        x_s = hull.xs_r if s > 0 else hull.xs_l
+        hand_x = xs[hull.hand_col & (s * xs > 0)]
+        wrist_x = float(hand_x.min() if s > 0 else hand_x.max())
+        end_x = float(hand_x.max() if s > 0 else hand_x.min())
+        sh_x = x_s - s * 0.032
+
+        def arm_z(x):
+            ix = int(np.argmin(np.abs(xs - x)))
+            rows = hull.A[:, ix]
+            return float(hull.arm_mid[rows, ix].mean()) if rows.any() else (hull.z_arm_lo + hull.z_arm_hi) / 2
+
+        sh_z = arm_z(x_s + s * 0.04) - 0.01
+        el_x = sh_x + 0.56 * (wrist_x - sh_x)
+        J[f"clavicle_{side}"] = Vector((s * 0.03, J["spine_03"].y - 0.01, z_neck - 0.035))
+        J[f"upperarm_{side}"] = Vector((sh_x, hull.arm_y, sh_z))
+        J[f"lowerarm_{side}"] = Vector((el_x, hull.arm_y + 0.008, arm_z(el_x)))
+        J[f"hand_{side}"] = Vector((wrist_x, hull.arm_y, arm_z(wrist_x)))
+        J[f"hand_end_{side}"] = Vector((end_x - s * 0.01, hull.arm_y, arm_z(end_x - s * 0.02)))
+        hip_x = leg_centre(z_crotch - 0.08, s) * 0.9
+        ankle_x = leg_centre(0.16, s)
+        z_knee = z_ankle + 0.485 * (z_hip - z_ankle)
+        J[f"thigh_{side}"] = Vector((hip_x, J["pelvis"].y, z_hip))
+        J[f"calf_{side}"] = Vector((leg_centre(z_knee, s), y_centre(z_knee) - 0.012, z_knee))
+        J[f"foot_{side}"] = Vector((ankle_x, heel - 0.075, z_ankle))
+        J[f"ball_{side}"] = Vector((ankle_x * 1.04, toe + 0.075, 0.03))
+        J[f"toe_{side}"] = Vector((ankle_x * 1.05, toe + 0.015, 0.03))
+    for name, p in J.items():
+        log(f"joint {name:12s} {p.x:+.3f} {p.y:+.3f} {p.z:+.3f}")
+    return J
+
+
+def bone_table(J):
+    """(name, parent, head, tail, roll towards, connected)."""
+    fwd, up = Vector((0, -1, 0)), Vector((0, 0, 1))
+    t = [
+        ("root", None, J["root"], J["root"] + Vector((0, 0.0, 0.12)), fwd, False),
+        ("pelvis", "root", J["pelvis"], J["spine_01"], fwd, False),
+        ("spine_01", "pelvis", J["spine_01"], J["spine_02"], fwd, True),
+        ("spine_02", "spine_01", J["spine_02"], J["spine_03"], fwd, True),
+        ("spine_03", "spine_02", J["spine_03"], J["neck_01"], fwd, True),
+        ("neck_01", "spine_03", J["neck_01"], J["head"], fwd, True),
+        ("head", "neck_01", J["head"], J["head_end"], fwd, True),
+    ]
+    for side in SIDES:
+        t += [
+            (f"clavicle_{side}", "spine_03", J[f"clavicle_{side}"], J[f"upperarm_{side}"], up, False),
+            (f"upperarm_{side}", f"clavicle_{side}", J[f"upperarm_{side}"], J[f"lowerarm_{side}"], up, True),
+            (f"lowerarm_{side}", f"upperarm_{side}", J[f"lowerarm_{side}"], J[f"hand_{side}"], up, True),
+            (f"hand_{side}", f"lowerarm_{side}", J[f"hand_{side}"], J[f"hand_end_{side}"], up, True),
+            (f"thigh_{side}", "pelvis", J[f"thigh_{side}"], J[f"calf_{side}"], fwd, False),
+            (f"calf_{side}", f"thigh_{side}", J[f"calf_{side}"], J[f"foot_{side}"], fwd, True),
+            (f"foot_{side}", f"calf_{side}", J[f"foot_{side}"], J[f"ball_{side}"], up, True),
+            (f"ball_{side}", f"foot_{side}", J[f"ball_{side}"], J[f"toe_{side}"], up, True),
+        ]
+    return t
+
+
+def stage_rig():
+    t0 = time.time()
+    open_blend("mesh")
+    views = {n: View(n) for n in ("front", "left")}
+    hull = Hull(views["front"], views["left"])
+    J = measure(hull)
+    body = bpy.data.objects["Rosa"]
+    arm_data = bpy.data.armatures.new("Armature")
+    arm = link(bpy.data.objects.new("Armature", arm_data))
+    activate(arm)
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name, parent, head, tail, roll_to, connect in bone_table(J):
+        eb = arm_data.edit_bones.new(name)
+        eb.head, eb.tail = head, tail
+        eb.align_roll(roll_to)
+        if parent:
+            eb.parent = arm_data.edit_bones[parent]
+            eb.use_connect = connect
+        eb.use_deform = name != "root"
+    bpy.ops.object.mode_set(mode="OBJECT")
+    arm_data.display_type = "STICK"
+    # Automatic (bone heat) weights.
+    for o in bpy.context.view_layer.objects:
+        o.select_set(False)
+    body.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type="ARMATURE_AUTO")
+    groups = {g.index: g.name for g in body.vertex_groups}
+    unweighted = sum(1 for v in body.data.vertices if not any(g.weight > 0.001 for g in v.groups))
+    log(f"weights: {len(groups)} groups, {unweighted} of {len(body.data.vertices)} vertices without weight")
+    save_blend("rig")
+    log(f"stage rig done in {time.time() - t0:.1f} s")
+
+
+# ---------------------------------------------------------------------------------------------
+# Posing: rotations are given as deltas in armature space ("turn the thigh about X by 30 degrees"),
+# legs are solved with a two-bone IK so feet can stay planted.
+# ---------------------------------------------------------------------------------------------
+
+
+def rot(axis, deg):
+    return Quaternion(Vector(axis), math.radians(deg))
+
+
+def frame_quat(x, d):
+    d = d.normalized()
+    x = (x - x.dot(d) * d).normalized()
+    z = x.cross(d)
+    return Matrix((x, d, z)).transposed().to_quaternion()
+
+
+class Poser:
+    def __init__(self, arm):
+        self.arm = arm
+        bones = arm.data.bones
+        self.rest = {b.name: b.matrix_local.to_quaternion() for b in bones}
+        self.head = {b.name: b.head_local.copy() for b in bones}
+        self.tail = {b.name: b.tail_local.copy() for b in bones}
+        self.parent = {b.name: (b.parent.name if b.parent else None) for b in bones}
+
+        def depth(n):
+            return 0 if self.parent[n] is None else 1 + depth(self.parent[n])
+
+        self.order = sorted(self.parent, key=depth)
+        self.last = {}
+        for pb in arm.pose.bones:
+            pb.rotation_mode = "QUATERNION"
+        ank = self.head["foot_l"]
+        self.heel_back = 0.075          # heel contact behind the ankle
+        self.ankle_z = ank.z
+
+    def two_bone(self, a, b, c, root, target, pole, rest_pole):
+        """IK for bones a (upper) and b (lower) so the head of c lands on `target`; the middle joint bends
+        towards `pole`. rest_pole is where it points in the rest pose (keeps the twist sensible)."""
+        L1 = (self.head[b] - self.head[a]).length
+        L2 = (self.head[c] - self.head[b]).length
+        to = target - root
+        dist = max(min(to.length, (L1 + L2) * 0.9995), abs(L1 - L2) + 1e-3)
+        u = to.normalized()
+        Pp = (pole - pole.dot(u) * u).normalized()
+        cos_a = max(-1.0, min(1.0, (L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist)))
+        ang = math.acos(cos_a)
+        mid = root + L1 * (math.cos(ang) * u + math.sin(ang) * Pp)
+        end = root + u * dist
+        x1 = pole.cross(u).normalized()
+        u0 = (self.head[c] - self.head[a]).normalized()
+        x0 = rest_pole.cross(u0).normalized()
+        Da = frame_quat(x1, mid - root) @ frame_quat(x0, self.head[b] - self.head[a]).inverted()
+        Db = frame_quat(x1, end - mid) @ frame_quat(x0, self.head[c] - self.head[b]).inverted()
+        return Da, Db
+
+    def leg(self, side, D_pelvis, pelvis_offset, ankle, foot_rot, ball_rot=None, pole=None):
+        """Leg IK: deltas for thigh, calf, foot, ball so the ankle reaches `ankle`."""
+        th, ca, ft, bl = (f"{n}_{side}" for n in ("thigh", "calf", "foot", "ball"))
+        hip = self.head["pelvis"] + pelvis_offset + D_pelvis @ (self.head[th] - self.head["pelvis"])
+        P = pole if pole is not None else D_pelvis @ Vector((0, -1, 0))
+        D = {}
+        D[th], D[ca] = self.two_bone(th, ca, ft, hip, ankle, P, Vector((0, -1, 0)))
+        D[ft] = foot_rot
+        D[bl] = ball_rot if ball_rot is not None else foot_rot
+        return D
+
+    def resolve(self, D):
+        full = {}
+        for name in self.order:
+            p = self.parent[name]
+            full[name] = D.get(name, full[p] if p else Quaternion())
+        return full
+
+    def pos(self, full, offset, name):
+        """Posed head position of a bone."""
+        chain_ = []
+        n = name
+        while n:
+            chain_.append(n)
+            n = self.parent[n]
+        chain_.reverse()
+        P, prev = None, None
+        for n in chain_:
+            if prev is None:
+                P = self.head[n].copy()
+            else:
+                P = P + full[prev] @ (self.head[n] - self.head[prev])
+                if n == "pelvis":
+                    P = P + offset
+            prev = n
+        return P
+
+    def arm_ik(self, D, offset, side, target, pole, wrist_bend=0.0):
+        """Replace the arm deltas in D so the wrist reaches `target`."""
+        full = self.resolve(D)
+        ua, la, ha = f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}"
+        shoulder = self.pos(full, offset, ua)
+        D[ua], D[la] = self.two_bone(ua, la, ha, shoulder, target, pole, Vector((0, 1, 0)))
+        s = SIDES[side]
+        D[ha] = D[la] @ rot((0, 0, 1), -s * wrist_bend)
+
+    def apply(self, D, pelvis_offset=Vector()):
+        full = {}
+        for name in self.order:
+            p = self.parent[name]
+            Dp = full[p] if p else Quaternion()
+            Db = D.get(name, Dp)
+            full[name] = Db
+            R = self.rest[name]
+            q = R.inverted() @ Dp.inverted() @ Db @ R
+            if name in self.last:
+                q.make_compatible(self.last[name])   # no sign flips between keys
+            self.last[name] = q.copy()
+            self.arm.pose.bones[name].rotation_quaternion = q
+        pb = self.arm.pose.bones["pelvis"]
+        pb.location = self.rest["pelvis"].inverted() @ pelvis_offset
+        return full
+
+    def foot(self, side, shift, lift, yaw, pitch, toe_bend=0.0):
+        """Ankle target and foot/ball rotation for a foot moved by `shift` (xy), raised by `lift` and rolled by
+        `pitch` degrees: > 0 heel up (rolls over the ball, toes stay flat), < 0 toes up (rolls over the heel)."""
+        ank0 = self.head[f"foot_{side}"]
+        ball0 = self.head[f"ball_{side}"]
+        heel = Vector((ank0.x, ank0.y + self.heel_back, 0.0))
+        ball = Vector((ball0.x, ball0.y, 0.0))
+        R = rot((1, 0, 0), pitch)
+        pivot = ball if pitch >= 0 else heel
+        ank = pivot + R @ (ank0 - pivot)
+        centre = Vector((ank0.x, ank0.y, 0.0))
+        Ry = rot((0, 0, 1), yaw)
+        ank = centre + Ry @ (ank - centre) + Vector((shift[0], shift[1], lift))
+        D_foot = Ry @ R
+        D_ball = Ry @ rot((1, 0, 0), toe_bend) if pitch >= 0 else D_foot
+        return ank, D_foot, D_ball
+
+    def key(self, frame):
+        for pb in self.arm.pose.bones:
+            pb.keyframe_insert("rotation_quaternion", frame=frame)
+        self.arm.pose.bones["pelvis"].keyframe_insert("location", frame=frame)
+
+
+def chain(D, names, parent_delta, local_rots):
+    """FK down a chain: each entry is a delta relative to the previous bone (armature axes)."""
+    acc = parent_delta
+    for n, q in zip(names, local_rots):
+        acc = acc @ q
+        D[n] = acc
+    return acc
+
+
+def preview_rig():
+    open_blend("rig")
+    arm = bpy.data.objects["Armature"]
+    P = Poser(arm)
+    D = {}
+    off = Vector((0, 0.02, -0.06))
+    Dp = rot((0, 0, 1), 8)
+    D["pelvis"] = Dp
+    sp = chain(D, ["spine_01", "spine_02", "spine_03"], Dp, [rot((1, 0, 0), 6)] * 3)
+    chain(D, ["neck_01", "head"], sp, [rot((1, 0, 0), -5), rot((0, 0, 1), -25)])
+    for side, s in SIDES.items():
+        cl = chain(D, [f"clavicle_{side}"], sp, [Quaternion()])
+        chain(D, [f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}"], cl,
+              [rot((1, 0, 0), -25 if s > 0 else 20) @ rot((0, 1, 0), s * 72), rot((0, 0, 1), -s * 35), Quaternion()])
+        ank = P.head[f"foot_{side}"] + (Vector((0, -0.25, 0.25)) if s > 0 else Vector())
+        D.update(P.leg(side, Dp, off, ank, rot((1, 0, 0), -20) if s > 0 else Quaternion()))
+    P.apply(D, off)
+    paths = render_views("rig", {k: PREVIEW_VIEWS[k] for k in ("front", "three_quarter", "side", "back")})
+    contact_sheet(paths, os.path.join(WORK, "sheet_rig.png"), len(paths))
+
+
+# ---------------------------------------------------------------------------------------------
+# Stage: anim. Everything in place (the game moves the capsule), 30 fps, loops end on their first pose.
+# ---------------------------------------------------------------------------------------------
+
+FPS = 30
+ARM_DOWN = 79.0   # degrees from the T-pose so the hands clear the jacket
+
+
+def smooth(t):
+    t = max(0.0, min(1.0, t))
+    return t * t * (3 - 2 * t)
+
+
+def lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def new_action(arm, name, frames):
+    act = bpy.data.actions.new(name)
+    act.use_fake_user = True
+    if arm.animation_data is None:
+        arm.animation_data_create()
+    arm.animation_data.action = act
+    act.use_frame_range = True
+    act.frame_start, act.frame_end = 0, frames
+    return act
+
+
+def upper_body(P, D, Dp, spine_pitch, spine_yaw, head_pitch, head_yaw, arms):
+    """Spine, head and arms. spine_* are totals spread over three bones (relative to the pelvis),
+    head_* absolute; arms: side -> (down, swing, elbow, twist) degrees."""
+    per = rot((0, 0, 1), spine_yaw / 3) @ rot((1, 0, 0), spine_pitch / 3)
+    sp = chain(D, ["spine_01", "spine_02", "spine_03"], Dp, [per] * 3)
+    # Head: absolute target, split between neck and head.
+    target = rot((0, 0, 1), head_yaw) @ rot((1, 0, 0), head_pitch)
+    rel = sp.inverted() @ target
+    half = Quaternion().slerp(rel, 0.4)
+    chain(D, ["neck_01", "head"], sp, [half, half.inverted() @ rel])
+    for side, s in SIDES.items():
+        down, swing, elbow, twist = arms[side]
+        cl = chain(D, [f"clavicle_{side}"], sp, [Quaternion()])
+        chain(D, [f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}"], cl,
+              [rot((1, 0, 0), swing) @ rot((0, 1, 0), s * down),
+               rot((0, 0, 1), -s * elbow) @ rot((1, 0, 0), s * twist),
+               rot((0, 0, 1), -s * 6)])
+
+
+def act_locomotion(P, arm, name, frames, speed, duty, lift, bob, lean, swing, elbow, jog):
+    new_action(arm, name, frames)
+    T = frames / FPS
+    stance = speed * T * duty
+    for f in range(frames + 1):
+        ph = f / frames
+        Dp_yaw = -(5.0 if not jog else 7.0) * math.cos(2 * math.pi * ph)
+        Dp_roll = -(3.0 if not jog else 2.0) * math.sin(2 * math.pi * ph)
+        Dp = rot((0, 0, 1), Dp_yaw) @ rot((0, 1, 0), Dp_roll) @ rot((1, 0, 0), lean * 0.4)
+        if jog:
+            peak = (duty + 0.5) / 2
+            dz = -0.07 + bob * math.cos(4 * math.pi * (ph - peak))
+        else:
+            dz = -0.035 + bob * math.cos(4 * math.pi * (ph - duty / 2))
+        off = Vector((0.012 * math.sin(2 * math.pi * ph), 0.0, dz))
+        D = {"pelvis": Dp}
+        for side, s in SIDES.items():
+            lp = (ph + (0.0 if s > 0 else 0.5)) % 1.0
+            narrow = -s * 0.025
+            if lp < duty:
+                t = lp / duty
+                y = lerp(-stance * 0.46, stance * 0.54, t)
+                strike = 14.0 if not jog else 6.0
+                pitch = -strike * (1 - smooth(t / 0.18)) + (32.0 if not jog else 28.0) * smooth((t - 0.6) / 0.4)
+                z = 0.0
+            else:
+                w = (lp - duty) / (1 - duty)
+                y = lerp(stance * 0.54, -stance * 0.46, smooth(w))
+                z = lift * math.sin(math.pi * min(1.0, w * 1.08)) ** 1.3
+                toeoff = 32.0 if not jog else 28.0
+                strike = 14.0 if not jog else 6.0
+                pitch = lerp(toeoff, -strike, smooth(w * 1.15))
+            ank, Df, Db = P.foot(side, (narrow, y), z, 0.0, pitch, toe_bend=0.0)
+            D.update(P.leg(side, Dp, off, ank, Df, Db))
+        arms = {}
+        for side, s in SIDES.items():
+            sw = s * swing * math.cos(2 * math.pi * ph)
+            fwd = max(0.0, -sw) / max(swing, 1e-3)
+            arms[side] = (ARM_DOWN - (10 if jog else 0), sw - (4 if jog else 3), elbow + (12 if not jog else 8) * fwd,
+                          -12.0 if jog else 0.0)
+        upper_body(P, D, Dp, spine_pitch=lean * 0.6, spine_yaw=-1.6 * Dp_yaw, head_pitch=3.0 if jog else 1.0,
+                   head_yaw=0.0, arms=arms)
+        P.apply(D, off)
+        P.key(f)
+
+
+def act_idle(P, arm, frames=90):
+    new_action(arm, "Rosa_Idle", frames)
+    for f in range(frames + 1):
+        ph = f / frames
+        breath = math.sin(2 * math.pi * ph)
+        sway = math.sin(2 * math.pi * ph + 0.6)
+        Dp = rot((0, 0, 1), 2.0 * sway) @ rot((0, 1, 0), 1.5 * sway)
+        off = Vector((0.012 * sway, 0.0, -0.014 + 0.003 * breath))
+        D = {"pelvis": Dp}
+        for side in SIDES:
+            ank, Df, Db = P.foot(side, (0.0, 0.0), 0.0, 0.0, 0.0)
+            D.update(P.leg(side, Dp, off, ank, Df, Db))
+        arms = {side: (ARM_DOWN + 0.8 * breath, -3.0 + 1.0 * breath, 12.0 + 2.0 * breath, 0.0) for side in SIDES}
+        upper_body(P, D, Dp, spine_pitch=-1.2 * breath, spine_yaw=-2.5 * sway, head_pitch=1.5 * math.sin(4 * math.pi * ph),
+                   head_yaw=5.0 * math.sin(2 * math.pi * ph + 1.0), arms=arms)
+        for side, s in SIDES.items():
+            D[f"clavicle_{side}"] = D["spine_03"] @ rot((0, 1, 0), -s * 1.2 * breath)
+        P.apply(D, off)
+        P.key(f)
+
+
+REST_ARMS = {side: (ARM_DOWN, -5.0, 12.0, 0.0) for side in SIDES}
+
+
+def act_work(P, arm, frames=60):
+    """Crouched in front of a lock or a drawer, both hands busy at about 0.95 m (loop)."""
+    new_action(arm, "Rosa_Work", frames)
+    for f in range(frames + 1):
+        ph = f / frames
+        Dp = rot((0, 0, 1), -6) @ rot((1, 0, 0), 6)
+        off = Vector((0.0, 0.05, -0.24 + 0.004 * math.sin(2 * math.pi * ph)))
+        D = {"pelvis": Dp}
+        for side, s in SIDES.items():
+            shift = (s * 0.03, -0.09 if s > 0 else 0.11)
+            ank, Df, Db = P.foot(side, shift, 0.0, -10 * s, 0.0 if s > 0 else 14.0)
+            D.update(P.leg(side, Dp, off, ank, Df, Db))
+        upper_body(P, D, Dp, spine_pitch=22, spine_yaw=4, head_pitch=24 + 2 * math.sin(2 * math.pi * ph),
+                   head_yaw=-4, arms=REST_ARMS)
+        for side, s in SIDES.items():
+            k = 1.0 if s > 0 else 1.7
+            jig = Vector((0.006 * math.sin(2 * math.pi * 3 * ph + k), 0.0, 0.008 * math.sin(2 * math.pi * 4 * ph + 2 * k)))
+            target = Vector((s * 0.075 - 0.01, -0.40 if s > 0 else -0.42, 0.97 if s > 0 else 0.93)) + jig
+            P.arm_ik(D, off, side, target, Vector((s * 0.8, 0.35, -0.6)).normalized(),
+                     wrist_bend=10 + 6 * math.sin(2 * math.pi * 4 * ph + k))
+        P.apply(D, off)
+        P.key(f)
+
+
+def act_pickup(P, arm, frames=48):
+    """Crouch, pick something up from the floor in front with the right hand, stand up (one shot)."""
+    new_action(arm, "Rosa_Pickup", frames)
+    for f in range(frames + 1):
+        t = f / FPS
+        c = smooth(t / 0.55) if t < 0.85 else 1.0 - smooth((t - 0.85) / 0.75)
+        Dp = rot((1, 0, 0), 14 * c)
+        off = Vector((0.0, 0.10 * c, -0.36 * c))
+        D = {"pelvis": Dp}
+        for side, s in SIDES.items():
+            shift = (0.0, (-0.10 if s > 0 else 0.12) * c)
+            ank, Df, Db = P.foot(side, shift, 0.0, 0.0, (0.0 if s > 0 else 24.0) * c)
+            D.update(P.leg(side, Dp, off, ank, Df, Db))
+        upper_body(P, D, Dp, spine_pitch=34 * c, spine_yaw=-8 * c, head_pitch=18 * c, head_yaw=-6 * c,
+                   arms=REST_ARMS)
+        full = P.resolve(D)
+        # Blend each wrist from where the hanging arm would be to its target.
+        for side, target, pole, amount in (
+                ("r", Vector((-0.10, -0.40, 0.12)), Vector((-0.6, 0.6, 0.1)), smooth((t - 0.05) / 0.5)),
+                ("l", P.pos(full, off, "calf_l") + Vector((0.02, -0.05, 0.07)), Vector((0.8, 0.4, -0.2)), c)):
+            amount = min(amount, c) if side == "r" else amount
+            fk_wrist = P.pos(full, off, f"hand_{side}")
+            fk_elbow = P.pos(full, off, f"lowerarm_{side}")
+            shoulder = P.pos(full, off, f"upperarm_{side}")
+            fk_pole = (fk_elbow - 0.5 * (shoulder + fk_wrist)).normalized()
+            P.arm_ik(D, off, side, fk_wrist.lerp(target, amount), fk_pole.lerp(pole.normalized(), amount).normalized(),
+                     wrist_bend=20 * amount)
+        P.apply(D, off)
+        P.key(f)
+
+
+ACTIONS = ("Rosa_Idle", "Rosa_Walk", "Rosa_Jog", "Rosa_Work", "Rosa_Pickup")
+
+
+def stage_anim():
+    t0 = time.time()
+    open_blend("rig")
+    arm = bpy.data.objects["Armature"]
+    P = Poser(arm)
+    act_idle(P, arm)
+    # Walk 1.4 m/s (one cycle = two steps of 0.7 m), jog 2.5 m/s = the game's base walk speed.
+    act_locomotion(P, arm, "Rosa_Walk", 30, speed=1.4, duty=0.6, lift=0.09, bob=0.016, lean=4.0,
+                   swing=22.0, elbow=14.0, jog=False)
+    act_locomotion(P, arm, "Rosa_Jog", 22, speed=2.5, duty=0.38, lift=0.17, bob=0.025, lean=10.0,
+                   swing=24.0, elbow=88.0, jog=True)
+    act_work(P, arm)
+    act_pickup(P, arm)
+    arm.animation_data.action = bpy.data.actions["Rosa_Idle"]
+    for a in bpy.data.actions:
+        log(f"action {a.name}: frames {a.frame_range[0]:.0f}-{a.frame_range[1]:.0f}")
+    save_blend("anim")
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, "Rosa", "rosa.blend"), compress=True, copy=True)
+    log(f"stage anim done in {time.time() - t0:.1f} s")
+
+
+def set_action(arm, name):
+    act = bpy.data.actions[name]
+    arm.animation_data.action = act
+    scene = bpy.context.scene
+    scene.frame_start, scene.frame_end = int(act.frame_range[0]), int(act.frame_range[1])
+    return act
+
+
+def preview_anim():
+    open_blend("anim")
+    arm = bpy.data.objects["Armature"]
+    paths = []
+    for name in ACTIONS:
+        act = set_action(arm, name)
+        a, b = int(act.frame_range[0]), int(act.frame_range[1])
+        frames = [int(round(a + (b - a) * i / 6)) for i in range(6)]
+        paths += render_views(f"anim_{name}", {"side": (1.0, -0.15, 0.1)}, size=(300, 440), frames=frames)
+    contact_sheet(paths, os.path.join(WORK, "sheet_anim_side.png"), 6)
+    paths = []
+    for name in ACTIONS:
+        act = set_action(arm, name)
+        a, b = int(act.frame_range[0]), int(act.frame_range[1])
+        frames = [int(round(a + (b - a) * i / 6)) for i in range(6)]
+        paths += render_views(f"anim_{name}", {"tq": (0.7, -1.0, 0.3)}, size=(300, 440), frames=frames)
+    contact_sheet(paths, os.path.join(WORK, "sheet_anim_tq.png"), 6)
+
+
+SHOWCASE = (("Rosa_Idle", 1, "Stehen"), ("Rosa_Walk", 3, "Gehen 1,4 m/s"), ("Rosa_Jog", 4, "Laufen 2,5 m/s"),
+            ("Rosa_Work", 2, "Arbeiten (Schloss, Schublade)"), ("Rosa_Pickup", 1, "Aufheben"))
+
+
+def preview_showcase():
+    """MP4 of all actions one after another, plus a still at game-camera distance."""
+    open_blend("anim")
+    scene = bpy.context.scene
+    arm = bpy.data.objects["Armature"]
+    arm.animation_data.action = None
+    track = arm.animation_data.nla_tracks.new()
+    start = 0
+    labels = []
+    for name, repeat, label in SHOWCASE:
+        act = bpy.data.actions[name]
+        strip = track.strips.new(name, start, act)
+        strip.repeat = repeat
+        length = int(round((act.frame_range[1] - act.frame_range[0]) * repeat))
+        labels.append((label, start, start + length))
+        start += length + 1
+    scene.frame_start, scene.frame_end = 0, start - 1
+    cam = setup_preview_scene()
+    for label, a, b in labels:
+        cu = bpy.data.curves.new(label, "FONT")
+        cu.body = label
+        cu.size = 0.11
+        cu.align_x = "CENTER"
+        tm = bpy.data.materials.new("Label")
+        tm.use_nodes = True
+        tb = node_of_type(tm.node_tree.nodes, "BSDF_PRINCIPLED")
+        tb.inputs["Base Color"].default_value = (0.95, 0.8, 0.45, 1)
+        cu.materials.append(tm)
+        ob = link(bpy.data.objects.new(label, cu))
+        ob.location = (0.0, 0.35, 1.92)
+        ob.rotation_euler = (math.radians(90), 0, math.radians(-30))
+        for f, hidden in ((a - 1, True), (a, False), (b, False), (b + 1, True)):
+            ob.hide_render = hidden
+            ob.keyframe_insert("hide_render", frame=max(f, 0))
+    centre = Vector((0, 0, 0.95))
+    direction = Vector((0.55, -1.0, 0.22)).normalized()
+    cam.data.lens = 50
+    cam.location = centre + direction * 4.6
+    cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+    scene.render.resolution_x, scene.render.resolution_y = 720, 900
+    scene.eevee.taa_render_samples = 16
+    try:
+        scene.render.image_settings.media_type = "VIDEO"
+    except (AttributeError, TypeError):
+        pass
+    scene.render.image_settings.file_format = "FFMPEG"
+    scene.render.ffmpeg.format = "MPEG4"
+    scene.render.ffmpeg.codec = "H264"
+    scene.render.ffmpeg.constant_rate_factor = "HIGH"
+    scene.render.filepath = os.path.join(WORK, "rosa_showcase.mp4")
+    t0 = time.time()
+    bpy.ops.render.render(animation=True)
+    log(f"video {scene.render.filepath} ({scene.frame_end + 1} frames, {time.time() - t0:.0f} s)")
+    # Game distance: steep camera from ~9 m, a few frames of walk and work.
+    try:
+        scene.render.image_settings.media_type = "IMAGE"
+    except (AttributeError, TypeError):
+        pass
+    scene.render.image_settings.file_format = "PNG"
+    for ob in bpy.data.objects:
+        if ob.type == "FONT":
+            ob.animation_data_clear()
+            ob.hide_render = True
+    cam.data.lens = 35
+    centre = Vector((0, 0, 0.8))
+    cam.location = centre + Vector((0.25, -0.6, 1.1)).normalized() * 9.0
+    cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+    scene.render.resolution_x, scene.render.resolution_y = 480, 360
+    paths = []
+    for label, a, b in labels:
+        scene.frame_set(int(a + (b - a) * 0.3))
+        path = os.path.join(WORK, f"game_{label.split()[0]}.png")
+        scene.render.filepath = path
+        bpy.ops.render.render(write_still=True)
+        paths.append(path)
+    contact_sheet(paths, os.path.join(WORK, "sheet_game.png"), len(paths))
+
+
+def check_fbx():
+    """Read the exported FBX back into an empty scene and report what arrived."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.fbx(filepath=os.path.join(EXPORT, "SK_Rosa.fbx"))
+    for ob in bpy.data.objects:
+        if ob.type == "ARMATURE":
+            log(f"fbx armature {ob.name}: {len(ob.data.bones)} bones, root {[b.name for b in ob.data.bones if not b.parent]}")
+        elif ob.type == "MESH":
+            d = ob.dimensions
+            log(f"fbx mesh {ob.name}: {len(ob.data.vertices)} verts, {len(ob.data.polygons)} faces, "
+                f"{d.x:.2f} x {d.y:.2f} x {d.z:.2f} m, groups {len(ob.vertex_groups)}, "
+                f"materials {[m.name for m in ob.data.materials]}")
+    for a in bpy.data.actions:
+        log(f"fbx action {a.name}: {a.frame_range[0]:.0f}-{a.frame_range[1]:.0f}")
+    fbm = os.path.join(EXPORT, "SK_Rosa.fbm")   # the importer unpacks textures here
+    if os.path.isdir(fbm):
+        import shutil
+        shutil.rmtree(fbm)
+
+
+# ---------------------------------------------------------------------------------------------
+# Export
+# ---------------------------------------------------------------------------------------------
+
+
+def export_fbx():
+    open_blend("anim")
+    arm = bpy.data.objects["Armature"]
+    body = bpy.data.objects["Rosa"]
+    arm.animation_data.action = None
+    for pb in arm.pose.bones:
+        pb.rotation_quaternion = Quaternion()
+        pb.location = Vector()
+    activate(arm)
+    body.select_set(True)
+    path = os.path.join(EXPORT, "SK_Rosa.fbx")
+    bpy.ops.export_scene.fbx(
+        filepath=path, use_selection=True, object_types={"ARMATURE", "MESH"},
+        apply_scale_options="FBX_SCALE_ALL", axis_forward="-Z", axis_up="Y",
+        mesh_smooth_type="FACE", use_tspace=False, add_leaf_bones=False,
+        primary_bone_axis="Y", secondary_bone_axis="X", armature_nodetype="NULL",
+        bake_anim=True, bake_anim_use_all_actions=True, bake_anim_use_nla_strips=False,
+        bake_anim_force_startend_keying=True, bake_anim_step=1.0, bake_anim_simplify_factor=0.0,
+        path_mode="COPY", embed_textures=False)
+    log("exported", path, f"{os.path.getsize(path) / 1e6:.1f} MB")
+
+
+# ---------------------------------------------------------------------------------------------
+# Preview renders
+# ---------------------------------------------------------------------------------------------
+
+PREVIEW_VIEWS = {
+    "front": (0.0, -1.0, 0.08),
+    "three_quarter": (0.75, -1.0, 0.35),
+    "side": (1.0, 0.0, 0.08),
+    "back": (-0.4, 1.0, 0.15),
+    "game": (0.25, -0.55, 1.5),
+}
+
+
+def setup_preview_scene():
+    scene = bpy.context.scene
+    try:
+        scene.render.engine = "BLENDER_EEVEE"
+    except TypeError as err:
+        log(f"engine: {err}")
+    for attr, value in (("use_raytracing", True), ("use_shadows", True), ("taa_render_samples", 24)):
+        try:
+            setattr(scene.eevee, attr, value)
+        except (AttributeError, TypeError):
+            pass
+    try:
+        scene.view_settings.view_transform = "AgX"
+    except TypeError:
+        pass
+    if "PreviewWorld" not in bpy.data.worlds:
+        world = bpy.data.worlds.new("PreviewWorld")
+        world.use_nodes = True
+        bg = node_of_type(world.node_tree.nodes, "BACKGROUND")
+        bg.inputs["Color"].default_value = (0.20, 0.21, 0.23, 1)
+        bg.inputs["Strength"].default_value = 0.6
+        key = bpy.data.lights.new("PreviewKey", "AREA")
+        key.energy = 600
+        key.size = 2.5
+        k = link(bpy.data.objects.new("PreviewKey", key))
+        k.location = (-2.0, -3.0, 3.5)
+        k.rotation_euler = (Vector((0, 0, 0.9)) - k.location).to_track_quat("-Z", "Y").to_euler()
+        rim = bpy.data.lights.new("PreviewRim", "AREA")
+        rim.energy = 400
+        rim.size = 2.0
+        r = link(bpy.data.objects.new("PreviewRim", rim))
+        r.location = (2.5, 3.0, 2.5)
+        r.rotation_euler = (Vector((0, 0, 1.0)) - r.location).to_track_quat("-Z", "Y").to_euler()
+        fill = bpy.data.lights.new("PreviewFill", "AREA")
+        fill.energy = 250
+        fill.size = 3.0
+        f = link(bpy.data.objects.new("PreviewFill", fill))
+        f.location = (3.0, -2.0, 1.2)
+        f.rotation_euler = (Vector((0, 0, 1.0)) - f.location).to_track_quat("-Z", "Y").to_euler()
+        fm = bpy.data.materials.new("PreviewFloor")
+        fm.use_nodes = True
+        fb = node_of_type(fm.node_tree.nodes, "BSDF_PRINCIPLED")
+        fb.inputs["Base Color"].default_value = (0.30, 0.29, 0.27, 1)
+        fb.inputs["Roughness"].default_value = 0.8
+        fme = bpy.data.meshes.new("PreviewFloor")
+        fme.from_pydata([(-20, -20, 0), (20, -20, 0), (20, 20, 0), (-20, 20, 0)], [], [(0, 1, 2, 3)])
+        fme.materials.append(fm)
+        link(bpy.data.objects.new("PreviewFloor", fme))
+        cam = bpy.data.cameras.new("PreviewCam")
+        cam.lens = 85
+        c = link(bpy.data.objects.new("PreviewCam", cam))
+        scene.camera = c
+    scene.world = bpy.data.worlds["PreviewWorld"]
+    return scene.camera
+
+
+def render_views(prefix, views=PREVIEW_VIEWS, size=(520, 760), centre=(0, 0, 0.88), radius=1.0, frames=None):
+    scene = bpy.context.scene
+    cam = setup_preview_scene()
+    scene.render.resolution_x, scene.render.resolution_y = size
+    scene.render.image_settings.file_format = "PNG"
+    out = []
+    centre = Vector(centre)
+    for name, d in views.items():
+        direction = Vector(d).normalized()
+        dist = radius / math.tan(cam.data.angle / 2) * 1.15
+        cam.location = centre + direction * dist
+        cam.rotation_euler = (centre - cam.location).to_track_quat("-Z", "Y").to_euler()
+        for f in (frames or [scene.frame_current]):
+            scene.frame_set(f)
+            path = os.path.join(WORK, f"{prefix}_{name}" + (f"_{f:03d}" if frames else "") + ".png")
+            scene.render.filepath = path
+            bpy.ops.render.render(write_still=True)
+            out.append(path)
+    return out
+
+
+def contact_sheet(paths, path, columns):
+    imgs = [load_rgb(p) for p in paths]
+    h, w = imgs[0].shape[:2]
+    rows = (len(imgs) + columns - 1) // columns
+    sheet = np.zeros((rows * h, columns * w, 3), np.float32)
+    for i, im in enumerate(imgs):
+        r, c = divmod(i, columns)
+        sheet[r * h:(r + 1) * h, c * w:(c + 1) * w] = im
+    save_rgb(sheet, path)
+    log("sheet", path)
+
+
+HEAD_VIEWS = {
+    "front": (0.0, -1.0, 0.05),
+    "three_quarter": (0.8, -1.0, 0.2),
+    "side": (1.0, 0.0, 0.05),
+    "back": (-0.5, 1.0, 0.2),
+    "top": (0.2, -0.45, 1.5),
+}
+
+
+def preview_mesh():
+    open_blend("mesh")
+    paths = render_views("mesh")
+    contact_sheet(paths, os.path.join(WORK, "sheet_mesh.png"), len(paths))
+    paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57), radius=0.17)
+    contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), len(paths))
+
+
+# ---------------------------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------------------------
+
+
+def main():
+    bpy.context.preferences.filepaths.save_version = 0   # no .blend1 backups next to rosa.blend
+    a = args()
+    stage = a["stage"]
+    if stage in ("mesh", "all"):
+        stage_mesh()
+        if a["preview"]:
+            preview_mesh()
+    if stage == "preview_mesh":
+        preview_mesh()
+    if stage in ("rig", "all"):
+        stage_rig()
+        if a["preview"]:
+            preview_rig()
+    if stage in ("anim", "all"):
+        stage_anim()
+        if a["preview"]:
+            preview_anim()
+    if stage == "showcase":
+        preview_showcase()
+    if a["export"]:
+        export_fbx()
+        check_fbx()
+
+
+if __name__ == "__main__":
+    main()

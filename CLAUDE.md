@@ -563,6 +563,28 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Rasterkachel mit Bild auf neutralem Grund, Kurzname nur ab 2 × 2 Feldern; Kopfzeilen (`MakeHeader`) mit Bild
     22 × 20, Hände 34 × 30, Zieh-Anzeige 44 × 44. Ohne Bild bleibt die alte Kachel.
   - Geprüft mit Grid, Find, Containers, Signals, Inventory und Villa (alle bestanden, Screenshots angesehen).
+- **Rosa als 3D-Figur mit Skelett und Animationen (Schritt 34, 2026-11-09, nur Blender, noch nicht im Spiel).** Vorlage:
+  Referenzblatt des Users (T-Pose, vorn/hinten/beide Seiten/zwei Schrägansichten) in `Art/Characters/Rosa/ref/`.
+  - `blender -b --factory-startup -P Art/Characters/build_rosa.py -- --stage mesh|rig|anim|all [--preview] [--export]`,
+    `--stage showcase` rendert `Saved/Characters/Rosa/rosa_showcase.mp4` und `sheet_game.png` (Spielkamera-Abstand).
+    Zwischenstände `Saved/Characters/Rosa/rosa_<stage>.blend`, fertig `Art/Characters/Rosa/rosa.blend`.
+  - Form: Umriss vorn (x–z) und Seite (y–z) → je Höhe eine Superellipse in beide Umrisse eingeschrieben (Voxel 4 mm),
+    Arme in T-Pose quer geschnitten (rund, Hände flach 8,6 cm), Voxel-Remesh, glätten, auf ~20 000 Dreiecke reduziert.
+    Locken: im Kopfbereich wird der Umriss geöffnet (10 px, am Kiefer 22 px) und pro Zeile nur der breiteste Abschnitt
+    behalten – sonst werden Strähnen zu dünnen Scheiben.
+  - Farbe: die vier Fotos werden je nach Flächennormale auf die Form projiziert und in `T_Rosa_BC.png` (2048²) gebacken.
+    Am Gesicht nur das Frontfoto (die Profilfotos malten sonst ein zweites Auge auf die Wange), Arme nur vorn/hinten.
+  - Skelett mit UE-Mannequin-Namen (root, pelvis, spine_01–03, neck_01, head, clavicle/upperarm/lowerarm/hand,
+    thigh/calf/foot/ball je _l/_r; ohne Finger), Gelenke aus den Umrissen gemessen, Gewichte automatisch (Bone Heat).
+  - Animationen (30 fps, auf der Stelle, Schleifen enden auf dem ersten Bild): `Rosa_Idle` (3 s), `Rosa_Walk` (1,4 m/s),
+    `Rosa_Jog` (2,5 m/s = `BaseWalkSpeed`), `Rosa_Work` (hockt, Hände auf ~0,95 m – Schloss/Schublade, Schleife),
+    `Rosa_Pickup` (1,6 s, greift vor sich auf den Boden). Beine über Zwei-Knochen-IK (Füße stehen, rollen über Ferse und
+    Ballen), Arme bei Arbeiten/Aufheben ebenfalls IK (`Poser.two_bone`, `arm_ik`).
+  - Export `Art/Characters/Rosa/Export/SK_Rosa.fbx` (Armature heißt „Armature“, damit Unreal `root` als Wurzel nimmt,
+    `FBX_SCALE_ALL`, keine Leaf Bones, alle Aktionen als Takes) + `T_Rosa_BC.png`. Gegenprobe `check_fbx()` liest sie wieder ein.
+  - Grenzen: von Nahem wirkt das Gesicht aufgemalt (keine Nase im Profil), Haare sind eine geschlossene Schale, Hände
+    Fäustlinge. Für die Spielkamera reicht es; besser würde der Kopf nur mit einer echten 3D-Erzeugung oder von Hand.
+  - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
