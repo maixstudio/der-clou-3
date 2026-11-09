@@ -5,8 +5,8 @@ Run headless (Blender 5.2):
 
 Stages (each saves a .blend, the next one starts from it):
     mesh  silhouettes -> voxel hull (superellipse cross sections), head from the close-up with a face shaped after the
-          profile, hair relief -> smooth mesh; modelled hands, ears and loose curls joined in -> UVs -> projected colour
-          texture, hand details painted on top
+          profile, a bun knot on a rounded back of the head, hair relief -> smooth mesh; modelled hands, ears and loose
+          curls joined in -> UVs -> projected colour texture, hand details and strands on the back and top painted on top
     rig   UE-style skeleton (root, pelvis, spine_01..03, neck_01, head, clavicle/upperarm/lowerarm/hand, five digits
           with three bones each, thigh/calf/foot/ball) from landmarks of the silhouettes; bone heat on the body, distance
           weights on the hands, ears and curls on the head
@@ -330,6 +330,7 @@ class EarModel:
     def clearance(self, ys, zs):
         """(len(zs), len(ys)): 1 where the head must stay at skull width (behind the ear), 0 far away."""
         dy = (ys[None, :] - self.centre.x) / (self.half.x + 0.006)
+        dy = np.where(dy > 0, dy / 1.8, dy)       # behind the ear the hair widens gradually towards the bun
         dz = (zs[:, None] - self.centre.y) / (self.half.y + 0.006)
         r = np.sqrt(dy ** 2 + dz ** 2)
         return np.clip((2.2 - r) / 1.2, 0.0, 1.0)
@@ -504,6 +505,32 @@ def row_runs(row, coords):
 # ---------------------------------------------------------------------------------------------
 
 
+def round_back_outline(S, ys, zs, centre=(0.02, 1.58), sigma_deg=9.0):
+    """Profile mask (Z, Y): smooth the outline between crown and bun. Where the wisps end, the opened close-up
+    leaves a shelf (4 cm deeper within 1 cm of height); the outline's distance from the centre of the head is
+    smoothed over the angle and the quarter behind and above the centre rebuilt from it."""
+    yc, zc = centre
+    angles = np.arange(0.0, 90.01, 1.0)
+    rs = np.arange(0.0, 0.25, 0.001)
+    rho = np.zeros(len(angles))
+    for i, a in enumerate(np.radians(angles)):
+        iy = np.clip(np.round((yc + rs * math.sin(a) - ys[0]) / VOXEL).astype(int), 0, len(ys) - 1)
+        iz = np.clip(np.round((zc + rs * math.cos(a) - zs[0]) / VOXEL).astype(int), 0, len(zs) - 1)
+        out = np.nonzero(~S[iz, iy])[0]
+        rho[i] = rs[out[0]] if len(out) else rs[-1]
+    pad = int(3 * sigma_deg)
+    k = np.exp(-0.5 * (np.arange(-pad, pad + 1) / sigma_deg) ** 2)
+    rho_s = np.convolve(np.pad(rho, pad, mode="reflect"), k / k.sum(), mode="valid")
+    dy, dz = ys[None, :] - yc, zs[:, None] - zc
+    quad = (dy >= 0) & (dz >= 0)
+    lim = np.interp(np.degrees(np.arctan2(dy, dz)), angles, rho_s)
+    out = S.copy()
+    out[quad] = (np.hypot(dy, dz) <= lim)[quad]
+    log(f"back of the head: outline {rho.min():.3f}..{rho.max():.3f} m from the centre, largest change "
+        f"{np.abs(rho_s - rho).max() * 100:.1f} cm")
+    return out
+
+
 class Hull:
     def __init__(self, front, side, head_front=None, head_side=None):
         self.front, self.side = front, side
@@ -526,6 +553,7 @@ class Hull:
             top = zs >= Z_HEAD
             self.F[top] = head_front.sample_mask(xs, zs[top])
             self.S[top] = head_side.sample_mask(ys, zs[top])
+            self.S = round_back_outline(self.S, ys, zs)
             self.face = FaceModel(head_front, head_side)
             self.ear = EarModel(head_side, self.face.cx)
         self._arms()
@@ -597,6 +625,18 @@ class Hull:
         fm, fh = (flo + fhi) / 2, np.maximum((fhi - flo) / 2, 1e-4)
         sm, sh = (slo + shi) / 2, np.maximum((shi - slo) / 2, 1e-4)
         hy_arm = np.where(self.hand_col[None, :], np.maximum(HAND_HALF_DEPTH, self.arm_half), self.arm_half)
+        if self.face is not None:
+            # Back of the head: per height the profile run, the skull taken in beside the bun, the bun's centre.
+            s_lo, s_hi = np.zeros(len(zs)), np.zeros(len(zs))
+            for iz in np.nonzero(zs >= 1.45)[0]:
+                rr = row_runs(self.S[iz], ys)
+                if rr:
+                    s_lo[iz], s_hi[iz] = max(rr, key=lambda r: r[1] - r[0])
+            s_mid = 0.5 * (s_lo + s_hi)
+            t = (zs - BUN["z"]) / (1.5 * BUN["rz"])
+            skull_back = s_hi - BUN["depth"] * np.clip(1 - t * t, 0, None) ** 2     # no ledge above or below
+            bun_y = s_hi[int(np.argmin(np.abs(zs - BUN["z"])))] - BUN["ry"]
+            bun_x = self.face.cx + BUN["u"]
         V = np.zeros((len(zs), len(xs), len(ys)), bool)
         chunk = 24
         for a in range(0, len(zs), chunk):
@@ -610,6 +650,16 @@ class Hull:
             arm = self.A[a:b, :, None] & (az + ay <= 1.0)
             V[a:b] = body | arm
             if self.face is not None:
+                zz = zs[a:b]
+                k = np.nonzero((zz >= 1.47) & (s_hi[a:b] > s_mid[a:b] + 0.01))[0]
+                if len(k):
+                    y = ys[None, None, :]
+                    mid = s_mid[a:b][k][:, None, None]
+                    depth = np.maximum(skull_back[a:b][k] - s_mid[a:b][k], 1e-3)[:, None, None]
+                    skull = (y <= mid) | (ex[k] + ((y - mid) / depth) ** 2 <= 1.0)
+                    bun = (((xs[None, :, None] - bun_x) / BUN["rx"]) ** 2 + ((y - bun_y) / BUN["ry"]) ** 2
+                           + ((zz[k][:, None, None] - BUN["z"]) / BUN["rz"]) ** 2 <= 1.0)
+                    V[a:b][k] &= skull | bun
                 zone = self.face.in_zone(zs[a:b])
                 if zone.any():
                     zz = zs[a:b][zone]
@@ -967,7 +1017,8 @@ def stage_mesh():
     sm.vertex_group = "smooth"
     apply_modifiers(ob)
     ob.vertex_groups.remove(ob.vertex_groups["smooth"])
-    hair_relief(ob, views, heads, hull)
+    hd = HairDetail(heads["side"], hull.face.cx)
+    hair_relief(ob, views, heads, hull, hd)
     n_faces = len(ob.data.polygons)
     decimate_zones(ob, [(lambda c: c.z > Z_HEAD - 0.01, HEAD_FACES), (lambda c: c.z <= Z_HEAD - 0.01, TARGET_FACES)])
     log(f"mesh: {n_faces} -> {len(ob.data.polygons)} faces ({time.time() - t0:.1f} s)")
@@ -975,14 +1026,20 @@ def stage_mesh():
     for name in ("skin", "curl"):
         a = ob.data.attributes.new(name, "FLOAT", "POINT")
         a.data.foreach_set("value", np.zeros(len(ob.data.vertices), np.float32))
+    # Scalp: head part of the hull, where paint_hair works later.
+    zv = np.empty(len(ob.data.vertices) * 3, np.float32)
+    ob.data.vertices.foreach_get("co", zv)
+    a = ob.data.attributes.new("scalp", "FLOAT", "POINT")
+    a.data.foreach_set("value", (zv.reshape(-1, 3)[:, 2] > 1.44).astype(np.float32))
     J = measure(hull)
     parts = [hand_object(side, J[f"hand_layout_{side}"]) for side in SIDES]
     parts += [ear_object(side, hull.ear) for side in SIDES]
     parts.append(curl_object(ob, hull.face.cx))
     for p in parts:
-        if "curl" not in p.data.attributes:
-            a = p.data.attributes.new("curl", "FLOAT", "POINT")
-            a.data.foreach_set("value", np.zeros(len(p.data.vertices), np.float32))
+        for name in ("curl", "scalp"):
+            if name not in p.data.attributes:
+                a = p.data.attributes.new(name, "FLOAT", "POINT")
+                a.data.foreach_set("value", np.zeros(len(p.data.vertices), np.float32))
     for o in bpy.context.view_layer.objects:
         o.select_set(o in parts or o == ob)
     bpy.context.view_layer.objects.active = ob
@@ -1030,6 +1087,7 @@ def stage_mesh():
     bpy.ops.object.bake(type="EMIT")
     log(f"bake {time.time() - t1:.1f} s")
     paint_hand_details(tex, ob, J)
+    paint_hair(tex, ob, hd)
     tex.filepath_raw = os.path.join(EXPORT, "T_Rosa_BC.png")
     tex.file_format = "PNG"
     tex.save()
@@ -1206,9 +1264,238 @@ def sample_photos(views, heads, co, no):
     return (c_front * w[:, :1] + c_back * w[:, 1:2] + c_left * w[:, 2:3] + c_right * w[:, 3:4])
 
 
-def hair_relief(ob, views, heads, hull):
+# ---------------------------------------------------------------------------------------------
+# Back and top of the head: the back photo is small and soft there, and no photo looks at the top. Strands are
+# taken from a hair-only patch of the close-up profile and splatted over the scalp: overlapping round patches
+# centred on a jittered 3-D grid, each turned so its strands run towards the bun and wind around it there. Only the
+# detail comes from the patch (log ratio to its local average); the colour at the scale of a centimetre stays the
+# photos'. The bun gets spiral coils in relief, the same field drives the strands' relief and texture.
+# ---------------------------------------------------------------------------------------------
+
+HAIR_SRC = (75, 300, 290, 640)    # rows, cols of a hair-only patch in the profile half of the close-up
+HAIR_CELL = 0.016                 # splat spacing and radius on the scalp
+HAIR_BASE_CELL = 0.008            # the photos' colour is kept down to this scale
+HAIR_GAIN = 1.0                   # contrast of the strands relative to the patch
+# Bun (back photo + profile): centre (u from the face centre, z) on the back of the head, radius, spiral coils
+# (radial pitch per turn, number of coils, relief height).
+# The knot itself is an ellipsoid (half widths rx, ry, rz) whose back reaches the profile; beside it the back of
+# the head is taken in by up to `depth`, so the bun stands out instead of the whole back bulging.
+BUN = dict(u=0.0, z=1.57, radius=0.05, pitch=0.036, arms=2, ridge=0.0065,
+           rx=0.055, ry=0.060, rz=0.065, depth=0.035)
+
+
+def blur(img, sigma):
+    """Separable Gaussian blur of an (H, W[, C]) array, edges extended."""
+    r = max(1, int(3 * sigma))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    out = img.astype(np.float64)
+    for axis in (0, 1):
+        pad = [(0, 0)] * img.ndim
+        pad[axis] = (r, r)
+        p = np.pad(out, pad, mode="edge")
+        n = out.shape[axis]
+        acc = np.zeros_like(out)
+        for i, kv in enumerate(k):
+            acc += kv * np.take(p, np.arange(i, i + n), axis=axis)
+        out = acc
+    return out
+
+
+def hash01(i, j, k, salt):
+    """Deterministic pseudo-random number in [0, 1) per integer cell (numpy arrays of int64)."""
+    h = (i * 73856093) ^ (j * 19349663) ^ (k * 83492791) ^ (salt * 2654435761)
+    h &= 0xFFFFFFFF
+    for _ in range(2):
+        h = ((h ^ (h >> 16)) * 0x45D9F3B) & 0xFFFFFFFF
+    h ^= h >> 16
+    return (h & 0xFFFFFF).astype(np.float64) / 16777216.0
+
+
+def bilinear(img, rows, cols):
+    H, W = img.shape[:2]
+    r = np.clip(rows, 0, H - 1.001)
+    c = np.clip(cols, 0, W - 1.001)
+    r0, c0 = r.astype(np.int64), c.astype(np.int64)
+    fr, fc = (r - r0)[:, None], (c - c0)[:, None]
+    return (img[r0, c0] * (1 - fr) * (1 - fc) + img[r0 + 1, c0] * fr * (1 - fc)
+            + img[r0, c0 + 1] * (1 - fr) * fc + img[r0 + 1, c0 + 1] * fr * fc)
+
+
+def unit(v):
+    return v / np.maximum(np.linalg.norm(v, axis=1, keepdims=True), 1e-9)
+
+
+OFFSETS_27 = [(a, b, c) for a in (-1, 0, 1) for b in (-1, 0, 1) for c in (-1, 0, 1)]
+
+
+class HairDetail:
+    def __init__(self, head_side, face_cx):
+        r0, r1, c0, c1 = HAIR_SRC
+        src = np.clip(head_side.px[r0:r1, c0:c1].astype(np.float64), 0.01, 1.0)
+        self.scale = head_side.scale
+        self.H, self.W = src.shape[:2]
+        # Strand detail: log ratio to the local average (about 6 mm), zero mean.
+        ratio = np.log(src / blur(src, 0.006 / self.scale))
+        self.ratio = ratio - ratio.reshape(-1, 3).mean(axis=0)
+        # Coarser strands for the relief (the mesh has a vertex every ~3.5 mm): band 3.5-10 mm, unit variance.
+        lum = src @ np.array([0.3, 0.59, 0.11])
+        band = np.log(blur(lum, 0.0035 / self.scale) / blur(lum, 0.010 / self.scale))
+        self.band = ((band - band.mean()) / band.std())[:, :, None]
+        # Main strand direction of the patch (structure tensor: strands run across the brightness gradient).
+        gy, gx = np.gradient(blur(lum, 2.0))
+        jxx, jyy, jxy = (gx * gx).mean(), (gy * gy).mean(), (gx * gy).mean()
+        self.theta = 0.5 * math.atan2(2 * jxy, jxx - jyy) + 0.5 * math.pi
+        self.cx = face_cx
+        self.bun = None
+        log(f"hair patch {self.W}x{self.H} px ({self.W * self.scale * 100:.1f} x {self.H * self.scale * 100:.1f} cm), "
+            f"strands at {math.degrees(self.theta):.0f} deg, detail sd {self.ratio.std():.2f}")
+
+    def set_bun(self, co, no):
+        """Bun centre on the hull: the rearmost surface point at the bun's height and lateral position."""
+        near = ((np.abs(co[:, 0] - (self.cx + BUN["u"])) < 0.012) & (np.abs(co[:, 2] - BUN["z"]) < 0.012)
+                & (co[:, 1] > 0.0))
+        idx = np.nonzero(near)[0]
+        i = idx[np.argmax(co[idx, 1])]
+        self.bun = co[i].astype(np.float64)
+        cap = idx[co[idx, 1] > co[i, 1] - 0.012]
+        self.bn = unit(no[cap].astype(np.float64).mean(axis=0)[None])[0]
+        ex = np.array([1.0, 0.0, 0.0])
+        self.ex = ex - ex.dot(self.bn) * self.bn
+        self.ex /= np.linalg.norm(self.ex)
+        self.ez = np.cross(self.bn, self.ex)
+        log(f"bun centre ({self.bun[0]:.3f}, {self.bun[1]:.3f}, {self.bun[2]:.3f}), normal "
+            f"({self.bn[0]:.2f}, {self.bn[1]:.2f}, {self.bn[2]:.2f})")
+
+    @staticmethod
+    def coverage(n):
+        """How badly the photos cover a surface direction: 1 facing back or up, 0 where the close-up looks."""
+        return np.maximum(smoothstep(0.40, 0.75, n[:, 1]), smoothstep(0.50, 0.85, n[:, 2]))
+
+    def _bun_polar(self, p):
+        q = p - self.bun
+        dn = q @ self.bn
+        qb = q - dn[:, None] * self.bn
+        r = np.linalg.norm(qb, axis=1)
+        phi = np.arctan2(qb @ self.ez, qb @ self.ex)
+        return q, dn, qb, r, phi
+
+    def _coil_phase(self, p, r, phi):
+        wobble = (0.55 * np.sin(p @ np.array([41.0, 17.0, 29.0])) + 0.35 * np.sin(p @ np.array([-23.0, 37.0, 53.0])))
+        return BUN["arms"] * phi - 2 * math.pi * r / BUN["pitch"] + wobble
+
+    def coils(self, p):
+        """Spiral coils on the bun in [-1, 1] (ridge +1, gap -1), zero away from it."""
+        _, dn, _, r, phi = self._bun_polar(p)
+        R = BUN["radius"]
+        mask = (1 - smoothstep(0.75 * R, 1.15 * R, r)) * smoothstep(0.003, 0.012, r) * (dn > -0.05)
+        c = np.cos(self._coil_phase(p, r, phi))
+        return (2.0 * (0.5 + 0.5 * c) ** 0.7 - 1.0) * mask
+
+    def frame(self, p, n):
+        """Strand direction per point: towards the bun, along the coils on the bun."""
+        q, _, qb, r, phi = self._bun_polar(p)
+        inflow = -q - (-q * n).sum(axis=1, keepdims=True) * n
+        er = qb / np.maximum(r, 1e-6)[:, None]
+        ephi = np.cross(self.bn, er)
+        along = er + (2 * math.pi * r / (BUN["pitch"] * BUN["arms"]))[:, None] * ephi
+        k = (1 - smoothstep(0.7 * BUN["radius"], 1.2 * BUN["radius"], r))[:, None]
+        t = unit(inflow) * (1 - k) + unit(along) * k
+        t = t - (t * n).sum(axis=1, keepdims=True) * n
+        bad = np.linalg.norm(t, axis=1) < 1e-4
+        t[bad] = np.cross(n[bad], [1.0, 0.0, 0.0])
+        t = unit(t)
+        return t, np.cross(n, t)
+
+    def detail(self, p, n, img):
+        """Splatted patch values at points p (normals n): variance-preserving blend of the overlapping splats."""
+        p = p.astype(np.float64)
+        n = unit(n.astype(np.float64))
+        h = HAIR_CELL
+        t1, t2 = self.frame(p, n)
+        cell = np.floor(p / h).astype(np.int64)
+        acc = np.zeros((len(p), img.shape[2]))
+        w2 = np.zeros(len(p))
+        margin = h / self.scale + 1
+        jit = math.radians(25.0)
+        for di, dj, dk in OFFSETS_27:
+            ci, cj, ck = cell[:, 0] + di, cell[:, 1] + dj, cell[:, 2] + dk
+            s = (np.stack([ci, cj, ck], 1) + np.stack([hash01(ci, cj, ck, k) for k in (1, 2, 3)], 1)) * h
+            d = p - s
+            w = np.clip(1.0 - (d * d).sum(axis=1) / (h * h), 0.0, None) ** 2
+            m = w > 0
+            if not m.any():
+                continue
+            ci, cj, ck, d, w = ci[m], cj[m], ck[m], d[m], w[m]
+            a = (d * t1[m]).sum(axis=1) * np.where(hash01(ci, cj, ck, 4) < 0.5, -1.0, 1.0)
+            b = (d * t2[m]).sum(axis=1)
+            ang = self.theta + (hash01(ci, cj, ck, 5) - 0.5) * 2 * jit
+            ca, sa = np.cos(ang), np.sin(ang)
+            oc = margin + hash01(ci, cj, ck, 6) * (self.W - 2 * margin)
+            orow = margin + hash01(ci, cj, ck, 7) * (self.H - 2 * margin)
+            v = bilinear(img, orow + (a * sa + b * ca) / self.scale, oc + (a * ca - b * sa) / self.scale)
+            acc[m] += w[:, None] * v
+            w2[m] += w * w
+        return acc / np.sqrt(np.maximum(w2, 1e-12))[:, None]
+
+    @staticmethod
+    def smooth(p, vals, h):
+        """Partition-of-unity average of vals over a jittered grid of cell h (a low-pass of about h)."""
+        p = p.astype(np.float64)
+        cell = np.floor(p / h).astype(np.int64)
+        lo = cell.min(axis=0) - 1
+        dims = cell.max(axis=0) - lo + 2
+        n_cells = int(np.prod(dims))
+        S = np.zeros((n_cells, vals.shape[1]))
+        Wc = np.zeros(n_cells)
+        parts = []
+        for di, dj, dk in OFFSETS_27:
+            c = cell + np.array([di, dj, dk])
+            s = (c + np.stack([hash01(c[:, 0], c[:, 1], c[:, 2], k) for k in (11, 12, 13)], 1)) * h
+            w = np.clip(1.0 - ((p - s) ** 2).sum(axis=1) / (h * h), 0.0, None) ** 2
+            idx = ((c[:, 0] - lo[0]) * dims[1] + (c[:, 1] - lo[1])) * dims[2] + (c[:, 2] - lo[2])
+            Wc += np.bincount(idx, w, n_cells)
+            for ch in range(vals.shape[1]):
+                S[:, ch] += np.bincount(idx, w * vals[:, ch], n_cells)
+            parts.append((idx, w))
+        mean = S / np.maximum(Wc, 1e-12)[:, None]
+        out = np.zeros_like(vals, dtype=np.float64)
+        wsum = np.zeros(len(p))
+        for idx, w in parts:
+            out += w[:, None] * mean[idx]
+            wsum += w
+        return out / np.maximum(wsum, 1e-12)[:, None]
+
+
+def paint_hair(tex, ob, hd):
+    """Strand detail and coil shading on the back and top of the head, painted into the baked texture."""
+    size = tex.size[0]
+    px = np.empty(size * size * 4, np.float32)
+    tex.pixels.foreach_get(px)
+    px = px.reshape(size, size, 4)
+    X, Y, P, Nn = texels_of(ob, "scalp", size)
+    w = hd.coverage(Nn) * smoothstep(1.47, 1.50, P[:, 2])
+    sel = w > 0.003
+    X, Y, P, Nn, w = X[sel], Y[sel], P[sel].astype(np.float64), Nn[sel].astype(np.float64), w[sel]
+    col = px[Y, X, :3].astype(np.float64)
+    # Keep clear of skin (nape, hairline): fraction of skin-coloured texels around each point.
+    skin = (is_skin(col) & (col[:, 1] > 0.62 * col[:, 0]) & (col[:, 0] > 0.45)).astype(np.float64)
+    skin_frac = hd.smooth(P, skin[:, None], 0.006)[:, 0]
+    w *= 1.0 - smoothstep(0.2, 0.5, skin_frac)
+    base = hd.smooth(P, col, HAIR_BASE_CELL)
+    L = hd.detail(P, Nn, hd.ratio)
+    shade = 1.0 + 0.25 * hd.coils(P)
+    new = np.clip(base * np.exp(HAIR_GAIN * L) * shade[:, None], 0.0, 1.0)
+    col = col * (1 - w[:, None]) + new * w[:, None]
+    px[Y, X, :3] = col
+    tex.pixels.foreach_set(px.ravel())
+    log(f"hair detail painted on {int((w > 0.5).sum())} of {len(X)} scalp texels")
+
+
+def hair_relief(ob, views, heads, hull, hd):
     """Strands in relief: push hair vertices in where the photos show dark gaps between strands and out on the
-    light strands (high-pass of the projected brightness), plus curly lumps on the bun."""
+    light strands (high-pass of the projected brightness), plus curly lumps. Where the photos are poor (back,
+    top) the splatted strands of the close-up decide instead, and the bun gets spiral coils."""
     from mathutils import noise
     me = ob.data
     n = len(me.vertices)
@@ -1240,11 +1527,17 @@ def hair_relief(ob, views, heads, hull):
         np.add.at(acc, ev[:, 1], low[ev[:, 0]])
         low = 0.5 * low + 0.5 * acc / np.maximum(deg, 1)
     d = np.clip((lum - low) * 0.035, -0.0028, 0.0028)
-    bun = smoothstep(0.05, 0.10, co[:, 1])
     lumps = np.array([noise.noise(Vector(p) * 55.0) for p in co[hair]]) if hair.any() else np.zeros(0)
     d_l = np.zeros(n, np.float32)
     d_l[hair] = lumps
-    d = d + d_l * (0.0018 + 0.0035 * bun)
+    d = d + d_l * 0.0018
+    hd.set_bun(co, no)
+    if hair.any():
+        hp, hn = co[hair], no[hair]
+        strands = hd.detail(hp, hn, hd.band)[:, 0]
+        d_new = np.clip(strands * 0.0009, -0.0022, 0.0022) + hd.coils(hp) * BUN["ridge"]
+        cov = hd.coverage(hn)
+        d[hair] = d[hair] * (1 - cov) + d_new * cov
     co += no * (d * weight)[:, None]
     me.vertices.foreach_set("co", co.ravel())
     me.update()
@@ -2418,6 +2711,7 @@ HEAD_VIEWS = {
     "three_quarter": (0.8, -1.0, 0.2),
     "side": (1.0, 0.0, 0.05),
     "back": (-0.5, 1.0, 0.2),
+    "back_three_quarter": (0.9, 0.8, 0.35),
     "top": (0.2, -0.45, 1.5),
 }
 
@@ -2427,7 +2721,7 @@ def preview_mesh():
     paths = render_views("mesh")
     contact_sheet(paths, os.path.join(WORK, "sheet_mesh.png"), len(paths))
     paths = render_views("head", HEAD_VIEWS, size=(400, 400), centre=(0, 0.01, 1.57), radius=0.17)
-    contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), len(paths))
+    contact_sheet(paths, os.path.join(WORK, "sheet_head.png"), 3)
     ear_views = {"side": (-1.0, 0.05, 0.1), "behind": (-0.75, 0.65, 0.15), "front": (-0.6, -0.8, 0.1),
                  "above": (-0.6, 0.2, 0.8)}
     paths = render_views("ear", ear_views, size=(320, 320), centre=(-0.07, 0.037, 1.537), radius=0.055)

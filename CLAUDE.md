@@ -583,10 +583,22 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     die Textur (`texels_of` rastert die UV-Dreiecke). Gewichte nach Abstand zu Hand-/Fingerknochen (`hand_weights`).
   - Ohren (`EarModel`, `ear_object`): Umriss im Profil nachgezogen (`EAR_OUTLINE`, Muschel `EAR_CONCHA`), gewölbte Schale
     mit Rand, Gegenleiste und Mulde, 30° vom Kopf geneigt, Solidify + Subsurf. Hinter dem Ohr läuft das Haar flach auf
-    Schädelbreite aus (`clearance`), damit es frei steht.
+    Schädelbreite aus (`clearance`, nach hinten 1,8-mal länger auslaufend), damit es frei steht.
   - Haare: `hair_relief` drückt die Haarfläche nach der Helligkeit der Fotos ein und aus (Hochpass, ±2,8 mm) und gibt
-    dem Dutt lockige Beulen; 14 lose Korkenzieherlocken (`CURLS`, `curl_object`) an Schläfen, Stirn, Nacken und Dutt,
+    ihr leichte Beulen; 14 lose Korkenzieherlocken (`CURLS`, `curl_object`) an Schläfen, Stirn, Nacken und Dutt,
     Farbe dunkelbraun mit Kupfer (Attribut `curl`). Ohren und Locken hängen fest am Kopfknochen (`rigid_weights`).
+  - Hinterkopf und Oberseite ohne eigenes Foto (der User hat sich gegen eine weitere Ansicht entschieden):
+    - Form: Der Umriss zwischen Scheitel und Dutt wird über den Winkel um die Kopfmitte geglättet
+      (`round_back_outline`; vorher eine Stufe von 4 cm, wo die Strähnen im Profil enden). Neben dem Dutt wird der
+      Hinterkopf bis 3,5 cm eingezogen, der Dutt sitzt als eigenes Ellipsoid darauf und reicht hinten bis zum Profil
+      (`BUN`: Mitte, Halbachsen, Einzug).
+    - Strähnen (`HairDetail`): ein reines Haarstück aus dem Profil der Nahaufnahme (`HAIR_SRC`, 12,7 × 8,2 cm) wird in
+      runden Flecken auf den Kopf gestempelt (Raster 1,6 cm mit Zufallsversatz, Mischung mit erhaltenem Kontrast). Jeder
+      Fleck ist so gedreht, dass die Strähnen zum Dutt laufen und auf ihm in zwei Spiralen umlaufen. Übernommen wird nur das
+      Detail (Verhältnis zum Mittel über 6 mm). Die Farbe im Zentimeterbereich bleibt die der Fotos (`HAIR_BASE_CELL`).
+    - Dasselbe Feld treibt das Relief (Band 3,5–10 mm) und die Textur (`paint_hair`, nur wo die Fotos schlecht hinsehen:
+      Normale nach hinten oder oben, `coverage`; Haut wird ausgespart). Der Dutt bekommt Spiralwülste (±6,5 mm), deren
+      Rillen in der Textur dunkler sind.
   - Bone Heat scheitert am ganzen Netz, sobald Ohren und Locken dabei sind; `body_heat_weights` gewichtet deshalb eine
     Kopie nur mit dem Körper und kopiert über den Vertex-Index zurück.
   - Farbe: die Fotos werden je nach Flächennormale auf die Form projiziert und in `T_Rosa_BC.png` (4096², Kopf mit
@@ -600,8 +612,9 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Ballen), Arme bei Arbeiten/Aufheben ebenfalls IK (`Poser.two_bone`, `arm_ik`).
   - Export `Art/Characters/Rosa/Export/SK_Rosa.fbx` (Armature heißt „Armature“, damit Unreal `root` als Wurzel nimmt,
     `FBX_SCALE_ALL`, keine Leaf Bones, alle Aktionen als Takes) + `T_Rosa_BC.png`. Gegenprobe `check_fbx()` liest sie wieder ein.
-  - ~65 000 Dreiecke (Körper 24k, Kopf 20k, Hände 10k, Ohren 4,6k, Locken 3k). Grenzen: Hinterkopf noch aus dem kleinen
-    Ganzkörperfoto (Rückansicht + Draufsicht des Kopfes beim User angefragt), um das Ohr etwas Hautfarbe auf dem Haar.
+  - ~65 000 Dreiecke (Körper 24k, Kopf 20k, Hände 10k, Ohren 4,6k, Locken 3k). Grenzen: Die Strähnen hinten sind aus dem
+    Profil übertragen, nicht fotografiert. Um das Ohr liegt etwas Hautfarbe auf dem Haar. Schräg von hinten sitzt das Ohr
+    in einer Mulde im Haar.
   - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
 - **Professioneller Look, Schritt 5 von 6: Zeitleiste wie im Mockup (Schritt 35, 2026-11-09).** Nur `UDCTimelinePanel::RebuildTracks`
   und eine Zeichenhilfe, keine Spielregeln:
