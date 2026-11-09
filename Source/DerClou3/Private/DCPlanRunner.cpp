@@ -25,6 +25,8 @@ namespace
 	constexpr int32 RunnerMaxPassTries = 3;
 	/** Waiting at a shut door: look at the way again this often (at once when a door changes). */
 	constexpr float RunnerDoorRecheckSeconds = 0.5f;
+	/** Gap between an item's footprint and where the crew member stands (as in ADCCrewCharacter and the planning). */
+	constexpr double RunnerItemReach = 40.0;
 
 	void Collect(UDCItem* Item, TArray<UDCItem*>& Out)
 	{
@@ -512,7 +514,10 @@ bool UDCPlanRunnerComponent::DoorOnWay(FText& OutWait, ADCDoor*& OutOpen, ADCDoo
 		{
 			return false;
 		}
-		Destination = Pickup->GetActorLocation();
+		// Where she will stand (the item's room, its storey): the middle of a painting on an outside wall is nearer
+		// to the garden behind the wall than to the room it hangs in.
+		DCNav::FindStandSpot(GetWorld(), Pickup->GetActorLocation(), Pickup->GetFootprintRadius() + RunnerItemReach, Crew->GetActorLocation(),
+			Destination, [](const FVector&) { return false; });
 		break;
 	}
 	default:
@@ -617,6 +622,7 @@ void UDCPlanRunnerComponent::StartExecute()
 			FinishTask(EDCTaskStatus::Failed);
 			return;
 		}
+		PassStart = Crew->GetActorLocation();
 		Crew->InteractWithDoor(Door, Action);
 		return;
 	}
@@ -680,6 +686,17 @@ void UDCPlanRunnerComponent::EvaluateResult()
 	{
 		const ADCDoor* Door = UDCHeistStateSubsystem::Get(this)->FindDoor(Task.Target);
 		bSucceeded = Door && !Door->IsLocked();
+	}
+	else if (Task.Type == EDCPlanTaskType::Door && static_cast<EDCDoorAction>(Task.Action) == EDCDoorAction::GoThrough)
+	{
+		// Through means on the other side now ("kommt nicht durch" used to count as done).
+		const ADCDoor* Door = UDCHeistStateSubsystem::Get(this)->FindDoor(Task.Target);
+		const FVector Normal = Door ? Door->GetActorForwardVector().GetSafeNormal2D() : FVector::ZeroVector;
+		bSucceeded = Door && FVector::DotProduct(PassStart - Door->GetCenter(), Normal) * FVector::DotProduct(GetCrew()->GetActorLocation() - Door->GetCenter(), Normal) < 0.0;
+		if (!bSucceeded)
+		{
+			UE_LOG(LogDerClou, Log, TEXT("%s is not through %s"), *GetCrew()->GetCrewName().ToString(), Door ? *Door->GetInteractableName().ToString() : TEXT("-"));
+		}
 	}
 	else if (Task.Type == EDCPlanTaskType::Item)
 	{

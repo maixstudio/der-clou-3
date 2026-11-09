@@ -225,6 +225,10 @@ void ADCPlayerController::BeginPlay()
 	{
 		StartReplaySelfTest();
 	}
+	else if (SelfTest == TEXT("SecretDoor"))
+	{
+		StartSecretDoorSelfTest();
+	}
 
 	// Coming back from "Abspielen" after a reload: play right away.
 	UDCPlanSubsystem* Plans = UDCPlanSubsystem::Get(this);

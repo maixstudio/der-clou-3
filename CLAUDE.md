@@ -547,10 +547,8 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
     Stehplätze und Wegprüfung. Die Stehplatzsuche am Möbel probiert mehr Richtungen und einen zweiten Abstand.
   - Ebenfalls: Slate-Ensure „LineModel.Text->Len() == InNewText.Len()“ bei Großschrift mit „ß“ („Straße“). Jetzt
     `DCItemWidgets::Upper` statt `TransformPolicy(ToUpper)`.
-  - Der User-Plan läuft jetzt im Replay bis auf Rosas letzten Schritt durch (44,0 s gespielt, 43,7 s geplant, längster
-    Frame 0,03 s). **Offen:** Durch die Geheimtür (Bücherregal zur Geheimkammer) kommt live niemand: Rosa öffnet sie,
-    findet 3 s keinen Weg hinein („no path through the door“) und gibt auf. Der Schritt „durch Geheimtür“ zählt trotzdem
-    als erledigt, „Ölgemälde aufheben“ scheitert dann. Die Planung hält den Weg für möglich.
+  - Der User-Plan lief danach bis auf Rosas letzten Schritt durch (44,0 s gespielt, 43,7 s geplant, längster Frame
+    0,03 s); der Rest war die Geheimtür, behoben in Schritt 36.
 - **Professioneller Look, Schritt 4 von 6: Gegenstands-Icons aus Blender (Schritt 33, 2026-11-09).** 34 Bilder, eines je
   Katalog-Gegenstand (nur die Schublade hat keins), in `Content/Slate/ItemIcons/<id>.png`, zur Laufzeit geladen.
   - Blender: `build_items.py --icons` rendert orthografisch schräg von oben (`VIEW_ICON`, Ausnahmen in `ICON_VIEWS`:
@@ -595,6 +593,20 @@ Schritt**; jeder Schritt muss im Spiel sichtbar und bedienbar sein, bevor der n�
   - Grenzen: Haare sind eine geschlossene Schale (keine einzelnen Strähnen), Ohren nur aufgemalt, Hinterkopf aus dem
     kleinen Ganzkörperfoto (unschärfer als das Gesicht).
   - Offen: Import nach Unreal (Skeletal Mesh, Anim-Sequenzen, Anim-Blueprint nach Tempo), Vic und Kurt genauso.
+- **Geheimtür in der Villa begehbar (Schritt 36, 2026-11-09, gefunden mit dem Replay aus Schritt 32):** Rosa öffnete das
+  Bücherregal, kam aber nicht in die Geheimkammer, und „durch Geheimtür“ zählte trotzdem als erledigt.
+  - Ursache 1, Durchgang zu eng: Das NavMesh rechnet mit 35 cm Figurradius (auf dem 10-cm-Raster 40 cm), eine 1,0-m-Tür
+    lässt also nur 20 cm Gang. Das Deko-Regal daneben ragte 5 cm in die Öffnung, danach gab es keine Verbindung mehr.
+    Jetzt ist die Geheimtür 1,2 m breit, das Scharnier sitzt im Norden (das offene Regal steht nicht mehr vor dem Gemälde
+    an der Südwand), das Deko-Regal steht neben der Öffnung (`villa_layout.py`, `build_villa.py`, L_Villa01 neu gebaut).
+  - Ursache 2, Stehplatz hinter der Wand: Beim Gemälde an der Außenwand lag der nächste begehbare Punkt draußen vor dem
+    Haus, Rosa lief deshalb zur Haustür. Jetzt `DCNav::FindStandSpot`: Stehplatz im Raum des Gegenstands, auf seinem
+    Stockwerk, rundherum gesucht. Planung, Abspielen (`WalkToPickup`) und Wegprüfung (`DoorOnWay`) nehmen denselben Punkt.
+  - „Durchgehen“ zählt nur, wenn die Figur danach auf der anderen Seite steht (`PassStart`; sonst bis zu 3 Versuche,
+    dann „gibt auf“).
+  - Selbsttest `-DCSelfTest=SecretDoor` (L_Villa01): Rosa steht in der Bibliothek, geht durch die Geheimtür und hebt das
+    Gemälde auf. Er prüft das NavMesh an der Tür vor und nach dem Öffnen und macht Bilder mit `show Navigation`
+    (`secret_door_closed/open.png`). Replay des User-Plans: 17 von 17 Schritten, 41,2 s gespielt (43,7 s geplant).
 - **NÄCHSTE SCHRITTE – entschieden, noch nicht gebaut: siehe `Docs/Plan-Naechste-Schritte.md`.** Kurz:
   zwei Phasen (Planung grob → Einbruch, bei Funden und Störungen hält das Spiel an und fragt),
   Raster-Inventar nur mit Rechtecken, „Wohin damit?“ mit Vorschlag, Wissensstufen mit Nebel, Absichten
@@ -628,13 +640,15 @@ Ziehen mit Bild mit der echten Maus.
 - Command-line-Selbsttests: `-game -DCSelfTest=` `CloseFromSide`, `Inventory`, `Containers`, `Noise`,
   `Timeline`, `Reload`, `PlanInventory`, `Signals`, `Grid`, `Find`, `PlanView`, `DoorWay`, `House` und `AutoDoor`
   (beide Map L_House01), `Undo`, `PlanHelp`, `PlanLook`, `Insert`, `Variants` (die vier L_House01), `Villa` (L_Villa01),
-  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab).
+  `Menu` (ohne Map: Startmenü, Spielstände, Ladebildschirm), `Replay` (L_Villa01, spielt `-DCSave=<Slot>` ab), `SecretDoor` (L_Villa01).
   Die Direkt-Tests schalten selbst in den Direkt-Modus.
 
 **Wichtige Erkenntnisse:**
 - MCP über HTTP ist langsam (~7 s pro Aufruf), weil der Editor im Hintergrund gedrosselt läuft.
 - NavMesh: `AgentRadius=30`, 10-cm-Raster (DefaultEngine.ini) – sonst passt die Wegfindung nicht durch
-  100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock.
+  100-cm-Türen. Türblatt/Rahmen beeinflussen die Navigation nicht, nur der Sperrblock. Die Debug-Anzeige (`show Navigation`)
+  zeigt auf den Maps Radius 35, auf dem Raster also 40 cm: Eine 1,0-m-Tür lässt nur 20 cm Gang. Nichts mit Kollision
+  näher als 40 cm an eine Türöffnung stellen, enge Stellen lieber mit 1,2-m-Türen (Schritt 36).
 - PIE übernimmt das NavMesh des Editors, so wie es gerade ist, und baut es nicht selbst. Darum baut
   `UDCHeistStateSubsystem` es in PIE beim Start neu. `-game` baut ohnehin neu, weil die Maps kein passendes NavMesh gespeichert
   haben. Editor-Prüfungen ohne Klicken: `UnrealEditor.exe DerClou3.uproject -ExecCmds="py <absoluter Pfad>.py"` mit

@@ -236,6 +236,15 @@ namespace DCNav
 	 * chose the cellar floor right under the living-room sofa (2026-11-09).
 	 */
 	DERCLOU3_API bool ProjectOnStorey(const UWorld* World, const FVector& Location, double Radius, FVector& Out);
+
+	/**
+	 * Where to stand to reach an item at ItemLocation (Reach = footprint radius + arm), coming from From: on the item's
+	 * storey and in the item's room - a painting on an outside wall is not taken from the garden. Tries round the item,
+	 * starting on the side that faces From, then a little further out; IsTaken rules out spots others already use.
+	 * Planning and playback both use it, so they walk to the same place. False: nothing found (Out is a plain guess).
+	 */
+	DERCLOU3_API bool FindStandSpot(const UWorld* World, const FVector& ItemLocation, double Reach, const FVector& From, FVector& Out,
+		TFunctionRef<bool(const FVector&)> IsTaken);
 }
 
 /**

@@ -67,6 +67,42 @@ bool DCNav::ProjectOnStorey(const UWorld* World, const FVector& Location, double
 	return true;
 }
 
+bool DCNav::FindStandSpot(const UWorld* World, const FVector& ItemLocation, double Reach, const FVector& From, FVector& Out,
+	TFunctionRef<bool(const FVector&)> IsTaken)
+{
+	FVector Away = (From - ItemLocation).GetSafeNormal2D();
+	Away = Away.IsNearlyZero() ? FVector::ForwardVector : Away;
+	Out = ItemLocation + Away * Reach;
+	// Rooms are a storey high: compare a little above the floor.
+	const FVector Up(0.0, 0.0, 50.0);
+	const ADCRoomVolume* ItemRoom = ADCRoomVolume::FindAt(World, ItemLocation + Up);
+	const auto InItemRoom = [World, ItemRoom, &Up](const FVector& Spot)
+	{
+		return !ItemRoom || ADCRoomVolume::FindAt(World, Spot + Up) == ItemRoom;
+	};
+	for (const double Extra : { 0.0, 40.0 })
+	{
+		for (const double Turn : { 0.0, 40.0, -40.0, 80.0, -80.0, 120.0, -120.0, 160.0, -160.0 })
+		{
+			FVector Spot;
+			if (ProjectOnStorey(World, ItemLocation + Away.RotateAngleAxis(Turn, FVector::UpVector) * (Reach + Extra), 30.0, Spot)
+				&& InItemRoom(Spot) && !IsTaken(Spot))
+			{
+				Out = Spot;
+				return true;
+			}
+		}
+	}
+	// Still nothing: the nearest walkable spot round the item, in its room.
+	FVector Near;
+	if (ProjectOnStorey(World, ItemLocation, Reach + 60.0, Near) && InItemRoom(Near))
+	{
+		Out = Near;
+		return true;
+	}
+	return false;
+}
+
 namespace
 {
 	/** Rough times for the small things (the crew's own code uses the same values). */
@@ -1354,9 +1390,9 @@ FDCSchedule UDCHeistStateSubsystem::Simulate(FDCWorldSnapshot* OutFinalState, TM
 		default:
 			if (const ADCItemPickup* Pickup = FindPickup(Task.Target))
 			{
-				FVector Away = (Cursor.Location - Pickup->GetActorLocation()).GetSafeNormal2D();
-				Away = Away.IsNearlyZero() ? FVector::ForwardVector : Away;
-				Spot = Pickup->GetActorLocation() + Away * (Pickup->GetFootprintRadius() + SimItemReach);
+				// The same spot the crew member will walk to in the heist (her own room, her storey).
+				DCNav::FindStandSpot(World, Pickup->GetActorLocation(), Pickup->GetFootprintRadius() + SimItemReach, Cursor.Location, Spot,
+					[](const FVector&) { return false; });
 				Out.bHasLocation = true;
 			}
 			break;

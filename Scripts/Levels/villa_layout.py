@@ -147,7 +147,7 @@ DOORS = [
          locked=False, lock=None, name="Esszimmer → Wohnzimmer", note="breiter Durchgang"),
     dict(id="d_wohn_bib", floor="EG", at=(39.6, 21), width=1.6, type="doppel", swing="S", hinge="-",
          locked=False, lock=None, name="Wohnzimmer → Bibliothek", note="Flügeltür"),
-    dict(id="d_geheim", floor="EG", at=(42, 17.25), width=1.0, type="geheim", swing="W", hinge="-",
+    dict(id="d_geheim", floor="EG", at=(42, 17.25), width=1.2, type="geheim", swing="W", hinge="+",
          locked=False, lock=None, name="Geheimtür", note="Bücherregal dreht sich – erst finden"),
 
     # 1. Stock

@@ -136,7 +136,7 @@ DECO_BOXES = [
     ("Deko_Regal_West_2", "EG", (36.08, 19.1, 36.45, 20.9), 0, 220, "MI_Item_Wood_Walnut"),
     ("Deko_Regal_Nord", "EG", (36.8, 20.55, 38.7, 20.92), 0, 220, "MI_Item_Wood_Walnut"),
     ("Deko_Regal_Ost", "EG", (43.48, 18.6, 43.85, 20.9), 0, 220, "MI_Item_Wood_Walnut"),
-    ("Deko_Regal_Geheimtuer", "EG", (41.55, 16.2, 41.92, 16.8), 0, 220, "MI_Item_Wood_Walnut"),
+    ("Deko_Regal_Geheimtuer", "EG", (41.55, 16.15, 41.92, 16.55), 0, 220, "MI_Item_Wood_Walnut"),
     ("Deko_WC", "EG", (28.2, 16.2, 28.85, 16.75), 0, 45, "MI_Item_Porcelain"),
     ("Deko_Waschbecken", "EG", (26.0, 16.2, 26.6, 16.6), 70, 88, "MI_Item_Porcelain"),
     ("Deko_Waschmaschine", "EG", (24.6, 16.2, 25.35, 16.85), 0, 85, "MI_Item_Porcelain"),
